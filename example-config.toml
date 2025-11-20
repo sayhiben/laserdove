@@ -1,0 +1,28 @@
+# example-config.toml
+[joint]
+thickness_mm        = 6.35
+edge_length_mm      = 100.0
+dovetail_angle_deg  = 8.0
+num_tails           = 3
+tail_outer_width_mm = 20.0
+tail_depth_mm       = 6.35
+socket_depth_mm     = 6.60
+clearance_mm        = 0.05
+kerf_tail_mm        = 0.15
+kerf_pin_mm         = 0.15
+
+[jig]
+axis_to_origin_mm   = 30.0
+rotation_zero_deg   = 0.0
+rotation_speed_dps  = 30.0
+
+[machine]
+cut_speed_tail_mm_s = 10.0
+cut_speed_pin_mm_s  = 8.0
+rapid_speed_mm_s    = 200.0
+z_speed_mm_s        = 5.0
+cut_power_tail_pct  = 60.0
+cut_power_pin_pct   = 65.0
+travel_power_pct    = 0.0
+z_zero_tail_mm      = 0.0
+z_zero_pin_mm       = 0.0
