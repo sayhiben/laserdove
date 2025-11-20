@@ -117,3 +117,77 @@ def execute_commands(
         if handler is None:
             raise ValueError(f"Unsupported command type {c.type}")
         handler(c)
+
+
+# hardware.py  (append below existing classes)
+from pathlib import Path
+
+# ... existing imports and classes (LaserInterface, RotaryInterface, DummyLaser, DummyRotary, execute_commands) ...
+
+
+class RuidaLaser(LaserInterface):
+    """
+    Skeleton implementation that is intended to wrap your existing
+    RuidaProxy / udpsendruida / ruida.py tooling.
+
+    v1: It simply logs moves. You will later replace the internals with
+    actual UDP / RD-file sending.
+    """
+
+    def __init__(self, host: str, port: int = 50200) -> None:
+        self.host = host
+        self.port = port
+        self.x = 0.0
+        self.y = 0.0
+        self.z = 0.0
+        self.power = 0.0
+        log.info("RuidaLaser initialized for host=%s port=%d", host, port)
+
+        # TODO: initialize UDP socket or connection to RuidaProxy here.
+
+    def move(self, x=None, y=None, z=None, speed=None) -> None:
+        if x is not None:
+            self.x = x
+        if y is not None:
+            self.y = y
+        if z is not None:
+            self.z = z
+        log.info("[RUDA] MOVE x=%.3f y=%.3f z=%.3f speed=%s",
+                 self.x, self.y, self.z, speed)
+        # TODO: translate into Ruida "rapid move" or incremental path segment.
+
+    def cut_line(self, x, y, speed) -> None:
+        self.x = x
+        self.y = y
+        log.info("[RUDA] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%",
+                 x, y, speed, self.power)
+        # TODO: translate into Ruida "cut vector" segment at current power.
+
+    def set_laser_power(self, power_pct) -> None:
+        self.power = power_pct
+        log.info("[RUDA] SET_LASER_POWER %.1f%%", power_pct)
+        # TODO: encode power settings into RD layer config or runtime power if supported.
+
+
+class RealRotary(RotaryInterface):
+    """
+    Skeleton implementation for the physical rotary on the Pi.
+
+    v1: Logs requested angles. Replace method bodies with calls into
+    your stepper driver / GPIO code.
+    """
+
+    def __init__(self, steps_per_rev: float | None = None, microsteps: int | None = None) -> None:
+        self.angle = 0.0
+        self.steps_per_rev = steps_per_rev
+        self.microsteps = microsteps
+        log.info("RealRotary initialized (steps_per_rev=%s microsteps=%s)",
+                 steps_per_rev, microsteps)
+
+        # TODO: initialize GPIO / driver interfaces here.
+
+    def rotate_to(self, angle_deg: float, speed_dps: float) -> None:
+        log.info("[ROTARY] rotate_to θ=%.3f° at %.1f dps", angle_deg, speed_dps)
+        self.angle = angle_deg
+        # TODO: compute required steps and send to driver.
+        time.sleep(0.0)
