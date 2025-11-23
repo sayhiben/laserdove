@@ -218,15 +218,10 @@ Validation logic lives in `validation.py`.
 
 ## Testing
 
-Minimal tests live in `tests/test_geometry.py`:
-
-- Tail layout sanity.  
-- Z offset at 0° is zero.
-
-You can run:
+Tests live under `tests/`; run them with coverage enabled by default:
 
 ```bash
 pytest
 ```
 
-once you have `pytest` installed.
+This emits terminal coverage and writes `coverage.xml` for CI artifacts.

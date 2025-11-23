@@ -1,0 +1,12 @@
+[run]
+branch = True
+source =
+    .
+omit =
+    tests/*
+    */__pycache__/*
+    .venv/*
+    */.venv/*
+
+[report]
+show_missing = True
