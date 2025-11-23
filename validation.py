@@ -39,7 +39,6 @@ def validate_joint_params(jp: JointParams) -> List[str]:
 def validate_tail_layout(jp: JointParams, layout: TailLayout) -> List[str]:
     errors: List[str] = []
 
-    # Ensure tails fit within edge
     if not layout.tail_centers_y:
         errors.append("tail_centers_y is empty")
         return errors
@@ -52,7 +51,6 @@ def validate_tail_layout(jp: JointParams, layout: TailLayout) -> List[str]:
             f"y_max={y_max:.3f}, L={jp.edge_length_mm:.3f}"
         )
 
-    # Ensure full pin width is sensible
     if layout.pin_outer_width <= 0:
         errors.append("Computed pin_outer_width <= 0; adjust tail width or edge length")
 

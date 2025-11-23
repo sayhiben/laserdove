@@ -6,8 +6,9 @@ from typing import List
 from config import build_arg_parser, load_config_and_args
 from geometry import compute_tail_layout
 from planner import plan_tail_board, compute_pin_plan, plan_pin_board
-from hardware import DummyLaser, DummyRotary, execute_commands
+from hardware import DummyLaser, DummyRotary, RuidaLaser, RealRotary, execute_commands
 from logging_utils import setup_logging
+from validation import validate_all
 
 
 def main() -> None:
@@ -16,9 +17,26 @@ def main() -> None:
 
     setup_logging(args.log_level)
 
-    joint, jig, machine, mode, dry_run = load_config_and_args(args)
+    (
+        joint,
+        jig,
+        machine,
+        mode,
+        dry_run,
+        backend_use_dummy,
+        backend_host,
+        backend_port,
+    ) = load_config_and_args(args)
 
+    # Compute shared layout once (pins and tails must agree)
     tail_layout = compute_tail_layout(joint)
+
+    # Validate geometry + machine/jig config
+    errors = validate_all(joint, jig, machine, tail_layout)
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}")
+        raise SystemExit("Validation failed; fix configuration before running.")
 
     all_cmds: List = []
 
@@ -36,9 +54,14 @@ def main() -> None:
             print(c)
         return
 
-    # v1: always use dummy interfaces; swap in RuidaLaser/RealRotary later
-    laser = DummyLaser()
-    rotary = DummyRotary()
+    # Backend selection
+    if backend_use_dummy:
+        laser = DummyLaser()
+        rotary = DummyRotary()
+    else:
+        laser = RuidaLaser(host=backend_host, port=backend_port)
+        rotary = RealRotary()
+
     execute_commands(all_cmds, laser, rotary)
 
 

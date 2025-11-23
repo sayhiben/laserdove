@@ -27,8 +27,6 @@ travel_power_pct    = 0.0
 z_zero_tail_mm      = 0.0
 z_zero_pin_mm       = 0.0
 
-# example-config.toml  (append at end)
-
 [backend]
 # If use_dummy = true, novadovetail will use DummyLaser/DummyRotary
 # regardless of ruida_host.

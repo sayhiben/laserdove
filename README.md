@@ -5,12 +5,12 @@ Experimental Python tooling to drive a **Thunder Nova 24 Plus** CO₂ laser and 
 
 This repo focuses on:
 
-- Clean, testable **geometry and math** for pins/tails.
-- A simple **planner** that emits abstract motion commands.
-- A minimal **hardware abstraction** that can be wired to a Ruida controller and a NEMA-23 rotary later.
-- Support for **dry runs**, logging, and simple tests.
+- **Geometry and math**: clean, testable geometry for pins/tails.
+- **Planning**: a simple planner that emits abstract motion commands.
+- **Hardware abstraction**: a minimal layer that can be wired to a Ruida controller and a NEMA‑23 rotary.
+- **Quality of life**: support for dry runs, logging, and basic tests.
 
-v1 intentionally uses a **dummy hardware backend**; it does *not* yet talk to a real Ruida.
+v1 intentionally uses dummy hardware by default; it does *not* yet talk to a real Ruida unless you wire in the skeleton classes.
 
 ---
 
@@ -23,7 +23,8 @@ novadovetail/
   model.py                 # Dataclasses (params, layouts, commands)
   geometry.py              # Pure math; tails, pins, Z offsets, kerf
   planner.py               # Convert geometry -> Command list
-  hardware.py              # Laser + rotary interfaces (dummy for now)
+  hardware.py              # Laser + rotary interfaces (dummy + skeleton real)
+  validation.py            # Geometry/machine/jig validation
   logging_utils.py         # Logging setup
   example-config.toml      # Example configuration
   tests/
@@ -31,31 +32,44 @@ novadovetail/
   README.md
 ```
 
-Coordinate & geometry conventions
-	•	Board edges are modeled in a 1D Y range:
-	•	Y ∈ [0, L], where L = edge_length_mm.
-	•	0 is one end of the jointed edge; L is the other.
-	•	Tail layout on the tail board:
-	•	Pattern: half-pin, (tail, full-pin)*, tail, half-pin.
-	•	User sets tail_outer_width_mm.
-	•	Planner derives full pin width Wp such that:
+---
 
-L = N * tail_outer_width_mm + N * pin_outer_width
+## Coordinate & geometry conventions
 
-On the pin board, pins live in these gaps (same Y pattern).
-	•	Rotary axis runs along X; the job origin (mid-edge) is at distance h from the axis (config axis_to_origin_mm).
-	•	Z focus:
-	•	Tail board: z_zero_tail_mm – focus at top surface.
-	•	Pin board: z_zero_pin_mm – focus at mid-thickness; per-pin Z offsets are computed via z_offset_for_angle(y_b, θ, h).
+- **Joint edge (Y axis)**  
+  - Modeled in a 1D range \( Y \in [0, L] \), where \( L = \text{edge\_length\_mm} \).  
+  - \( Y = 0 \) is one end of the jointed edge; \( Y = L \) is the other.
 
-⸻
+- **Tail layout on the tail board**  
+  - Pattern: half‑pin, `(tail, full-pin)*`, tail, half‑pin.  
+  - User sets `tail_outer_width_mm`.  
+  - The planner derives full pin width `pin_outer_width` such that:
 
-Config and CLI
+    ```text
+    L = N * tail_outer_width_mm + N * pin_outer_width
+    ```
 
-Config file
+- **Pin board**  
+  - On the pin board, pins live in the gaps between tails (same Y pattern).
 
-Configuration is TOML-based; see example-config.toml:
+- **Rotary axis and origin**  
+  - Rotary axis runs along X.  
+  - The job origin (mid‑edge) is at distance \( h \) from the axis (config `axis_to_origin_mm`).
 
+- **Z focus**  
+  - Tail board: `z_zero_tail_mm` – focus at the top surface.  
+  - Pin board: `z_zero_pin_mm` – focus at mid‑thickness.  
+  - Per‑pin Z offsets are computed via `z_offset_for_angle(y_b, θ, h)`, where `y_b` is Y relative to the mid‑edge (board‑centered coordinates) and `h` is the axis‑to‑origin radius.
+
+---
+
+## Config and CLI
+
+### Config file
+
+Configuration is TOML‑based; see `example-config.toml`:
+
+```toml
 [joint]
 thickness_mm        = 6.35
 edge_length_mm      = 100.0
@@ -84,88 +98,129 @@ travel_power_pct    = 0.0
 z_zero_tail_mm      = 0.0
 z_zero_pin_mm       = 0.0
 
-CLI
+[backend]
+use_dummy  = true
+ruida_host = "192.168.1.100"
+ruida_port = 50200
+```
+If you do **not** pass `--config`, these same values are used as the built‑in defaults. When you run without `--config`, `novadovetail` will also look for a local `config.toml` and use it automatically if present.
 
-Basic usage (dry run):
+For a typical workflow:
 
+```bash
+cp example-config.toml config.toml
+```
+
+Then edit `config.toml` to match your machine, jig, and joint preferences, and run with:
+
+```bash
+python3 novadovetail.py --config config.toml
+```
+
+### CLI
+
+#### Basic usage (dry run)
+
+```bash
 python3 novadovetail.py --config example-config.toml --mode both --dry-run
+```
 
-Options:
-	•	--mode {tails,pins,both} – which board to plan.
-	•	--config path – which TOML file to load.
-	•	--dry-run – do not talk to hardware; print the Command objects.
-	•	Common overrides:
-	•	--edge-length-mm
-	•	--thickness-mm
-	•	--num-tails
-	•	--dovetail-angle-deg
-	•	--tail-width-mm
-	•	--clearance-mm
-	•	--kerf-tail-mm
-	•	--kerf-pin-mm
-	•	--axis-offset-mm
-	•	Logging:
-	•	--log-level DEBUG|INFO|WARNING|ERROR
+#### Options
 
-⸻
+| **Option**              | **Description**                                                                                 | **Default**                                |
+|-------------------------|-------------------------------------------------------------------------------------------------|--------------------------------------------|
+| `--mode {tails,pins,both}` | Which board(s) to plan.                                                                      | `both`                                     |
+| `--config PATH`        | TOML file to load (`[joint]`, `[jig]`, `[machine]`, `[backend]`). If provided and the file is missing or invalid, the program exits with an error. | `config.toml` if present, otherwise built‑ins shown above |
+| `--dry-run`            | Do not talk to hardware; print `Command` objects instead.                                      | disabled                                   |
+| `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
+| `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                           | unset (use config/built‑in)                |
+| `--num-tails`          | Override `joint.num_tails`.                                                                    | unset (use config/built‑in)                |
+| `--dovetail-angle-deg` | Override `joint.dovetail_angle_deg`.                                                           | unset (use config/built‑in)                |
+| `--tail-width-mm`      | Override `joint.tail_outer_width_mm`.                                                          | unset (use config/built‑in)                |
+| `--clearance-mm`       | Override `joint.clearance_mm`.                                                                 | unset (use config/built‑in)                |
+| `--kerf-tail-mm`       | Override `joint.kerf_tail_mm`.                                                                 | unset (use config/built‑in)                |
+| `--kerf-pin-mm`        | Override `joint.kerf_pin_mm`.                                                                  | unset (use config/built‑in)                |
+| `--axis-offset-mm`     | Override `jig.axis_to_origin_mm`.                                                              | unset (use config/built‑in)                |
+| `--log-level {DEBUG,INFO,WARNING,ERROR}` | Logging verbosity for `novadovetail`.                                        | `INFO`                                     |
 
-High-level behavior
+---
 
-Tail board
-	•	Board flat on bed; jig is just a fence.
-	•	Planner:
-	•	Computes tail/pin layout.
-	•	Treats each pin gap as a rectangular pocket 0..tail_depth_mm deep.
-	•	Cuts pocket outlines at kerf-offset Y positions.
-	•	Z is held at z_zero_tail_mm.
+## High‑level behavior
 
-Pin board
-	•	Board mounted on rotary; job origin at mid-edge.
-	•	For each pin side:
-	•	Rotary angle = rotation_zero_deg ± dovetail_angle_deg.
-	•	Z offset via z_offset_for_angle with axis_to_origin_mm.
-	•	Y cut position via kerf/clearance-aware offset.
-	•	L-shaped cut:
-	•	short X leg into the board
-	•	long Y “ramp” leg at depth
-	•	retract X leg
-	•	Sides are processed in center-outward order per angle.
+### Tail board
 
-⸻
+- Board flat on the bed; the jig is a fence only.  
+- The planner:
+  - Computes tail/pin layout.  
+  - Treats each pin gap as a rectangular pocket from 0 to `tail_depth_mm` deep.  
+  - Cuts pocket outlines at kerf‑offset Y positions.  
+  - Holds Z at `z_zero_tail_mm`.
 
-Hardware integration
+### Pin board
 
-Right now:
-	•	DummyLaser and DummyRotary just log moves.
-	•	execute_commands interprets Command objects using a dispatch lookup.
-	•	You can integrate with Ruida by implementing:
-	•	class RuidaLaser(LaserInterface) that wraps your RuidaProxy / udpsendruida.py.
-	•	class RealRotary(RotaryInterface) that drives the NEMA-23 driver.
+- Board mounted on the rotary; job origin at mid‑edge.  
+- For each pin flank:
+  - Rotary angle = `rotation_zero_deg ± dovetail_angle_deg`.  
+  - Z offset via `z_offset_for_angle` with `axis_to_origin_mm` and board‑centered Y.  
+  - Y cut position via kerf/clearance‑aware offset.  
+- The cut is L‑shaped:
+  - Short X leg into the board,  
+  - Long Y “ramp” leg at depth,  
+  - X retract leg.  
+- Flanks are processed in center‑outward order per angle.
 
-The executor does not need to change for that.
+---
 
-⸻
+## Backends
 
-Testing
+`hardware.py` defines four backends:
 
-Minimal tests live in tests/test_geometry.py:
-	•	Tail layout sanity.
-	•	Z offset at 0° is zero.
+- `DummyLaser` / `DummyRotary`: fully simulated; only log moves.  
+- `RuidaLaser`: skeleton wrapper intended to talk to a Ruida controller (via `RuidaProxy` or UDP).  
+- `RealRotary`: skeleton wrapper for the physical rotary stepper on the Pi.
+
+Backend selection is driven by the `[backend]` section in the config:
+
+```toml
+[backend]
+use_dummy  = true
+ruida_host = "192.168.1.100"
+ruida_port = 50200
+```
+
+- If `use_dummy = true`, `novadovetail` uses `DummyLaser` and `DummyRotary`.  
+- If `use_dummy = false`, it uses `RuidaLaser` and `RealRotary`.
+
+`RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
+
+---
+
+## Validation
+
+Before planning any motion, `novadovetail` validates:
+
+- **Joint geometry**: thickness, `edge_length_mm`, `num_tails`, angles, kerf.  
+- **Tail layout**: tails do not extend outside the edge length.  
+- **Machine parameters**: cut/rapid/Z speeds, power ranges.  
+- **Jig parameters**: `axis_to_origin_mm > 0`.
+
+If validation fails, the program prints all errors and exits before talking to hardware.
+
+Validation logic lives in `validation.py`.
+
+---
+
+## Testing
+
+Minimal tests live in `tests/test_geometry.py`:
+
+- Tail layout sanity.  
+- Z offset at 0° is zero.
 
 You can run:
 
+```bash
 pytest
+```
 
-after you add a pyproject.toml / requirements.txt if you want a full test harness.
-
-⸻
-
-Next steps
-	•	Wire in a real RuidaLaser using your existing Ruida tooling.
-	•	Add a RealRotary that knows steps per degree, direction, and homing.
-	•	Add validation (bounds checking) before planning/execution.
-	•	Iterate with physical test joints to tune:
-	•	kerf_tail_mm, kerf_pin_mm
-	•	clearance_mm
-	•	axis_to_origin_mm calibration
-	•	dovetail angle and depth.
+once you have `pytest` installed.

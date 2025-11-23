@@ -22,7 +22,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Dovetail joint planner for Thunder Nova + rotary jig",
     )
-    p.add_argument("--config", type=Path, help="TOML config file")
+    p.add_argument(
+        "--config",
+        type=Path,
+        help="TOML config file (defaults to config.toml if present)",
+    )
     p.add_argument("--mode", choices=["tails", "pins", "both"],
                    default="both", help="Which board to plan")
     p.add_argument("--dry-run", action="store_true",
@@ -58,12 +62,39 @@ def _dict_get_nested(d: dict, key: str, default=None):
     return cur.get(parts[-1], default)
 
 
+def load_backend_config(cfg_data: dict) -> tuple[bool, str, int]:
+    """
+    Return (use_dummy, ruida_host, ruida_port)
+    """
+    use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", True)
+    host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
+    port = _dict_get_nested(cfg_data, "backend.ruida_port", 50200)
+    return use_dummy, host, port
+
+
 def load_config_and_args(
     args: argparse.Namespace,
-) -> Tuple[JointParams, JigParams, MachineParams, str, bool]:
+) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int]:
     cfg_data: dict = {}
-    if args.config is not None:
-        cfg_data = _load_toml(args.config)
+    cfg_path: Path | None = args.config
+    used_default = False
+
+    # Default: try config.toml if no explicit --config was provided
+    if cfg_path is None:
+        default_path = Path("config.toml")
+        if default_path.exists():
+            cfg_path = default_path
+            used_default = True
+
+    if cfg_path is not None:
+        try:
+            cfg_data = _load_toml(cfg_path)
+        except FileNotFoundError:
+            # Explicit --config must exist; default config.toml may be absent
+            if not used_default:
+                raise SystemExit(f"Config file not found: {cfg_path}")
+        except Exception as e:  # TOML parse errors, permission issues, etc.
+            raise SystemExit(f"Failed to load config file {cfg_path}: {e}") from e
 
     jp = JointParams(
         thickness_mm=_dict_get_nested(cfg_data, "joint.thickness_mm", 6.35),
@@ -117,8 +148,19 @@ def load_config_and_args(
     if args.axis_offset_mm is not None:
         jg.axis_to_origin_mm = args.axis_offset_mm
 
+    backend_use_dummy, backend_host, backend_port = load_backend_config(cfg_data)
+
     log.debug("JointParams: %s", asdict(jp))
     log.debug("JigParams: %s", asdict(jg))
     log.debug("MachineParams: %s", asdict(mp))
 
-    return jp, jg, mp, args.mode, args.dry_run
+    return (
+        jp,
+        jg,
+        mp,
+        args.mode,
+        args.dry_run,
+        backend_use_dummy,
+        backend_host,
+        backend_port,
+    )

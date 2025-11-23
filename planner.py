@@ -16,7 +16,6 @@ from model import (
     CommandType,
 )
 from geometry import (
-    compute_tail_layout,
     kerf_offset_boundary,
     z_offset_for_angle,
     center_outward_indices,
@@ -145,7 +144,7 @@ def compute_pin_plan(
 
     pin_centers_y: List[float] = []
 
-    # Half-left pin
+    # Half-left pin center
     pin_centers_y.append(hp / 2.0)
 
     pitch = jp.tail_outer_width_mm + Wp
@@ -154,7 +153,7 @@ def compute_pin_plan(
         y_right = y_left + Wp
         pin_centers_y.append(0.5 * (y_left + y_right))
 
-    # Half-right pin
+    # Half-right pin center
     pin_centers_y.append(L - hp / 2.0)
 
     sides: List[PinSide] = []
@@ -170,7 +169,7 @@ def compute_pin_plan(
         y_left = center_y - width / 2.0
         y_right = center_y + width / 2.0
 
-        # Center Y for Z math is mid-edge (L/2); convert to centered Y_b.
+        # Convert outer-face Y to centered board coordinate Y_b (0 at mid-edge)
         y_center = L / 2.0
         y_b_left_centered = y_left - y_center
         y_b_right_centered = y_right - y_center

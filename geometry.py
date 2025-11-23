@@ -89,7 +89,8 @@ def z_offset_for_angle(y_b_mm: float, angle_deg: float, h_mm: float) -> float:
     coordinate Y_b in focus, assuming:
 
       - We focused at Y_b = 0, θ = 0, with top-surface radius h_mm from axis.
-      - Y_b is measured along the edge from the mid-edge (job origin).
+      - Y_b is measured along the edge from the mid-edge (job origin), so
+        Y_b = 0 corresponds to the mid-edge.
 
     Result is "bed move" relative to the 0° focus height.
     Sign convention:
