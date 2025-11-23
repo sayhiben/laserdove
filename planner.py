@@ -29,8 +29,8 @@ def plan_tail_board(
 ) -> List[Command]:
     """
     v1 tail planner:
-      - Treat each pin pocket as a rectangle from X=0..tail_depth_mm.
-      - Cut its outline at kerf-offset Y positions.
+      - Treat each pin pocket as a trapezoid from X=0..tail_depth_mm, widening by dovetail angle.
+      - Cut its outline at kerf-offset Y positions on the outer face (X=0) and expand inward.
       - Caller is responsible for board positioning and z_zero_tail_mm.
     """
     commands: List[Command] = []
@@ -41,6 +41,8 @@ def plan_tail_board(
     pin_outer_width_mm = tail_layout.pin_outer_width
     half_pin_width = tail_layout.half_pin_width
     tail_depth_mm = joint_params.tail_depth_mm
+    tail_angle_rad = math.radians(joint_params.dovetail_angle_deg)
+    tail_widen_mm = tail_depth_mm * math.tan(tail_angle_rad)
 
     pockets: List[tuple[float, float]] = []
 
@@ -58,25 +60,27 @@ def plan_tail_board(
 
     for pocket_start_y, pocket_end_y in pockets:
         # Tail board: keep is outside the pocket; waste is inside.
-        y_left_cut = kerf_offset_boundary(
+        y_left_top = kerf_offset_boundary(
             y_geo=pocket_start_y,
             kerf_mm=joint_params.kerf_tail_mm,
             clearance_mm=joint_params.clearance_mm,
             keep_on_positive_side=True,   # keep at Y > y0
             is_tail_board=True,
         )
-        y_right_cut = kerf_offset_boundary(
+        y_right_top = kerf_offset_boundary(
             y_geo=pocket_end_y,
             kerf_mm=joint_params.kerf_tail_mm,
             clearance_mm=joint_params.clearance_mm,
             keep_on_positive_side=False,  # keep at Y < y1
             is_tail_board=True,
         )
+        y_left_bottom = y_left_top - tail_widen_mm
+        y_right_bottom = y_right_top + tail_widen_mm
 
         commands.append(Command(
             type=CommandType.MOVE,
             x=0.0,
-            y=y_left_cut,
+            y=y_left_top,
             z=machine_params.z_zero_tail_mm,
             speed_mm_s=machine_params.rapid_speed_mm_s,
             comment=f"Tail: move to pocket [{pocket_start_y:.3f}, {pocket_end_y:.3f}] left edge",
@@ -89,30 +93,30 @@ def plan_tail_board(
         commands.append(Command(
             type=CommandType.CUT_LINE,
             x=tail_depth_mm,
-            y=y_left_cut,
+            y=y_left_bottom,
             speed_mm_s=machine_params.cut_speed_tail_mm_s,
-            comment="Tail: left edge",
+            comment="Tail: left slope",
         ))
         commands.append(Command(
             type=CommandType.CUT_LINE,
             x=tail_depth_mm,
-            y=y_right_cut,
+            y=y_right_bottom,
             speed_mm_s=machine_params.cut_speed_tail_mm_s,
             comment="Tail: bottom edge",
         ))
         commands.append(Command(
             type=CommandType.CUT_LINE,
             x=0.0,
-            y=y_right_cut,
+            y=y_right_top,
             speed_mm_s=machine_params.cut_speed_tail_mm_s,
-            comment="Tail: right edge",
+            comment="Tail: right slope",
         ))
         commands.append(Command(
             type=CommandType.CUT_LINE,
             x=0.0,
-            y=y_left_cut,
+            y=y_left_top,
             speed_mm_s=machine_params.cut_speed_tail_mm_s,
-            comment="Tail: top close",
+            comment="Tail: close trapezoid",
         ))
         commands.append(Command(
             type=CommandType.SET_LASER_POWER,
