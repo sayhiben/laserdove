@@ -32,3 +32,9 @@
 ## Safety & Configuration Tips
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
+
+## Reference Materials (do not import)
+- `reference/` holds vendor and research docs only; never import them into code, use for background.
+- Contains Thunder Nova/Nova Plus manuals (e.g., `nova_plus_series_unified_user's_manual.pdf`) and Ruida controller docs (`RDC6442GU-...`, `RDV6442G-...`).
+- Includes reverse-engineering writeups for Ruida/RDCAM controllers and messages, plus network security/attack surface notes (e.g., “Network aware laser cutter security”).
+- Also has a Nova 35 community discussion article and EduTech Wiki page on Ruida controllers.

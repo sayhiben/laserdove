@@ -1,0 +1,140 @@
+<html>
+  <head>
+    <title>Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</title>
+    <meta charset="UTF-8">
+    <style type="text/css">
+      h1#title_h1 {
+        padding: 0;
+        margin: 0;
+      }
+      div#title {
+        padding: 0.5em 0.5em;
+        margin: 0 0 1em 0;
+        float: top;
+        clear: both;
+      }
+      div#menu {
+        border: 1px solid black;
+        padding: 0.5em 0.5em;
+        margin: 0 2em 2em 0;
+        float: left;
+      }
+      div#content {
+        padding: 0.5em 0.5em;
+      }
+      div#footer {
+        padding: 0.5em 0.5em;
+        margin: 1em 0 0 0;
+        float: bottom;
+        clear: both;
+      }
+      table, td, th {
+        border: 1px solid black;
+        border-collapse: collapse;
+        text-align: left;
+        vertical-align: center;
+        padding: 0.3em;
+      }
+    </style>
+  </head>
+  <body bgcolor="#FFFFFF" text="#000000" link="#000080" vlink="#0000C0" alink="#0000FF" style="font-family: 'Arial', 'Helvetica', 'sans-serif';">
+    <div id="title">
+      <h1 id="title_h1">Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</h1>
+    </div>
+    <div id="menu">
+      <a href="index.html">Start</a><br>
+      <br>
+      <a href="rdlc320a.html">Controller RDLC320-A</a><br>
+      <a href="rdl9635.html">Controller RDL9635</a><br>
+      <a href="pc_conn.html">PC Connection</a><br>
+      <br>
+      <a href="scrambling.html">Scrambling Algorithm</a><br>
+      <a href="messages.html">Messages</a><br>
+      <a href="decode.html">Decode *.rd File</a><br>
+      <br>
+      <a href="wine.html">LaserWork on Wine</a><br>
+      <br>
+      <a href="/">Back to Main Page</a><br>
+    </div>
+    <div id="content">
+      <h2>LaserWork on Wine</h2>
+
+      <p>
+        The RDCAM version 6 software package delivered with the laser cutter contains
+        a standalone laser cutting program called <em>LaserWork</em> (version 6).
+        I have been able to install this program on Windows 7, but it could not find
+        the laser cutter device.  As the computer in the workshop was anyways running
+        Linux due to other machines controlled by it, I made LaserWork run on
+        <a href="http://www.winehq.com" target="_blank">Wine</a>.
+      </p>
+
+      <h3>Linux PC</h3>
+
+      <p>
+        The Linux PC running Wine and LaserWork has got an Intel Core2 Quad and 4GB
+        of main memory.  A standard desktop installation of
+        <a href="http://www.debian.org/" target="_blank">Debian</a> Wheezy
+        (x86_64 with i386 support) is used as operating system.
+        The Wine version is 1.4.1.
+      </p>
+
+      <h3>Direct FTDI Driver</h3>
+
+      <p>
+        RDCAM uses the direct FTDI driver D2XX to communicate with the FTDI chip
+        in the controller via USB.  Therefore, the Linux version of the
+        <a href="http://www.ftdichip.com/Drivers/D2XX.htm" target="_blank">D2XX driver</a>
+        has to be installed. I installed version 1.1.12 of the driver for both
+        i386 and x86_64 architectures.
+      </p>
+
+      <h3>Allowing Users to Use FTDI Devices</h3>
+
+      <p>
+        The device files in <tt>/dev/</tt> are usually created without read/write
+        permissions for ordinary users.  To change that, create a file called
+        <tt>/etc/udev/rules.d/99-ftdi.rules</tt> with the folling contents:
+        <pre>SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="6001", MODE="0666"</pre>
+      </p>
+
+      <h3>Wine Support for FTD2XX.DLL</h3>
+
+      <p>
+        As the LaserWork/RDCAM software runs under Wine, support for the FTD2XX.DLL
+        has to be enabled by redirecting API calls to the native Linux library.
+        Fortunately, the work of
+        <a href="http://gatopeichs.blogspot.de/2012/10/usb-d2xx-driver-for-wine-on-linux.html" target="_blank">creating a wrapper library</a>
+        had already been done.  So I could install the
+        <a href="https://drive.google.com/folderview?id=0BzGgvW8aljVMeXJTRVNuTDRIdkE&usp=sharing" target="_blank"><tt>ftd2xx.dll.so</tt></a>
+        file in <tt>/usr/local/lib32</tt>.
+        Finally, I created a symbolic link to this file in
+        <tt>/usr/lib/i386-linux-gnu/wine/</tt>, so that Wine is able to find the
+        D2XX wrapper library when a Windows program wants to load
+        <tt>FTD2XX.DLL</tt>.
+      </p>
+
+      <h3>Installing LaserWork on Linux</h3>
+
+      <p>
+        To make LaserWork run on Luinux under Wine, just copy the LaserWork
+        installation directory to Linux.  Afterwards, rename <tt>FTD2XX.DLL</tt>
+        in this directory to <tt>FTD2XX.DL_</tt> to make sure that wine uses the
+        wrapper of the D2XX Linux driver and not the windows driver.
+      </p>
+      <h2>Disclaimer</h2>
+      <p>
+        Please note that all information is to the best of my knowlege, but you
+        may only use it at your own risk.  All information is provided without
+        warranty of any kind.  The provided information is to be used for
+        educational purposes only.
+      </p>
+    </div>
+    <div id="footer">
+      <font size="-1">
+        <br>
+        [<a href="/imprint.html">Impressum / Imprint</a>]<br>
+        [<a href="/privacy.html">Datenschutzerkl&auml;rung / Privacy Policy</a>]
+      </font>
+    </div>
+  </body>
+</html>

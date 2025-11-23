@@ -1,0 +1,151 @@
+<html>
+  <head>
+    <title>Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</title>
+    <meta charset="UTF-8">
+    <style type="text/css">
+      h1#title_h1 {
+        padding: 0;
+        margin: 0;
+      }
+      div#title {
+        padding: 0.5em 0.5em;
+        margin: 0 0 1em 0;
+        float: top;
+        clear: both;
+      }
+      div#menu {
+        border: 1px solid black;
+        padding: 0.5em 0.5em;
+        margin: 0 2em 2em 0;
+        float: left;
+      }
+      div#content {
+        padding: 0.5em 0.5em;
+      }
+      div#footer {
+        padding: 0.5em 0.5em;
+        margin: 1em 0 0 0;
+        float: bottom;
+        clear: both;
+      }
+      table, td, th {
+        border: 1px solid black;
+        border-collapse: collapse;
+        text-align: left;
+        vertical-align: center;
+        padding: 0.3em;
+      }
+    </style>
+  </head>
+  <body bgcolor="#FFFFFF" text="#000000" link="#000080" vlink="#0000C0" alink="#0000FF" style="font-family: 'Arial', 'Helvetica', 'sans-serif';">
+    <div id="title">
+      <h1 id="title_h1">Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</h1>
+    </div>
+    <div id="menu">
+      <a href="index.html">Start</a><br>
+      <br>
+      <a href="rdlc320a.html">Controller RDLC320-A</a><br>
+      <a href="rdl9635.html">Controller RDL9635</a><br>
+      <a href="pc_conn.html">PC Connection</a><br>
+      <br>
+      <a href="scrambling.html">Scrambling Algorithm</a><br>
+      <a href="messages.html">Messages</a><br>
+      <a href="decode.html">Decode *.rd File</a><br>
+      <br>
+      <a href="wine.html">LaserWork on Wine</a><br>
+      <br>
+      <a href="/">Back to Main Page</a><br>
+    </div>
+    <div id="content">
+      <h2>Scrambling Algorithm</h2>
+
+      <p>
+        The controller RDLxxx and the software RDCAM
+        scramble the data when communicating.  The same scrambling algorithm is also
+        used for data files (<tt>*.rd</tt>) of RDCAM.
+      <p>
+
+      </p>
+        The scrambling is done block-wise using a block length of 1 byte.
+        Therefore, a simple 256 entry look-up table could be used for both scrambling
+        and descrambling.  However, it is possible to describe the scrambling
+        using elementary logic operations, which allows for faster and shorter
+        implementation.
+        This page describes the simple scrambling and descrambling procedures.
+        Please note that different versions of the controller and the RDCAM software
+        use slightly different values in the scrambling procedures.
+      </p>
+
+      <h3>Scrambling</h3>
+
+      <p>
+        <table>
+          <tr><th>Step</th><th>Description</th><th>C Code</th></tr>
+          <tr><td>Input</td>
+              <td>a descrambled/plain byte <tt>p</tt> (<tt>0x00</tt> ... <tt>0xFF</tt>)</td>
+              <td><tt>uint8_t scramble(uint8_t p) {</tt></td></tr>
+          <tr><td>1</td>
+              <td>swap first and last bit</td>
+              <td><tt>uint8_t a = p &amp; 0x7E | p &gt;&gt; 7 &amp; 0x01 | p &lt;&lt; 7 &amp; 0x80;</tt></td></tr>
+          <tr><td>2</td>
+              <td>bit-wise exclusive OR with magic number</td>
+              <td><tt>uint8_t b = a ^ MAGIC;</tt></td></tr>
+          <tr><td>3</td>
+              <td>add <tt>1</tt> with wrap-around</td>
+              <td><tt>uint8_t s = (b + 1) &amp; 0xFF;</tt></td></tr>
+          <tr><td>Output</td>
+              <td>a scrambled byte <tt>s</tt> (<tt>0x00</tt> ... <tt>0xFF</tt>)</td>
+              <td><tt>return s; }</tt></td></tr>
+        </table>
+      </p>
+
+      <h3>Descrambling</h3>
+
+      <p>
+        <table>
+          <tr><th>Step</th><th>Description</th><th>C Code</th></tr>
+          <tr><td>Input</td>
+              <td>a scrambled byte <tt>s</tt> (<tt>0x00</tt> ... <tt>0xFF</tt>)</td>
+              <td><tt>uint8_t descramble(uint8_t s) {</tt></td></tr>
+          <tr><td>1</td>
+              <td>subtract <tt>1</tt> with wrap-around</td>
+              <td><tt>uint8_t a = (s + 0xFF) &amp; 0xFF;</tt></td></tr>
+          <tr><td>2</td>
+              <td>bit-wise exclusive OR with magic number</td>
+              <td><tt>uint8_t b = a ^ MAGIC;</tt></td></tr>
+          <tr><td>3</td>
+              <td>swap first and last bit</td>
+              <td><tt>uint8_t p = b &amp; 0x7E | b &gt;&gt; 7 &amp; 0x01 | b &lt;&lt; 7 &amp; 0x80;</tt></td></tr>
+          <tr><td>Output</td>
+              <td>a descrambled/plain byte <tt>p</tt> (<tt>0x00</tt> ... <tt>0xFF</tt>)</td>
+              <td><tt>return p; }</tt></td></tr>
+        </table>
+      </p>
+
+      <h3>Magic Values</h3>
+
+      <p>
+        <table>
+          <tr><th>Controller</th><th>RDCAM version</th><th>Magic Value</th><th>C Code</th></tr>
+          <tr><td>RDL9635</td><td>3</td><td><tt>0x38</tt></td><td><tt>#define MAGIC 0x38</tt></td></tr>
+          <tr><td>RDLC230-A</td><td>6</td><td><tt>0x88</tt></td><td><tt>#define MAGIC 0x88</tt></td></tr>
+          <tr><td>RDC6442G</td><td>8</td><td><tt>0x88</tt></td><td><tt>#define MAGIC 0x88</tt></td></tr>
+        </table>
+      </p>
+      <h2>Disclaimer</h2>
+      <p>
+        Please note that all information is to the best of my knowlege, but you
+        may only use it at your own risk.  All information is provided without
+        warranty of any kind.  The provided information is to be used for
+        educational purposes only.
+      </p>
+    </div>
+    <div id="footer">
+      <font size="-1">
+        <br>
+        [<a href="/imprint.html">Impressum / Imprint</a>]<br>
+        [<a href="/privacy.html">Datenschutzerkl&auml;rung / Privacy Policy</a>]
+      </font>
+    </div>
+  </body>
+</html>

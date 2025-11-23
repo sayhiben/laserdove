@@ -1,0 +1,1085 @@
+<html>
+  <head>
+    <title>Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</title>
+    <meta charset="UTF-8">
+    <style type="text/css">
+      h1#title_h1 {
+        padding: 0;
+        margin: 0;
+      }
+      div#title {
+        padding: 0.5em 0.5em;
+        margin: 0 0 1em 0;
+        float: top;
+        clear: both;
+      }
+      div#menu {
+        border: 1px solid black;
+        padding: 0.5em 0.5em;
+        margin: 0 2em 2em 0;
+        float: left;
+      }
+      div#content {
+        padding: 0.5em 0.5em;
+      }
+      div#footer {
+        padding: 0.5em 0.5em;
+        margin: 1em 0 0 0;
+        float: bottom;
+        clear: both;
+      }
+      table, td, th {
+        border: 1px solid black;
+        border-collapse: collapse;
+        text-align: left;
+        vertical-align: center;
+        padding: 0.3em;
+      }
+    </style>
+  </head>
+  <body bgcolor="#FFFFFF" text="#000000" link="#000080" vlink="#0000C0" alink="#0000FF" style="font-family: 'Arial', 'Helvetica', 'sans-serif';">
+    <div id="title">
+      <h1 id="title_h1">Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software</h1>
+    </div>
+    <div id="menu">
+      <a href="index.html">Start</a><br>
+      <br>
+      <a href="rdlc320a.html">Controller RDLC320-A</a><br>
+      <a href="rdl9635.html">Controller RDL9635</a><br>
+      <a href="pc_conn.html">PC Connection</a><br>
+      <br>
+      <a href="scrambling.html">Scrambling Algorithm</a><br>
+      <a href="messages.html">Messages</a><br>
+      <a href="decode.html">Decode *.rd File</a><br>
+      <br>
+      <a href="wine.html">LaserWork on Wine</a><br>
+      <br>
+      <a href="/">Back to Main Page</a><br>
+    </div>
+    <div id="content">
+      <h2>Messages</h2>
+
+      <p>
+        The data passed over the USB connection between the PC and the controller
+        and used in the data files of the RDCAM software (<tt>*.rd</tt>) uses a
+        message-based format. However, this data is
+        <a href="scrambling.html">scrambled</a> and has to be descambled before it
+        can be interpreted. The following description is about the descrambled data.
+      </p>
+
+      <p>
+        The first byte of every message has got its most significant bit (MSB) set.
+        This bit is cleared for all remaining bytes. Thus, a message consists of a
+        single byte in the range <tt>0x80</tt> ... <tt>0xFF</tt> and zero or more
+        following bytes in the range <tt>0x00</tt> ... <tt>0x7F</tt>.
+      </p>
+
+      <h3>Encoding of Data Elements</h3>
+
+      <h4><tt>ABSCOORD</tt> - Absolute Coordinate Value</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>ABSCOORD_HH</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>ABSCOORD_H</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>ABSCOORD_M</td>
+        </tr>
+        <tr>
+          <td><tt>3</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>ABSCOORD_L</td>
+        </tr>
+        <tr>
+          <td><tt>4</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>ABSCOORD_LL</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>ABSCOORD_HH &lt;&lt; 28 |
+              ABSCOORD_H &lt;&lt; 21 |
+              ABSCOORD_M &lt;&lt; 14 |
+              ABSCOORD_L &lt;&lt; 7 |
+              ABSCOORD_LL</tt></td>
+          <td>signed (2s complement) absolute cordinate value in micrometers</td>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td>zero coordinate value</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td>smallest encodable positive coordinate value, 1 micrometer</td>
+        </tr>
+        <tr>
+          <td><tt>0x3FFFFFFFF</tt></td>
+          <td>largest encodable positive coordinate value, 17.18 kilometers</td>
+        </tr>
+        <tr>
+          <td><tt>0x400000000</tt></td>
+          <td>largest encodable negative coordinate value, -17.18 kilometers</td>
+        </tr>
+        <tr>
+          <td><tt>0x7FFFFFFFF</tt></td>
+          <td>smallest encodable negative coordinate value, -1 micrometer</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>COLOR</tt> - RGB Color</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt></td>
+          <td>fixed_byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x07</tt></td>
+          <td>COLOR_H</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>COLOR_M</td>
+        </tr>
+        <tr>
+          <td><tt>3</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>COLOR_L</td>
+        </tr>
+        <tr>
+          <td><tt>4</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>COLOR_LL</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>COLOR_H &lt;&lt; 21 |
+              COLOR_M &lt;&lt; 14 |
+              COLOR_L &lt;&lt; 7 |
+              COLOR_LL</tt></td>
+          <td>24 bit RGB color value (LSB red, MSB blue),
+            <tt>blue &lt;&lt; 16 | green &lt;&lt; 8 | red</tt>
+          </td>
+        </tr>
+        <tr>
+          <td><tt>0x000000</tt></td>
+          <td>black</td>
+        </tr>
+        <tr>
+          <td><tt>0x0000FF</tt></td>
+          <td>red</td>
+        </tr>
+        <tr>
+          <td><tt>0x00FF00</tt></td>
+          <td>green</td>
+        </tr>
+        <tr>
+          <td><tt>0xFF0000</tt></td>
+          <td>blue</td>
+        </tr>
+        <tr>
+          <td><tt>0xFFFFFF</tt></td>
+          <td>white</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>DEVICES</tt> - Helper Devices (?)</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>DEVICE_FLAGS</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>DEVICE_FLAGS</tt></td>
+          <td>bitmask of devices (?)</td>
+        </tr>
+        <tr>
+          <td><tt>0x00</tt></td>
+          <td>all devices off</td>
+        </tr>
+        <tr>
+          <td><tt>0x01</tt></td>
+          <td>air blower on</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>LAYER</tt> - Layer Number</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>LAYER_NO</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>LAYER_NO</tt></td>
+          <td>layer number</td>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td>first layer (number 0)</td>
+        </tr>
+        <tr>
+          <td><tt>0x7F</tt></td>
+          <td>last layer (number 127)</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>PWR</tt> - Relative Laser Power</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>PWR_H</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>PWR_L</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>PWR_H &lt;&lt; 7 | PWR_L</tt></td>
+          <td>relative laser power in 0.0061 percent</td>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td>zero power</td>
+        </tr>
+        <tr>
+          <td><tt>0x3FFF</tt></td>
+          <td>maximum power</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>RELCOORD</tt> - Relative Coordinate Value</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>RELCOORD_H</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>RELCOORD_L</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>RELCOORD_H &lt;&lt; 7 |
+              RELCOORD_L</tt></td>
+          <td>signed (2s complement) relative cordinate value in micrometers</td>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td>zero coordinate value</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td>smallest encodable positive coordinate value, 1 micrometer</td>
+        </tr>
+        <tr>
+          <td><tt>0x1FFF</tt></td>
+          <td>largest encodable positive coordinate value, 8.19 millimeters</td>
+        </tr>
+        <tr>
+          <td><tt>0x2000</tt></td>
+          <td>largest encodable negative coordinate value, -8.19 millimeters</td>
+        </tr>
+        <tr>
+          <td><tt>0x3FFF</tt></td>
+          <td>smallest encodable negative coordinate value, -1 micrometer</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>SPEED</tt> - Speed of Movements</h4>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Range</th>
+          <th>Name</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>SPEED_HH</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>SPEED_H</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>SPEED_M</td>
+        </tr>
+        <tr>
+          <td><tt>3</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>SPEED_L</td>
+        </tr>
+        <tr>
+          <td><tt>4</tt></td>
+          <td><tt>0x00</tt> ... <tt>0x7F</tt></td>
+          <td>SPEED_LL</td>
+        </tr>
+      </table>
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Value</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><tt>SPEED_HH &lt;&lt; 28 |
+              SPEED_H &lt;&lt; 21 |
+              SPEED_M &lt;&lt; 14 |
+              SPEED_L &lt;&lt; 7 |
+              SPEED_LL</tt></td>
+          <td>speed in micrometers per second</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td>smallest encodable speed, 1 micrometer per second</td>
+        </tr>
+        <tr>
+          <td><tt>0x7FFFFFFFF</tt></td>
+          <td>largest encodable speed, 34.36 kilometers per second</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4>More Data Elements</h4>
+
+      <p>
+        There are probably more data elements. Those have not been identified yet.
+      </p>
+
+      <h3>Messages</h3>
+
+      <h4><tt>88</tt> - Move to Absolute Position</h4>
+
+      <p>
+        Move the laser head to an absolute position as fast as possible
+        with the laser turned off.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x88</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 5</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>X coordinate of absolute position to move to</td>
+        </tr>
+        <tr>
+          <td><tt>6 ... 10</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>Y coordinate of absolute position to move to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>89</tt> - Move to Relative Position</h4>
+
+      <p>
+        Move the laser head to a relative position as fast as possible
+        with the laser turned off.
+        The coordinates for the cut are specified relative to the position of the
+        laser head at the begin of this message.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x89</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>X coordinate of relative position to move to</td>
+        </tr>
+        <tr>
+          <td><tt>3 ... 4</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>Y coordinate of relative position to move to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>8A</tt> - Move to Relative Position in X Direction</h4>
+
+      <p>
+        Move the laser head to a relative position as fast as possible
+        with the laser turned off.
+        The X coordinate for the move is specified relative to the position of the
+        laser head at the begin of this message.
+        (The Y coordinate does not change.)
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x8A</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>X coordinate of relative position to move to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>8B</tt> - Move to Relative Position in Y Direction</h4>
+
+      <p>
+        Move the laser head to a relative position as fast as possible
+        with the laser turned off.
+        The Y coordinate for the move is specified relative to the position of the
+        laser head at the begin of this message.
+        (The X coordinate does not change.)
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0x8B</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>Y coordinate of relative position to move to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>A8</tt> - Cut to Absolute Position</h4>
+
+      <p>
+        Perform a straight cut to an absolute position
+        with the configured speed while turning the laser on
+        with the configured power.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xA8</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 5</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>X coordinate of absolute position to cut to</td>
+        </tr>
+        <tr>
+          <td><tt>6 ... 10</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>Y coordinate of absolute position to cut to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>A9</tt> - Cut to Relative Position</h4>
+
+      <p>
+        Perform a straight cut to a relative position
+        with the configured speed while turning the laser on
+        with the configured power.
+        The coordinates for the cut are specified relative to the position of the
+        laser head at the begin of this message.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xA9</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>X coordinate of relative position to cut to</td>
+        </tr>
+        <tr>
+          <td><tt>3 ... 4</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>Y coordinate of relative position to cut to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>AA</tt> - Cut to Relative Position in X Direction</h4>
+
+      <p>
+        Perform a straight cut to a relative position in X direction
+        with the configured speed while turning the laser on
+        with the configured power.
+        The X coordinate for the cut is specified relative to the position of the
+        laser head at the begin of this message.
+        (The Y coordinate does not change.)
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xAA</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>X coordinate of relative position to cut to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>AB</tt> - Cut to Relative Position in Y Direction</h4>
+
+      <p>
+        Perform a straight cut to a relative position in Y direction
+        with the configured speed while turning the laser on
+        with the configured power.
+        The Y coordinate for the cut is specified relative to the position of the
+        laser head at the begin of this message.
+        (The X coordinate does not change.)
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xAB</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1 ... 2</tt></td>
+          <td><tt>RELCOORD</tt></td>
+          <td>Y coordinate of relative position to cut to</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>C6 01/02/21/22 </tt> - Set Laser Power</h4>
+
+      <p>
+        Set the minimum or maximum laser power to be used for cutting.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xC6</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x01</tt></td>
+          <td>set minimum power of first laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x02</tt></td>
+          <td>set maximum power of first laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x21</tt></td>
+          <td>set minimum power of second laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x22</tt></td>
+          <td>set maximum power of second laser</td>
+        </tr>
+        <tr>
+          <td><tt>2 ... 3</tt></td>
+          <td><tt>PWR</tt></td>
+          <td>relative laser power to use for cutting</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>C6 31/32/41/42</tt> - Set Laser Power for Layer</h4>
+
+      <p>
+        Set the minimum or maximum laser power for a layer.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xC6</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x31</tt></td>
+          <td>set minimum power of first laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x32</tt></td>
+          <td>set maximum power of first laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x41</tt></td>
+          <td>set minimum power of second laser</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x42</tt></td>
+          <td>set maximum power of second laser</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>LAYER</tt></td>
+          <td>layer number</td>
+        </tr>
+        <tr>
+          <td><tt>3 ... 4</tt></td>
+          <td><tt>PWR</tt></td>
+          <td>minimum relative laser power to use for cutting</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>C9 02</tt> - Set Speed for Cutting</h4>
+
+      <p>
+        Set speed to be used for cutting.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xC9</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x02</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2 ... 6</tt></td>
+          <td><tt>SPEED</tt></td>
+          <td>speed to use for cutting</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>C9 04</tt> - Set Speed for Cutting of Layer</h4>
+
+      <p>
+        Set speed to be used for cutting on a layer.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xC9</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x04</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>LAYER</tt></td>
+          <td>layer number</td>
+        </tr>
+        <tr>
+          <td><tt>3 ... 7</tt></td>
+          <td><tt>SPEED</tt></td>
+          <td>speed to use for cutting</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>CA 01</tt> - Enable / Disable Devices</h4>
+
+      <p>
+        Enable and/or disable devices.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xCA</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x01</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>DEVICE_FLAGS</tt></td>
+          <td>which devices to enable</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>CA 02</tt> - Set Current Layer</h4>
+
+      <p>
+        Set the current layer.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xCA</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x02</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>LAYER</tt></td>
+          <td>layer number</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>CA 06</tt> - Set Color of Layer</h4>
+
+      <p>
+        Set the RGB color for a layer.
+        It is unknown for which purpose the machine uses the RGB color.
+        It might be used for visualization of the cuts in simulation only.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xCA</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x06</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>LAYER</tt></td>
+          <td>layer number</td>
+        </tr>
+        <tr>
+          <td><tt>3 ... 7</tt></td>
+          <td><tt>COLOR</tt></td>
+          <td>RGB color of layer</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>CA 22</tt> - Set Maximum Layer Number</h4>
+
+      <p>
+        Set the maximum layer number used in the file.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xCA</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x22</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>2</tt></td>
+          <td><tt>LAYER</tt></td>
+          <td>maximum layer number used in the file</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4><tt>E7 03/07</tt> - Minimum/Maximum Coordinates</h4>
+
+      <p>
+        Information about the minimum/maximum coordinates used in the file.
+      </p>
+
+      <p>
+      <table>
+        <tr>
+          <th>Offset</th>
+          <th>Value / Data Type</th>
+          <th>Meaning</th>
+        </tr>
+        <tr>
+          <td><tt>0</tt></td>
+          <td><tt>0xE7</tt></td>
+          <td>fixed byte</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x03</tt></td>
+          <td>minimum coordinates used in the file</td>
+        </tr>
+        <tr>
+          <td><tt>1</tt></td>
+          <td><tt>0x07</tt></td>
+          <td>maximum coordinates used in the file</td>
+        </tr>
+        <tr>
+          <td><tt>2 ... 6</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>minimum/maximum X coordinate in the file</td>
+        </tr>
+        <tr>
+          <td><tt>7 ... 11</tt></td>
+          <td><tt>ABSCOORD</tt></td>
+          <td>minimum/maximum Y coordinate in the file</td>
+        </tr>
+      </table>
+      </p>
+
+      <h4>More Messages</h4>
+
+      <p>
+        There are probably more messages. Those have not been identified yet.
+      </p>      <h2>Disclaimer</h2>
+      <p>
+        Please note that all information is to the best of my knowlege, but you
+        may only use it at your own risk.  All information is provided without
+        warranty of any kind.  The provided information is to be used for
+        educational purposes only.
+      </p>
+    </div>
+    <div id="footer">
+      <font size="-1">
+        <br>
+        [<a href="/imprint.html">Impressum / Imprint</a>]<br>
+        [<a href="/privacy.html">Datenschutzerkl&auml;rung / Privacy Policy</a>]
+      </font>
+    </div>
+  </body>
+</html>
