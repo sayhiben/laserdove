@@ -170,13 +170,10 @@ python3 novadovetail.py --config example-config.toml --mode both --simulate
 - Board mounted on the rotary; job origin at mid‑edge.  
 - For each pin flank:
   - Rotary angle = `rotation_zero_deg ± dovetail_angle_deg`.  
-  - Z offset via `z_offset_for_angle` with `axis_to_origin_mm` and board‑centered Y.  
-  - Y cut position via kerf/clearance‑aware offset.  
-- The cut is L‑shaped:
-  - Short X leg into the board,  
-  - Long Y “ramp” leg at depth,  
-  - X retract leg.  
-- Flanks are processed in center‑outward order per angle.
+  - Z offset via `z_offset_for_angle` with `axis_to_origin_mm` and board-centered Y.  
+  - Y cut position via kerf/clearance-aware offset.  
+- Each flank cuts a closed, orthogonal rectangle spanning half the gap to the neighboring pin/half-pin; angular fit comes from the jig rotation, not from shearing the cut path.  
+- Flanks are processed in center-outward order per angle.
 
 ---
 

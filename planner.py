@@ -226,7 +226,7 @@ def plan_pin_board(
         for each side in center-outward order:
             set Z
             move XY to kerf-adjusted Y at X=0
-            perform an L-shaped cut (X-in, Y-ramp, X-out).
+            cut a closed rectangle spanning half the gap to the neighboring pin.
     """
     commands: List[Command] = []
 
@@ -235,13 +235,32 @@ def plan_pin_board(
     for side in pin_plan.sides:
         sides_by_angle.setdefault(side.rotation_deg, []).append(side)
 
+    # Pre-compute half-span to the neighboring boundary in the waste direction.
+    # Each flank will clear a rectangular pocket of this half-gap width.
+    unique_boundaries = sorted({side.y_boundary_mm for side in pin_plan.sides})
+    pin_outer_width = (joint_params.edge_length_mm - joint_params.num_tails * joint_params.tail_outer_width_mm) / joint_params.num_tails
+    half_pin_width = pin_outer_width / 2.0
+
+    half_gap_by_side: Dict[tuple[int, Side], float] = {}
+    for side in pin_plan.sides:
+        idx = unique_boundaries.index(side.y_boundary_mm)
+        if side.side == Side.LEFT:
+            # Waste toward negative Y; neighbor is previous boundary or edge half-pin.
+            if idx > 0:
+                gap = side.y_boundary_mm - unique_boundaries[idx - 1]
+            else:
+                gap = half_pin_width
+        else:
+            # Waste toward positive Y; neighbor is next boundary or edge half-pin.
+            if idx + 1 < len(unique_boundaries):
+                gap = unique_boundaries[idx + 1] - side.y_boundary_mm
+            else:
+                gap = half_pin_width
+        half_gap_by_side[(side.pin_index, side.side)] = gap / 2.0
+
     keep_on_positive_side: Dict[Side, bool] = {
-        Side.LEFT: False,   # pin material at Y < boundary; keep negative side
-        Side.RIGHT: True,   # pin material at Y > boundary; keep positive side
-    }
-    ramp_direction: Dict[Side, float] = {
-        Side.LEFT: -1.0,
-        Side.RIGHT: +1.0,
+        Side.LEFT: True,    # pin material at Y > boundary; keep positive side
+        Side.RIGHT: False,  # pin material at Y < boundary; keep negative side
     }
 
     for rotation_deg, sides in sides_by_angle.items():
@@ -288,31 +307,37 @@ def plan_pin_board(
             ))
 
             cut_depth = side.x_depth_mm
-            dovetail_angle_rad = math.radians(joint_params.dovetail_angle_deg)
-            ramp_sign = ramp_direction[side.side]
-            ramp_delta_y = cut_depth * math.tan(dovetail_angle_rad) * ramp_sign
-            y_ramp_end = y_cut + ramp_delta_y
+            half_gap = half_gap_by_side[(side.pin_index, side.side)]
+            waste_sign = -1.0 if keep_on_positive_side[side.side] else 1.0
+            y_far = y_cut + waste_sign * half_gap
 
             commands.append(Command(
                 type=CommandType.CUT_LINE,
                 x=cut_depth,
                 y=y_cut,
                 speed_mm_s=machine_params.cut_speed_pin_mm_s,
-                comment="Pin: short X leg",
+                comment="Pin: plunge to depth",
             ))
             commands.append(Command(
                 type=CommandType.CUT_LINE,
                 x=cut_depth,
-                y=y_ramp_end,
+                y=y_far,
                 speed_mm_s=machine_params.cut_speed_pin_mm_s,
-                comment="Pin: long Y leg",
+                comment="Pin: pocket span",
             ))
             commands.append(Command(
                 type=CommandType.CUT_LINE,
                 x=0.0,
-                y=y_ramp_end,
+                y=y_far,
                 speed_mm_s=machine_params.cut_speed_pin_mm_s,
                 comment="Pin: retract X",
+            ))
+            commands.append(Command(
+                type=CommandType.CUT_LINE,
+                x=0.0,
+                y=y_cut,
+                speed_mm_s=machine_params.cut_speed_pin_mm_s,
+                comment="Pin: close rectangle",
             ))
 
             commands.append(Command(
