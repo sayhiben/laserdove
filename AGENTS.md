@@ -35,6 +35,25 @@
 
 ## Reference Materials (do not import)
 - `reference/` holds vendor and research docs only; never import them into code, use for background.
-- Contains Thunder Nova/Nova Plus manuals (e.g., `nova_plus_series_unified_user's_manual.pdf`) and Ruida controller docs (`RDC6442GU-...`, `RDV6442G-...`).
-- Includes reverse-engineering writeups for Ruida/RDCAM controllers and messages, plus network security/attack surface notes (e.g., “Network aware laser cutter security”).
-- Also has a Nova 35 community discussion article and EduTech Wiki page on Ruida controllers.
+- Quick index:
+  - `nova_plus_series_unified_user's_manual.pdf` – Thunder Nova Plus series user manual (workflow, panel, setup).
+  - `RDC6442GU-DFM-RD-Control-System-V1.3-Manual.pdf` and `RDV6442G-Control-System-manual-V1.3.pdf` – Ruida 6442G/6442GU controller manuals (wiring, pinouts, UI).
+  - `Diskussion_Nova 35 – FabLab Region Nürnberg.html` – community discussion of Nova 35 (setup/usage anecdotes).
+  - `Ruida - EduTech Wiki.html` – consolidated Ruida protocol notes: controller models and card “swizzle” keys; UDP 50200 (RD payloads with 16-bit checksum + ACK), UDP 50207 (unswizzled keypad commands); USB over FT245R at 19200 8N1 with hardware flow control; swizzling/unswizzling algorithm (MAGIC=0x88 for 644xG, 0x11 for 634XG, 0x38 for RDL9635); RD file structure (header/layer headers/body) and command table (move/cut, power, delays, jog key codes).
+  - `Ruida RDC6442S_G _ Best Co2 Laser Controller.html` – review/feature overview of 6442S/G controllers.
+  - `Network aware laser cutter security – Roger Clark.html` – network/attack surface notes for networked lasers.
+  - `Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software.html` (+ `-messages.html`, `-linux.html`) – reverse-engineered Ruida/RDCAM protocol: USB via FTDI/D2XX, scrambling/descrambling (MAGIC 0x88 for 6442G), message framing (MSB-set lead byte, 0x80-0xFF then 0x00-0x7F payload), RD file decoding hints.
+  - Python tooling snapshots (reference only, do not import):  
+    - `ruida.py` – builds `.rd` files: layer model, bounding boxes, power/speed encoding, scramble/unscramble, relative/absolute move encoding.  
+    - `ruidaparser.py` – decodes `.rd`: swizzle decode (0x88), parses coords/power/layer metadata, can export to SVG.  
+    - `dummylaser.py` – UDP dummy/echo server for Ruida: checksum check, descramble, ACK/NACK behavior.  
+    - `udpsendruida.py` – sender for RD over UDP 50200 with checksum/ACK retry and MTU chunking.  
+    - `RuidaProxy.py` – UDP proxy/forwarder with ACK/NACK handling, stream timeout.  
+    - Other helpers: `protocol.md` (UDP checksum and command crib), `rdcam.py`/`ruidaparser.py`/`ruida.py` variations, `rd2svg.py`/`hexparser.py` converters, `device(1).py` (Meerk40t Ruida device shim), service scripts (`novaprox-start.sh`, `novaprox.service`), and Java/MD notes. Use only as reference patterns; not production-ready or imported.
+    - Meerk40t Ruida stack (`reference/meerk40t/`, reference-only): driver/controller/RDJob logic plus transports. Key pieces:  
+      - `driver.py`/`controller.py`/`rdjob.py` – builds/sends RD command buffers, handles machine status polling, state, and cut planning.  
+      - Transports: `udp_transport.py`/`udp_connection.py`, `tcp_connection.py`, `usb_transport.py`, `serial_connection.py`, `ruidatransport.py`, `mock_connection.py` – various comms layers with swizzle/timeout/ack handling.  
+      - Session/emulation: `ruidasession.py`, `emulator.py`, `loader.py`, `plugin.py`, `device.py`, `control.py` – integration glue, device setup, and job execution; `rdjob.py` defines swizzle LUTs, command parsing, magic keys.  
+      - Utilities: `exceptions.py`, `controller.py` polling, `udp_transport`/`tcp_connection` ports (50200/40200) and checksum logic; `usb_transport` notes FTDI 0x0403:0x6001 8N1 RTS/CTS/DSR/DTR.  
+    - Scripts: `proxy23.py` (UDP/TCP capture/write .rd), `hexparser.py` (unscramble/checksum decoder), `device(1).py` (meerk40t device service stub).
+    - Java reference: `Ruida.java` (LibLaserCut driver) – implements Ruida cutter over IP/USB/serial; supports RD export/upload, power/speed settings, bounding box calc, vector/raster property classes, and FTP/serial comms scaffolding. Use as conceptual reference only.
