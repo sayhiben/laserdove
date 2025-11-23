@@ -66,21 +66,19 @@ def kerf_offset_boundary(
         False -> material to keep is at Y < y_geo
     - is_tail_board: not used in v1; allows future biasing.
 
-    We split clearance evenly between tails and pins in v1.
+    We split clearance evenly between tails and pins in v1 by shifting the
+    *kept* boundary by +/- clearance/2 and then placing the cut so the kerf
+    edge lands on that shifted boundary.
     """
     kerf_radius = kerf_mm / 2.0
     clearance_per_board = clearance_mm / 2.0
-    offset_magnitude = kerf_radius + clearance_per_board
 
-    # Move into the waste side.
-    if keep_on_positive_side:
-        # Waste is negative side.
-        direction = -1.0
-    else:
-        # Waste is positive side.
-        direction = +1.0
+    keep_sign = 1.0 if keep_on_positive_side else -1.0
+    # Shift the desired kept boundary toward the keep side by clearance/2.
+    boundary_shift = keep_sign * clearance_per_board
 
-    return y_geo + direction * offset_magnitude
+    # Place the cut so that the kerf edge on the keep side sits at the shifted boundary.
+    return y_geo + boundary_shift - keep_sign * kerf_radius
 
 
 def z_offset_for_angle(y_b_mm: float, angle_deg: float, axis_to_origin_mm: float) -> float:

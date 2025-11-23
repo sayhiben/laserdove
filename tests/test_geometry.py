@@ -1,5 +1,5 @@
 # tests/test_geometry.py
-from geometry import compute_tail_layout, z_offset_for_angle
+from geometry import compute_tail_layout, z_offset_for_angle, kerf_offset_boundary
 from model import JointParams
 
 
@@ -34,3 +34,35 @@ def test_z_offset_zero_angle():
         axis_to_origin_mm=axis_to_origin_mm,
     )
     assert abs(z_offset) < 1e-9
+
+
+def test_kerf_offset_moves_boundary_toward_keep_side_with_clearance():
+    y_geo = 0.0
+    kerf_mm = 0.2
+    clearance_mm = 0.1
+    kerf_radius = kerf_mm / 2.0
+    clearance_shift = clearance_mm / 2.0
+
+    # Keep on positive side: cut should land so the kerf edge is at +clearance/2.
+    y_cut_pos = kerf_offset_boundary(
+        y_geo=y_geo,
+        kerf_mm=kerf_mm,
+        clearance_mm=clearance_mm,
+        keep_on_positive_side=True,
+        is_tail_board=True,
+    )
+    assert abs(y_cut_pos - (y_geo + clearance_shift - kerf_radius)) < 1e-9
+    # Effective kept boundary after the cut (kerf edge on keep side).
+    assert abs((y_cut_pos + kerf_radius) - (y_geo + clearance_shift)) < 1e-9
+
+    # Keep on negative side: kerf edge should land at -clearance/2.
+    y_geo_neg = 10.0
+    y_cut_neg = kerf_offset_boundary(
+        y_geo=y_geo_neg,
+        kerf_mm=kerf_mm,
+        clearance_mm=clearance_mm,
+        keep_on_positive_side=False,
+        is_tail_board=False,
+    )
+    assert abs(y_cut_neg - (y_geo_neg - clearance_shift + kerf_radius)) < 1e-9
+    assert abs((y_cut_neg - kerf_radius) - (y_geo_neg - clearance_shift)) < 1e-9
