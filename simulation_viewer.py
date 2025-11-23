@@ -74,40 +74,44 @@ class SimulationViewer:
         self._root = None
         self._canvas = None
 
-    def _compute_transform(
-        self,
-        segments: List[Dict[str, float | bool]],
-        viewport: Tuple[float, float, float, float],
-    ) -> tuple[float, float, float]:
+    def _extents(self, segments: List[Dict[str, float | bool]]) -> Optional[Tuple[float, float, float, float]]:
         if not segments:
-            return 1.0, 0.0, 0.0
+            return None
         min_x = min(min(seg["x0"], seg["x1"]) for seg in segments)
         max_x = max(max(seg["x0"], seg["x1"]) for seg in segments)
         min_y = min(min(seg["y0"], seg["y1"]) for seg in segments)
         max_y = max(max(seg["y0"], seg["y1"]) for seg in segments)
+        return min_x, max_x, min_y, max_y
+
+    def _scale_candidate(self, extents: Optional[Tuple[float, float, float, float]], viewport: Tuple[float, float, float, float]) -> Optional[float]:
+        if extents is None:
+            return None
+        min_x, max_x, min_y, max_y = extents
         span_x = max(max_x - min_x, 1e-6)
         span_y = max(max_y - min_y, 1e-6)
         vx0, vy0, vx1, vy1 = viewport
-        vw = max(vx1 - vx0, 1.0)
-        vh = max(vy1 - vy0, 1.0)
-        scale = min(
-            (vw - 2 * self.padding) / span_x,
-            (vh - 2 * self.padding) / span_y,
-        )
-        return scale, min_x, min_y
+        vw = max(vx1 - vx0 - 2 * self.padding, 1.0)
+        vh = max(vy1 - vy0 - 2 * self.padding, 1.0)
+        return min(vw / span_x, vh / span_y)
 
     def _to_canvas(
         self,
         x_val: float,
         y_val: float,
         scale: float,
-        min_x: float,
-        min_y: float,
+        extents: Tuple[float, float, float, float],
         viewport: Tuple[float, float, float, float],
     ) -> tuple[float, float]:
-        vx0, vy0, _, vy1 = viewport
-        cx = vx0 + self.padding + (x_val - min_x) * scale
-        cy = vy1 - self.padding - (y_val - min_y) * scale
+        min_x, max_x, min_y, max_y = extents
+        vx0, vy0, vx1, vy1 = viewport
+        avail_w = vx1 - vx0 - 2 * self.padding
+        avail_h = vy1 - vy0 - 2 * self.padding
+        used_w = (max_x - min_x) * scale
+        used_h = (max_y - min_y) * scale
+        extra_x = max((avail_w - used_w) / 2.0, 0.0)
+        extra_y = max((avail_h - used_h) / 2.0, 0.0)
+        cx = vx0 + self.padding + extra_x + (x_val - min_x) * scale
+        cy = vy1 - self.padding - extra_y - (y_val - min_y) * scale
         return cx, cy
 
     def _color_for_z(self, z_val: float, z_min: float, z_max: float) -> str:
@@ -170,16 +174,17 @@ class SimulationViewer:
         segments: List[Dict[str, float | bool]],
         viewport: Tuple[float, float, float, float],
         use_z_color: bool,
+        common_scale: float,
+        extents: Optional[Tuple[float, float, float, float]],
     ) -> None:
-        if self._canvas is None or not segments:
+        if self._canvas is None or not segments or extents is None:
             return
-        scale, min_x, min_y = self._compute_transform(segments, viewport)
         z_values = [seg["z"] for seg in segments if seg["is_cut"]]
         z_min, z_max = (min(z_values), max(z_values)) if z_values else (0.0, 0.0)
 
         for seg in segments:
-            x0, y0 = self._to_canvas(seg["x0"], seg["y0"], scale, min_x, min_y, viewport)
-            x1, y1 = self._to_canvas(seg["x1"], seg["y1"], scale, min_x, min_y, viewport)
+            x0, y0 = self._to_canvas(seg["x0"], seg["y0"], common_scale, extents, viewport)
+            x1, y1 = self._to_canvas(seg["x1"], seg["y1"], common_scale, extents, viewport)
             if seg["is_cut"]:
                 color = self._color_for_z(seg["z"], z_min, z_max) if use_z_color else "#1e88e5"
                 width_px = 2
@@ -221,6 +226,15 @@ class SimulationViewer:
 
         tail_segments = [seg for seg in segments if seg.get("board") == "tail"]
         pin_segments = [seg for seg in segments if seg.get("board") == "pin"]
+        tail_extents = self._extents(tail_segments)
+        pin_extents = self._extents(pin_segments)
+
+        scale_candidates = [
+            self._scale_candidate(tail_extents, tail_viewport),
+            self._scale_candidate(pin_extents, pin_viewport),
+        ]
+        scale_candidates = [s for s in scale_candidates if s is not None]
+        common_scale = min(scale_candidates) if scale_candidates else 1.0
 
         self._canvas.delete("all")
 
@@ -240,8 +254,8 @@ class SimulationViewer:
             font=("Arial", 10),
         )
 
-        self._draw_segments(tail_segments, tail_viewport, use_z_color=False)
-        self._draw_segments(pin_segments, pin_viewport, use_z_color=True)
+        self._draw_segments(tail_segments, tail_viewport, use_z_color=False, common_scale=common_scale, extents=tail_extents)
+        self._draw_segments(pin_segments, pin_viewport, use_z_color=True, common_scale=common_scale, extents=pin_extents)
         self._draw_rotary_indicator(pin_viewport, rotation_deg)
         self._draw_z_gauge(pin_segments, pin_viewport)
         self._draw_legends()
