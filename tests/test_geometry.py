@@ -1,12 +1,4 @@
 # tests/test_geometry.py
-from pathlib import Path
-import sys
-
-# Ensure repository root is on sys.path when running pytest directly.
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from geometry import compute_tail_layout, z_offset_for_angle
 from model import JointParams
 
