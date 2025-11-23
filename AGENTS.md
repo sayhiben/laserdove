@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- CLI entrypoint `novadovetail.py` wires config, validation, planning, and hardware backends.
+- CLI entrypoint `cli.py` (python -m laserdove.cli) wires config, validation, planning, and hardware backends.
 - Core math in `geometry.py`; plans and command sequencing in `planner.py`; shared dataclasses in `model.py`.
 - Hardware abstractions live in `hardware.py` (`DummyLaser`/`DummyRotary` by default, Ruida/rotary skeletons for real hardware); logging helpers in `logging_utils.py`.
 - Config parsing and CLI overrides are in `config.py`; reference config lives in `example-config.toml`. Per-setup config should be `config.toml` (git-ignored).

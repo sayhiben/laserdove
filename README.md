@@ -19,7 +19,7 @@ v1 intentionally uses dummy hardware by default; it does *not* yet talk to a rea
 ```text
 novadovetail/
   src/laserdove/
-    novadovetail.py        # CLI entrypoint
+    cli.py                 # CLI entrypoint (python -m laserdove.cli)
     config.py              # TOML + CLI config
     model.py               # Dataclasses (params, layouts, commands)
     geometry.py            # Pure math; tails, pins, Z offsets, kerf
