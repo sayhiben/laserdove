@@ -38,7 +38,7 @@ def test_main_exits_on_validation_error(monkeypatch):
     monkeypatch.setattr(
         "novadovetail.load_config_and_args",
         lambda args: (
-            None, None, None, "tails", False, True, "host", 0, False
+            None, None, None, "tails", False, True, "host", 0, 0x88, 3.0, 40200, 200.0, None, False
         ),
     )
     monkeypatch.setattr(

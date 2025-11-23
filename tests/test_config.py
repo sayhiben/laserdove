@@ -23,6 +23,10 @@ def make_args(**overrides) -> argparse.Namespace:
         kerf_pin_mm=None,
         axis_offset_mm=None,
         log_level="INFO",
+        ruida_timeout_s=None,
+        ruida_source_port=None,
+        rotary_steps_per_rev=None,
+        rotary_microsteps=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -32,7 +36,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     # Ensure we don't accidentally pick up a real config.toml.
     monkeypatch.chdir(tmp_path)
     args = make_args()
-    joint, jig, machine, mode, dry_run, use_dummy, host, port, simulate = load_config_and_args(args)
+    joint, jig, machine, mode, dry_run, use_dummy, host, port, _, _, _, _, _, simulate = load_config_and_args(args)
 
     assert isinstance(joint, JointParams)
     assert isinstance(jig, JigParams)
@@ -76,7 +80,7 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         simulate=True,
     )
 
-    joint, jig, machine, mode, dry_run, use_dummy, host, port, simulate = load_config_and_args(args)
+    joint, jig, machine, mode, dry_run, use_dummy, host, port, _, _, _, _, _, simulate = load_config_and_args(args)
 
     assert joint.thickness_mm == 7.0
     assert joint.tail_depth_mm == 7.0  # thickness override also updates tail depth

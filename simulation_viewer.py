@@ -127,6 +127,7 @@ class SimulationViewer:
         self,
         pin_segments: List[Dict[str, float | bool]],
         viewport: Tuple[float, float, float, float],
+        top_offset_px: Optional[float] = None,
     ) -> None:
         if self._canvas is None:
             return
@@ -138,13 +139,17 @@ class SimulationViewer:
         span = max(abs(z_min_actual), abs(z_max_actual), 1e-6)
         z_min, z_max = -span, span  # center gauge at Z=0
 
-        _, vy0, vx1, _ = viewport
+        _, vy0, vx1, vy1 = viewport
         gauge_height = 140
         gauge_width = 16
+        # Center gauge under rotary indicator if provided; default to right edge.
         gx1 = vx1 - self.padding
         gx0 = gx1 - gauge_width
-        gy0 = vy0 + self.padding
+        gy0 = vy0 + (top_offset_px if top_offset_px is not None else self.padding)
         gy1 = gy0 + gauge_height
+        if gy1 > vy1 - self.padding:
+            gy1 = vy1 - self.padding
+            gy0 = gy1 - gauge_height
 
         self._canvas.create_rectangle(gx0, gy0, gx1, gy1, outline="#90a4ae", fill="#eceff1")
 
@@ -165,9 +170,10 @@ class SimulationViewer:
         self._canvas.create_line(gx0 - 4, indicator_y, gx1 + 4, indicator_y, fill="#e53935", width=2)
 
         text_x = gx0 - 6
+        text_x_right = gx1 + 6
         self._canvas.create_text(text_x, gy0, anchor="e", text=f"Z max {z_max_actual:.2f}", font=("Arial", 9))
         self._canvas.create_text(text_x, gy1, anchor="e", text=f"Z min {z_min_actual:.2f}", font=("Arial", 9))
-        self._canvas.create_text(text_x, indicator_y, anchor="e", text=f"Z now {latest_z:.2f}", font=("Arial", 9))
+        self._canvas.create_text(text_x_right, indicator_y, anchor="w", text=f"Z now {latest_z:.2f}", font=("Arial", 9))
 
     def _draw_segments(
         self,
@@ -256,8 +262,21 @@ class SimulationViewer:
 
         self._draw_segments(tail_segments, tail_viewport, use_z_color=False, common_scale=common_scale, extents=tail_extents)
         self._draw_segments(pin_segments, pin_viewport, use_z_color=True, common_scale=common_scale, extents=pin_extents)
+        rot_cx = pin_viewport[0] + (pin_viewport[2] - pin_viewport[0]) * 0.8
+        rot_cy = pin_viewport[1] + (pin_viewport[3] - pin_viewport[1]) * 0.15
+        rot_radius = min(pin_viewport[2] - pin_viewport[0], pin_viewport[3] - pin_viewport[1]) * 0.1
+
         self._draw_rotary_indicator(pin_viewport, rotation_deg)
-        self._draw_z_gauge(pin_segments, pin_viewport)
+        # Position Z gauge below the rotary indicator and its label, centered under the rotary column.
+        gauge_top = (rot_cy + rot_radius + 24) - pin_viewport[1]
+        # Shift gauge left toward the rotary column.
+        gauge_viewport = (
+            pin_viewport[0],
+            pin_viewport[1],
+            pin_viewport[2] - 40,  # leave right margin for min/max labels
+            pin_viewport[3],
+        )
+        self._draw_z_gauge(pin_segments, gauge_viewport, top_offset_px=gauge_top)
         self._draw_legends()
 
     def update(self, segments: List[Dict[str, float | bool]], rotation_deg: float) -> None:

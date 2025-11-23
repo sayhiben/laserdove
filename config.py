@@ -47,6 +47,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--kerf-tail-mm", type=float)
     p.add_argument("--kerf-pin-mm", type=float)
     p.add_argument("--axis-offset-mm", type=float)
+    # Ruida UDP tuning
+    p.add_argument("--ruida-timeout-s", type=float, help="UDP ACK timeout seconds for Ruida")
+    p.add_argument("--ruida-source-port", type=int, help="Local UDP source port (default 40200)")
+    # Rotary tuning
+    p.add_argument("--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)")
+    p.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step (driver DIP)")
 
     p.add_argument("--log-level", default="INFO")
     return p
@@ -67,19 +73,20 @@ def _dict_get_nested(data: dict, key: str, default=None):
     return current_level.get(parts[-1], default)
 
 
-def load_backend_config(cfg_data: dict) -> tuple[bool, str, int]:
+def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
     """
-    Return (use_dummy, ruida_host, ruida_port)
+    Return (use_dummy, ruida_host, ruida_port, ruida_magic)
     """
     use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", True)
     host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
     port = _dict_get_nested(cfg_data, "backend.ruida_port", 50200)
-    return use_dummy, host, port
+    magic = _dict_get_nested(cfg_data, "backend.ruida_magic", 0x88)
+    return use_dummy, host, port, magic
 
 
 def load_config_and_args(
     args: argparse.Namespace,
-) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int, bool]:
+) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int, int, float, int, float, Optional[int], bool]:
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
     used_default = False
@@ -153,7 +160,19 @@ def load_config_and_args(
     if args.axis_offset_mm is not None:
         jig_params.axis_to_origin_mm = args.axis_offset_mm
 
-    backend_use_dummy, backend_host, backend_port = load_backend_config(cfg_data)
+    backend_use_dummy, backend_host, backend_port, ruida_magic = load_backend_config(cfg_data)
+    ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)
+    ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
+    rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
+    rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
+    if args.ruida_timeout_s is not None:
+        ruida_timeout_s = args.ruida_timeout_s
+    if args.ruida_source_port is not None:
+        ruida_source_port = args.ruida_source_port
+    if args.rotary_steps_per_rev is not None:
+        rotary_steps_per_rev = args.rotary_steps_per_rev
+    if args.rotary_microsteps is not None:
+        rotary_microsteps = args.rotary_microsteps
 
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
@@ -168,5 +187,10 @@ def load_config_and_args(
         backend_use_dummy,
         backend_host,
         backend_port,
+        ruida_magic,
+        ruida_timeout_s,
+        ruida_source_port,
+        rotary_steps_per_rev,
+        rotary_microsteps,
         args.simulate,
     )

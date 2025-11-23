@@ -60,7 +60,7 @@ def test_simulated_rotary_respects_real_time(monkeypatch):
 
 
 def test_skeleton_backends_accept_calls():
-    ruida = RuidaLaser(host="127.0.0.1", port=50200)
+    ruida = RuidaLaser(host="127.0.0.1", port=50200, dry_run=True)
     ruida.set_laser_power(20)
     ruida.move(x=1, y=2, z=3, speed=100)
     ruida.cut_line(x=4, y=5, speed=10)

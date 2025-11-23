@@ -26,6 +26,11 @@ def main() -> None:
         backend_use_dummy,
         backend_host,
         backend_port,
+        ruida_magic,
+        ruida_timeout_s,
+        ruida_source_port,
+        rotary_steps_per_rev,
+        rotary_microsteps,
         simulate,
     ) = load_config_and_args(args)
 
@@ -66,8 +71,14 @@ def main() -> None:
         laser = DummyLaser()
         rotary = DummyRotary()
     else:
-        laser = RuidaLaser(host=backend_host, port=backend_port)
-        rotary = RealRotary()
+        laser = RuidaLaser(
+            host=backend_host,
+            port=backend_port,
+            magic=ruida_magic,
+            timeout_s=ruida_timeout_s,
+            source_port=ruida_source_port,
+        )
+        rotary = RealRotary(steps_per_rev=rotary_steps_per_rev, microsteps=rotary_microsteps)
 
     execute_commands(all_commands, laser, rotary)
 

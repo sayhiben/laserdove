@@ -195,7 +195,7 @@ ruida_port = 50200
 ```
 
 - If `use_dummy = true`, `novadovetail` uses `DummyLaser` and `DummyRotary`.  
-- If `use_dummy = false`, it uses `RuidaLaser` and `RealRotary`.
+- If `use_dummy = false`, it uses `RuidaLaser` (UDP to `ruida_host:ruida_port`, default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`) and `RealRotary`.
 
 `RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
 
