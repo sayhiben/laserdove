@@ -54,12 +54,12 @@ def _load_toml(path: Path) -> dict:
         return tomllib.load(f)
 
 
-def _dict_get_nested(d: dict, key: str, default=None):
+def _dict_get_nested(data: dict, key: str, default=None):
     parts = key.split(".")
-    cur = d
-    for p in parts[:-1]:
-        cur = cur.get(p, {})
-    return cur.get(parts[-1], default)
+    current_level = data
+    for part in parts[:-1]:
+        current_level = current_level.get(part, {})
+    return current_level.get(parts[-1], default)
 
 
 def load_backend_config(cfg_data: dict) -> tuple[bool, str, int]:
@@ -96,7 +96,7 @@ def load_config_and_args(
         except Exception as e:  # TOML parse errors, permission issues, etc.
             raise SystemExit(f"Failed to load config file {cfg_path}: {e}") from e
 
-    jp = JointParams(
+    joint_params = JointParams(
         thickness_mm=_dict_get_nested(cfg_data, "joint.thickness_mm", 6.35),
         edge_length_mm=_dict_get_nested(cfg_data, "joint.edge_length_mm", 100.0),
         dovetail_angle_deg=_dict_get_nested(cfg_data, "joint.dovetail_angle_deg", 8.0),
@@ -109,13 +109,13 @@ def load_config_and_args(
         kerf_pin_mm=_dict_get_nested(cfg_data, "joint.kerf_pin_mm", 0.15),
     )
 
-    jg = JigParams(
+    jig_params = JigParams(
         axis_to_origin_mm=_dict_get_nested(cfg_data, "jig.axis_to_origin_mm", 30.0),
         rotation_zero_deg=_dict_get_nested(cfg_data, "jig.rotation_zero_deg", 0.0),
         rotation_speed_dps=_dict_get_nested(cfg_data, "jig.rotation_speed_dps", 30.0),
     )
 
-    mp = MachineParams(
+    machine_params = MachineParams(
         cut_speed_tail_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_tail_mm_s", 10.0),
         cut_speed_pin_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_pin_mm_s", 8.0),
         rapid_speed_mm_s=_dict_get_nested(cfg_data, "machine.rapid_speed_mm_s", 200.0),
@@ -129,35 +129,35 @@ def load_config_and_args(
 
     # CLI overrides
     if args.edge_length_mm is not None:
-        jp.edge_length_mm = args.edge_length_mm
+        joint_params.edge_length_mm = args.edge_length_mm
     if args.thickness_mm is not None:
-        jp.thickness_mm = args.thickness_mm
-        jp.tail_depth_mm = jp.thickness_mm
+        joint_params.thickness_mm = args.thickness_mm
+        joint_params.tail_depth_mm = joint_params.thickness_mm
     if args.num_tails is not None:
-        jp.num_tails = args.num_tails
+        joint_params.num_tails = args.num_tails
     if args.dovetail_angle_deg is not None:
-        jp.dovetail_angle_deg = args.dovetail_angle_deg
+        joint_params.dovetail_angle_deg = args.dovetail_angle_deg
     if args.tail_width_mm is not None:
-        jp.tail_outer_width_mm = args.tail_width_mm
+        joint_params.tail_outer_width_mm = args.tail_width_mm
     if args.clearance_mm is not None:
-        jp.clearance_mm = args.clearance_mm
+        joint_params.clearance_mm = args.clearance_mm
     if args.kerf_tail_mm is not None:
-        jp.kerf_tail_mm = args.kerf_tail_mm
+        joint_params.kerf_tail_mm = args.kerf_tail_mm
     if args.kerf_pin_mm is not None:
-        jp.kerf_pin_mm = args.kerf_pin_mm
+        joint_params.kerf_pin_mm = args.kerf_pin_mm
     if args.axis_offset_mm is not None:
-        jg.axis_to_origin_mm = args.axis_offset_mm
+        jig_params.axis_to_origin_mm = args.axis_offset_mm
 
     backend_use_dummy, backend_host, backend_port = load_backend_config(cfg_data)
 
-    log.debug("JointParams: %s", asdict(jp))
-    log.debug("JigParams: %s", asdict(jg))
-    log.debug("MachineParams: %s", asdict(mp))
+    log.debug("JointParams: %s", asdict(joint_params))
+    log.debug("JigParams: %s", asdict(jig_params))
+    log.debug("MachineParams: %s", asdict(machine_params))
 
     return (
-        jp,
-        jg,
-        mp,
+        joint_params,
+        jig_params,
+        machine_params,
         args.mode,
         args.dry_run,
         backend_use_dummy,

@@ -133,7 +133,7 @@ class RealRotary(RotaryInterface):
 
 
 def execute_commands(
-    cmds: Iterable[Command],
+    commands: Iterable[Command],
     laser: LaserInterface,
     rotary: RotaryInterface,
 ) -> None:
@@ -143,28 +143,28 @@ def execute_commands(
     Dispatch is table-driven for clarity.
     """
 
-    def handle_move(c: Command) -> None:
-        laser.move(x=c.x, y=c.y, z=c.z, speed=c.speed_mm_s)
+    def handle_move(command: Command) -> None:
+        laser.move(x=command.x, y=command.y, z=command.z, speed=command.speed_mm_s)
 
-    def handle_cut_line(c: Command) -> None:
-        if c.speed_mm_s is None:
+    def handle_cut_line(command: Command) -> None:
+        if command.speed_mm_s is None:
             raise ValueError("CUT_LINE without speed_mm_s")
-        laser.cut_line(x=c.x, y=c.y, speed=c.speed_mm_s)
+        laser.cut_line(x=command.x, y=command.y, speed=command.speed_mm_s)
 
-    def handle_set_laser_power(c: Command) -> None:
-        if c.power_pct is None:
+    def handle_set_laser_power(command: Command) -> None:
+        if command.power_pct is None:
             raise ValueError("SET_LASER_POWER without power_pct")
-        laser.set_laser_power(c.power_pct)
+        laser.set_laser_power(command.power_pct)
 
-    def handle_rotate(c: Command) -> None:
-        if c.angle_deg is None:
+    def handle_rotate(command: Command) -> None:
+        if command.angle_deg is None:
             raise ValueError("ROTATE without angle_deg")
-        rotary.rotate_to(c.angle_deg, c.speed_mm_s or 0.0)
+        rotary.rotate_to(command.angle_deg, command.speed_mm_s or 0.0)
 
-    def handle_dwell(c: Command) -> None:
-        if c.dwell_ms is None:
+    def handle_dwell(command: Command) -> None:
+        if command.dwell_ms is None:
             return
-        time.sleep(c.dwell_ms / 1000.0)
+        time.sleep(command.dwell_ms / 1000.0)
 
     dispatch: Dict[CommandType, Callable[[Command], None]] = {
         CommandType.MOVE: handle_move,
@@ -174,11 +174,11 @@ def execute_commands(
         CommandType.DWELL: handle_dwell,
     }
 
-    for c in cmds:
-        if c.comment:
-            log.debug("# %s", c.comment)
+    for command in commands:
+        if command.comment:
+            log.debug("# %s", command.comment)
 
-        handler = dispatch.get(c.type)
+        handler = dispatch.get(command.type)
         if handler is None:
-            raise ValueError(f"Unsupported command type {c.type}")
-        handler(c)
+            raise ValueError(f"Unsupported command type {command.type}")
+        handler(command)

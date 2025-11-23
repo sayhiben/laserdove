@@ -18,9 +18,9 @@ def main() -> None:
     setup_logging(args.log_level)
 
     (
-        joint,
-        jig,
-        machine,
+        joint_params,
+        jig_params,
+        machine_params,
         mode,
         dry_run,
         backend_use_dummy,
@@ -29,29 +29,29 @@ def main() -> None:
     ) = load_config_and_args(args)
 
     # Compute shared layout once (pins and tails must agree)
-    tail_layout = compute_tail_layout(joint)
+    tail_layout = compute_tail_layout(joint_params)
 
     # Validate geometry + machine/jig config
-    errors = validate_all(joint, jig, machine, tail_layout)
-    if errors:
-        for e in errors:
-            print(f"ERROR: {e}")
+    validation_errors = validate_all(joint_params, jig_params, machine_params, tail_layout)
+    if validation_errors:
+        for error in validation_errors:
+            print(f"ERROR: {error}")
         raise SystemExit("Validation failed; fix configuration before running.")
 
-    all_cmds: List = []
+    all_commands: List = []
 
     if mode in ("tails", "both"):
-        tail_cmds = plan_tail_board(joint, machine, tail_layout)
-        all_cmds.extend(tail_cmds)
+        tail_commands = plan_tail_board(joint_params, machine_params, tail_layout)
+        all_commands.extend(tail_commands)
 
     if mode in ("pins", "both"):
-        pin_plan = compute_pin_plan(joint, jig, tail_layout)
-        pin_cmds = plan_pin_board(joint, jig, machine, pin_plan)
-        all_cmds.extend(pin_cmds)
+        pin_plan = compute_pin_plan(joint_params, jig_params, tail_layout)
+        pin_commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
+        all_commands.extend(pin_commands)
 
     if dry_run:
-        for c in all_cmds:
-            print(c)
+        for command in all_commands:
+            print(command)
         return
 
     # Backend selection
@@ -62,7 +62,7 @@ def main() -> None:
         laser = RuidaLaser(host=backend_host, port=backend_port)
         rotary = RealRotary()
 
-    execute_commands(all_cmds, laser, rotary)
+    execute_commands(all_commands, laser, rotary)
 
 
 if __name__ == "__main__":

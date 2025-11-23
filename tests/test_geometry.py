@@ -1,4 +1,12 @@
 # tests/test_geometry.py
+from pathlib import Path
+import sys
+
+# Ensure repository root is on sys.path when running pytest directly.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from geometry import compute_tail_layout, z_offset_for_angle
 from model import JointParams
 
@@ -19,14 +27,18 @@ def make_joint() -> JointParams:
 
 
 def test_tail_layout_basic():
-    jp = make_joint()
-    layout = compute_tail_layout(jp)
-    assert len(layout.tail_centers_y) == jp.num_tails
+    joint_params = make_joint()
+    layout = compute_tail_layout(joint_params)
+    assert len(layout.tail_centers_y) == joint_params.num_tails
     assert min(layout.tail_centers_y) > 0.0
-    assert max(layout.tail_centers_y) < jp.edge_length_mm
+    assert max(layout.tail_centers_y) < joint_params.edge_length_mm
 
 
 def test_z_offset_zero_angle():
-    h = 30.0
-    z = z_offset_for_angle(y_b_mm=0.0, angle_deg=0.0, h_mm=h)
-    assert abs(z) < 1e-9
+    axis_to_origin_mm = 30.0
+    z_offset = z_offset_for_angle(
+        y_b_mm=0.0,
+        angle_deg=0.0,
+        axis_to_origin_mm=axis_to_origin_mm,
+    )
+    assert abs(z_offset) < 1e-9

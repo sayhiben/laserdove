@@ -1,0 +1,5 @@
+# Runtime compatibility for Python < 3.11
+tomli>=2.0.1; python_version < '3.11'
+
+# Testing
+pytest>=7.4

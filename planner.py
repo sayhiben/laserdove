@@ -23,8 +23,8 @@ from geometry import (
 
 
 def plan_tail_board(
-    jp: JointParams,
-    mp: MachineParams,
+    joint_params: JointParams,
+    machine_params: MachineParams,
     tail_layout: TailLayout,
 ) -> List[Command]:
     """
@@ -33,99 +33,99 @@ def plan_tail_board(
       - Cut its outline at kerf-offset Y positions.
       - Caller is responsible for board positioning and z_zero_tail_mm.
     """
-    cmds: List[Command] = []
+    commands: List[Command] = []
 
-    L = jp.edge_length_mm
-    N = jp.num_tails
-    Wt = tail_layout.tail_outer_width
-    Wp = tail_layout.pin_outer_width
-    hp = tail_layout.half_pin_width
-    D = jp.tail_depth_mm
+    edge_length_mm = joint_params.edge_length_mm
+    num_tails = joint_params.num_tails
+    tail_outer_width_mm = tail_layout.tail_outer_width
+    pin_outer_width_mm = tail_layout.pin_outer_width
+    half_pin_width = tail_layout.half_pin_width
+    tail_depth_mm = joint_params.tail_depth_mm
 
     pockets: List[tuple[float, float]] = []
 
     # Left edge half-pin pocket
-    pockets.append((0.0, hp))
+    pockets.append((0.0, half_pin_width))
 
-    pitch = Wt + Wp
-    for i in range(N - 1):
-        y_start = hp + Wt + i * pitch
-        y_end = y_start + Wp
+    tail_pin_pitch = tail_outer_width_mm + pin_outer_width_mm
+    for tail_index in range(num_tails - 1):
+        y_start = half_pin_width + tail_outer_width_mm + tail_index * tail_pin_pitch
+        y_end = y_start + pin_outer_width_mm
         pockets.append((y_start, y_end))
 
     # Right edge half-pin pocket
-    pockets.append((L - hp, L))
+    pockets.append((edge_length_mm - half_pin_width, edge_length_mm))
 
-    for y0, y1 in pockets:
+    for pocket_start_y, pocket_end_y in pockets:
         # Tail board: keep is outside the pocket; waste is inside.
         y_left_cut = kerf_offset_boundary(
-            y_geo=y0,
-            kerf_mm=jp.kerf_tail_mm,
-            clearance_mm=jp.clearance_mm,
+            y_geo=pocket_start_y,
+            kerf_mm=joint_params.kerf_tail_mm,
+            clearance_mm=joint_params.clearance_mm,
             keep_on_positive_side=True,   # keep at Y > y0
             is_tail_board=True,
         )
         y_right_cut = kerf_offset_boundary(
-            y_geo=y1,
-            kerf_mm=jp.kerf_tail_mm,
-            clearance_mm=jp.clearance_mm,
+            y_geo=pocket_end_y,
+            kerf_mm=joint_params.kerf_tail_mm,
+            clearance_mm=joint_params.clearance_mm,
             keep_on_positive_side=False,  # keep at Y < y1
             is_tail_board=True,
         )
 
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.MOVE,
             x=0.0,
             y=y_left_cut,
-            z=mp.z_zero_tail_mm,
-            speed_mm_s=mp.rapid_speed_mm_s,
-            comment=f"Tail: move to pocket [{y0:.3f}, {y1:.3f}] left edge",
+            z=machine_params.z_zero_tail_mm,
+            speed_mm_s=machine_params.rapid_speed_mm_s,
+            comment=f"Tail: move to pocket [{pocket_start_y:.3f}, {pocket_end_y:.3f}] left edge",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.SET_LASER_POWER,
-            power_pct=mp.cut_power_tail_pct,
+            power_pct=machine_params.cut_power_tail_pct,
             comment="Tail: laser on",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.CUT_LINE,
-            x=D,
+            x=tail_depth_mm,
             y=y_left_cut,
-            speed_mm_s=mp.cut_speed_tail_mm_s,
+            speed_mm_s=machine_params.cut_speed_tail_mm_s,
             comment="Tail: left edge",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.CUT_LINE,
-            x=D,
+            x=tail_depth_mm,
             y=y_right_cut,
-            speed_mm_s=mp.cut_speed_tail_mm_s,
+            speed_mm_s=machine_params.cut_speed_tail_mm_s,
             comment="Tail: bottom edge",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.CUT_LINE,
             x=0.0,
             y=y_right_cut,
-            speed_mm_s=mp.cut_speed_tail_mm_s,
+            speed_mm_s=machine_params.cut_speed_tail_mm_s,
             comment="Tail: right edge",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.CUT_LINE,
             x=0.0,
             y=y_left_cut,
-            speed_mm_s=mp.cut_speed_tail_mm_s,
+            speed_mm_s=machine_params.cut_speed_tail_mm_s,
             comment="Tail: top close",
         ))
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.SET_LASER_POWER,
-            power_pct=mp.travel_power_pct,
+            power_pct=machine_params.travel_power_pct,
             comment="Tail: laser off",
         ))
 
-    return cmds
+    return commands
 
 
 def compute_pin_plan(
-    jp: JointParams,
-    jg: JigParams,
+    joint_params: JointParams,
+    jig_params: JigParams,
     tail_layout: TailLayout,
 ) -> PinPlan:
     """
@@ -137,40 +137,44 @@ def compute_pin_plan(
         RIGHT uses rotation_zero_deg + β
     - Z focus uses mid-thickness reference (delta-radius = 0 for v1).
     """
-    N = jp.num_tails
-    Wp = tail_layout.pin_outer_width
-    hp = tail_layout.half_pin_width
-    L = jp.edge_length_mm
+    num_tails = joint_params.num_tails
+    pin_outer_width = tail_layout.pin_outer_width
+    half_pin_width = tail_layout.half_pin_width
+    edge_length_mm = joint_params.edge_length_mm
 
     pin_centers_y: List[float] = []
 
     # Half-left pin center
-    pin_centers_y.append(hp / 2.0)
+    pin_centers_y.append(half_pin_width / 2.0)
 
-    pitch = jp.tail_outer_width_mm + Wp
-    for i in range(1, N):
-        y_left = hp + jp.tail_outer_width_mm + (i - 1) * pitch
-        y_right = y_left + Wp
+    tail_pin_pitch = joint_params.tail_outer_width_mm + pin_outer_width
+    for pin_index in range(1, num_tails):
+        y_left = (
+            half_pin_width
+            + joint_params.tail_outer_width_mm
+            + (pin_index - 1) * tail_pin_pitch
+        )
+        y_right = y_left + pin_outer_width
         pin_centers_y.append(0.5 * (y_left + y_right))
 
     # Half-right pin center
-    pin_centers_y.append(L - hp / 2.0)
+    pin_centers_y.append(edge_length_mm - half_pin_width / 2.0)
 
     sides: List[PinSide] = []
-    base_theta = jp.dovetail_angle_deg
+    dovetail_angle_deg = joint_params.dovetail_angle_deg
 
     rotation_for_side: Dict[Side, float] = {
-        Side.LEFT: jg.rotation_zero_deg - base_theta,
-        Side.RIGHT: jg.rotation_zero_deg + base_theta,
+        Side.LEFT: jig_params.rotation_zero_deg - dovetail_angle_deg,
+        Side.RIGHT: jig_params.rotation_zero_deg + dovetail_angle_deg,
     }
 
-    for idx, center_y in enumerate(pin_centers_y):
-        width = hp if idx in (0, len(pin_centers_y) - 1) else Wp
+    for pin_index, center_y in enumerate(pin_centers_y):
+        width = half_pin_width if pin_index in (0, len(pin_centers_y) - 1) else pin_outer_width
         y_left = center_y - width / 2.0
         y_right = center_y + width / 2.0
 
         # Convert outer-face Y to centered board coordinate Y_b (0 at mid-edge)
-        y_center = L / 2.0
+        y_center = edge_length_mm / 2.0
         y_b_left_centered = y_left - y_center
         y_b_right_centered = y_right - y_center
 
@@ -184,29 +188,29 @@ def compute_pin_plan(
         }
 
         for side in (Side.LEFT, Side.RIGHT):
-            theta = rotation_for_side[side]
+            rotation_deg = rotation_for_side[side]
             y_b_centered = y_for_side_centered[side]
-            z_off = z_offset_for_angle(
+            z_offset = z_offset_for_angle(
                 y_b_mm=y_b_centered,
-                angle_deg=theta,
-                h_mm=jg.axis_to_origin_mm,
+                angle_deg=rotation_deg,
+                axis_to_origin_mm=jig_params.axis_to_origin_mm,
             )
             sides.append(PinSide(
-                pin_index=idx,
+                pin_index=pin_index,
                 side=side,
                 y_boundary_mm=y_boundary_raw[side],
-                rotation_deg=theta,
-                z_offset_mm=z_off,
-                x_depth_mm=jp.socket_depth_mm,
+                rotation_deg=rotation_deg,
+                z_offset_mm=z_offset,
+                x_depth_mm=joint_params.socket_depth_mm,
             ))
 
     return PinPlan(sides=sides)
 
 
 def plan_pin_board(
-    jp: JointParams,
-    jg: JigParams,
-    mp: MachineParams,
+    joint_params: JointParams,
+    jig_params: JigParams,
+    machine_params: MachineParams,
     pin_plan: PinPlan,
 ) -> List[Command]:
     """
@@ -220,12 +224,12 @@ def plan_pin_board(
             move XY to kerf-adjusted Y at X=0
             perform an L-shaped cut (X-in, Y-ramp, X-out).
     """
-    cmds: List[Command] = []
+    commands: List[Command] = []
 
     # Group sides by angle
     sides_by_angle: Dict[float, List[PinSide]] = {}
-    for s in pin_plan.sides:
-        sides_by_angle.setdefault(s.rotation_deg, []).append(s)
+    for side in pin_plan.sides:
+        sides_by_angle.setdefault(side.rotation_deg, []).append(side)
 
     keep_on_positive_side: Dict[Side, bool] = {
         Side.LEFT: False,   # pin material at Y < boundary; keep negative side
@@ -236,81 +240,81 @@ def plan_pin_board(
         Side.RIGHT: +1.0,
     }
 
-    for theta_deg, sides in sides_by_angle.items():
+    for rotation_deg, sides in sides_by_angle.items():
         # Center-outward by Y
-        idxs = center_outward_indices([s.y_boundary_mm for s in sides])
-        ordered_sides = [sides[i] for i in idxs]
+        ordered_indices = center_outward_indices([side.y_boundary_mm for side in sides])
+        ordered_sides = [sides[index] for index in ordered_indices]
 
-        cmds.append(Command(
+        commands.append(Command(
             type=CommandType.ROTATE,
-            angle_deg=theta_deg,
-            speed_mm_s=jg.rotation_speed_dps,
-            comment=f"Rotate jig to θ={theta_deg:.3f}°",
+            angle_deg=rotation_deg,
+            speed_mm_s=jig_params.rotation_speed_dps,
+            comment=f"Rotate jig to θ={rotation_deg:.3f}°",
         ))
 
         for side in ordered_sides:
-            target_z = mp.z_zero_pin_mm + side.z_offset_mm
-            cmds.append(Command(
+            target_z = machine_params.z_zero_pin_mm + side.z_offset_mm
+            commands.append(Command(
                 type=CommandType.MOVE,
                 z=target_z,
-                speed_mm_s=mp.z_speed_mm_s,
+                speed_mm_s=machine_params.z_speed_mm_s,
                 comment=f"Set Z for pin {side.pin_index} {side.side.name}",
             ))
 
             y_cut = kerf_offset_boundary(
                 y_geo=side.y_boundary_mm,
-                kerf_mm=jp.kerf_pin_mm,
-                clearance_mm=jp.clearance_mm,
+                kerf_mm=joint_params.kerf_pin_mm,
+                clearance_mm=joint_params.clearance_mm,
                 keep_on_positive_side=keep_on_positive_side[side.side],
                 is_tail_board=False,
             )
 
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.MOVE,
                 x=0.0,
                 y=y_cut,
-                speed_mm_s=mp.rapid_speed_mm_s,
+                speed_mm_s=machine_params.rapid_speed_mm_s,
                 comment=f"Move to pin {side.pin_index} {side.side.name} at edge",
             ))
 
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.SET_LASER_POWER,
-                power_pct=mp.cut_power_pin_pct,
+                power_pct=machine_params.cut_power_pin_pct,
                 comment="Pin: laser on",
             ))
 
-            depth = side.x_depth_mm
-            alpha = math.radians(jp.dovetail_angle_deg)
-            sign = ramp_direction[side.side]
-            delta_y = depth * math.tan(alpha) * sign
-            y_ramp_end = y_cut + delta_y
+            cut_depth = side.x_depth_mm
+            dovetail_angle_rad = math.radians(joint_params.dovetail_angle_deg)
+            ramp_sign = ramp_direction[side.side]
+            ramp_delta_y = cut_depth * math.tan(dovetail_angle_rad) * ramp_sign
+            y_ramp_end = y_cut + ramp_delta_y
 
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.CUT_LINE,
-                x=depth,
+                x=cut_depth,
                 y=y_cut,
-                speed_mm_s=mp.cut_speed_pin_mm_s,
+                speed_mm_s=machine_params.cut_speed_pin_mm_s,
                 comment="Pin: short X leg",
             ))
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.CUT_LINE,
-                x=depth,
+                x=cut_depth,
                 y=y_ramp_end,
-                speed_mm_s=mp.cut_speed_pin_mm_s,
+                speed_mm_s=machine_params.cut_speed_pin_mm_s,
                 comment="Pin: long Y leg",
             ))
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.CUT_LINE,
                 x=0.0,
                 y=y_ramp_end,
-                speed_mm_s=mp.cut_speed_pin_mm_s,
+                speed_mm_s=machine_params.cut_speed_pin_mm_s,
                 comment="Pin: retract X",
             ))
 
-            cmds.append(Command(
+            commands.append(Command(
                 type=CommandType.SET_LASER_POWER,
-                power_pct=mp.travel_power_pct,
+                power_pct=machine_params.travel_power_pct,
                 comment="Pin: laser off",
             ))
 
-    return cmds
+    return commands
