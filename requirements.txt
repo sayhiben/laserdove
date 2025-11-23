@@ -4,3 +4,6 @@ tomli>=2.0.1; python_version < '3.11'
 # Testing
 pytest>=7.4
 pytest-cov>=4.1
+
+# Hardware transport (optional; required for Ruida USB mode)
+pyserial>=3.5
