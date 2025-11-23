@@ -26,6 +26,7 @@ def main() -> None:
         backend_use_dummy,
         backend_host,
         backend_port,
+        simulate,
     ) = load_config_and_args(args)
 
     # Compute shared layout once (pins and tails must agree)
@@ -49,13 +50,19 @@ def main() -> None:
         pin_commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
         all_commands.extend(pin_commands)
 
-    if dry_run:
+    if dry_run and not simulate:
         for command in all_commands:
             print(command)
         return
 
     # Backend selection
-    if backend_use_dummy:
+    if simulate:
+        from hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
+
+        laser = SimulatedLaser(real_time=True)
+        rotary = SimulatedRotary(laser, real_time=True)
+        laser.setup_viewer()  # Open the window before execution to show progress.
+    elif backend_use_dummy:
         laser = DummyLaser()
         rotary = DummyRotary()
     else:
@@ -63,6 +70,9 @@ def main() -> None:
         rotary = RealRotary()
 
     execute_commands(all_commands, laser, rotary)
+
+    if simulate and hasattr(laser, "show"):
+        laser.show()
 
 
 if __name__ == "__main__":

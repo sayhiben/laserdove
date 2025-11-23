@@ -125,6 +125,14 @@ python3 novadovetail.py --config config.toml
 python3 novadovetail.py --config example-config.toml --mode both --dry-run
 ```
 
+#### Simulation mode (visual)
+
+Runs against the simulated backend and opens a Tkinter view of moves/cuts. Motion is paced using commanded feed/rotation rates (real-time); close the window to exit:
+
+```bash
+python3 novadovetail.py --config example-config.toml --mode both --simulate
+```
+
 #### Options
 
 | **Option**              | **Description**                                                                                 | **Default**                                |
@@ -141,6 +149,7 @@ python3 novadovetail.py --config example-config.toml --mode both --dry-run
 | `--kerf-tail-mm`       | Override `joint.kerf_tail_mm`.                                                                 | unset (use config/built‑in)                |
 | `--kerf-pin-mm`        | Override `joint.kerf_pin_mm`.                                                                  | unset (use config/built‑in)                |
 | `--axis-offset-mm`     | Override `jig.axis_to_origin_mm`.                                                              | unset (use config/built‑in)                |
+| `--simulate`           | Run against the simulated backend and open a Tkinter visualization.                           | disabled                                   |
 | `--log-level {DEBUG,INFO,WARNING,ERROR}` | Logging verbosity for `novadovetail`.                                        | `INFO`                                     |
 
 ---

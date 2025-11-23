@@ -31,6 +31,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    default="both", help="Which board to plan")
     p.add_argument("--dry-run", action="store_true",
                    help="Do not talk to hardware; just print plan")
+    p.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Run commands against the simulated backend with a Tkinter visualization",
+    )
 
     # Common overrides
     p.add_argument("--edge-length-mm", type=float)
@@ -74,7 +79,7 @@ def load_backend_config(cfg_data: dict) -> tuple[bool, str, int]:
 
 def load_config_and_args(
     args: argparse.Namespace,
-) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int]:
+) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int, bool]:
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
     used_default = False
@@ -163,4 +168,5 @@ def load_config_and_args(
         backend_use_dummy,
         backend_host,
         backend_port,
+        args.simulate,
     )
