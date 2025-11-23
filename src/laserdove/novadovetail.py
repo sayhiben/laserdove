@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from typing import List
 
-from config import build_arg_parser, load_config_and_args
-from geometry import compute_tail_layout
-from planner import plan_tail_board, compute_pin_plan, plan_pin_board
-from hardware import DummyLaser, DummyRotary, RuidaLaser, RealRotary, execute_commands
-from logging_utils import setup_logging
-from validation import validate_all
+from .config import build_arg_parser, load_config_and_args
+from .geometry import compute_tail_layout
+from .planner import plan_tail_board, compute_pin_plan, plan_pin_board
+from .hardware import DummyLaser, DummyRotary, RuidaLaser, RealRotary, execute_commands
+from .logging_utils import setup_logging
+from .validation import validate_all
 
 
 def main() -> None:
@@ -62,7 +62,7 @@ def main() -> None:
 
     # Backend selection
     if simulate:
-        from hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
+        from .hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
 
         laser = SimulatedLaser(real_time=True)
         rotary = SimulatedRotary(laser, real_time=True)

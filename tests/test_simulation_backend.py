@@ -1,6 +1,6 @@
 # tests/test_simulation_backend.py
-from hardware import SimulatedLaser, SimulatedRotary, execute_commands
-from model import Command, CommandType
+from laserdove.hardware import SimulatedLaser, SimulatedRotary, execute_commands
+from laserdove.model import Command, CommandType
 
 
 def test_simulated_laser_records_move_and_cut():

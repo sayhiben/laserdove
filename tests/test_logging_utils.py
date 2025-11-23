@@ -1,6 +1,6 @@
 import logging
 
-from logging_utils import setup_logging
+from laserdove.logging_utils import setup_logging
 
 
 def test_setup_logging_sets_level_and_format(monkeypatch):

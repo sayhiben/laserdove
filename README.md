@@ -18,14 +18,15 @@ v1 intentionally uses dummy hardware by default; it does *not* yet talk to a rea
 
 ```text
 novadovetail/
-  novadovetail.py          # CLI entrypoint
-  config.py                # TOML + CLI config
-  model.py                 # Dataclasses (params, layouts, commands)
-  geometry.py              # Pure math; tails, pins, Z offsets, kerf
-  planner.py               # Convert geometry -> Command list
-  hardware.py              # Laser + rotary interfaces (dummy + skeleton real)
-  validation.py            # Geometry/machine/jig validation
-  logging_utils.py         # Logging setup
+  src/laserdove/
+    novadovetail.py        # CLI entrypoint
+    config.py              # TOML + CLI config
+    model.py               # Dataclasses (params, layouts, commands)
+    geometry.py            # Pure math; tails, pins, Z offsets, kerf
+    planner.py             # Convert geometry -> Command list
+    hardware/              # Laser + rotary interfaces (dummy/sim/UDP Ruida)
+    validation.py          # Geometry/machine/jig validation
+    logging_utils.py       # Logging setup
   example-config.toml      # Example configuration
   tests/
     test_geometry.py       # Minimal geometry tests
@@ -114,7 +115,7 @@ cp example-config.toml config.toml
 Then edit `config.toml` to match your machine, jig, and joint preferences, and run with:
 
 ```bash
-python3 novadovetail.py --config config.toml
+python3 -m laserdove.novadovetail --config config.toml
 ```
 
 ### CLI
@@ -122,7 +123,7 @@ python3 novadovetail.py --config config.toml
 #### Basic usage (dry run)
 
 ```bash
-python3 novadovetail.py --config example-config.toml --mode both --dry-run
+python3 -m laserdove.novadovetail --config example-config.toml --mode both --dry-run
 ```
 
 #### Simulation mode (visual)
@@ -130,7 +131,7 @@ python3 novadovetail.py --config example-config.toml --mode both --dry-run
 Runs against the simulated backend and opens a Tkinter view of moves/cuts. Motion is paced using commanded feed/rotation rates (real-time); close the window to exit:
 
 ```bash
-python3 novadovetail.py --config example-config.toml --mode both --simulate
+python3 -m laserdove.novadovetail --config example-config.toml --mode both --simulate
 ```
 
 #### Options

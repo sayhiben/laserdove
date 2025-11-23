@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import List
 
-from model import JointParams, TailLayout
+from .model import JointParams, TailLayout
 
 
 def compute_tail_layout(joint_params: JointParams) -> TailLayout:

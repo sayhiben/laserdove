@@ -1,7 +1,7 @@
 # tests/test_tail_trapezoid.py
-from planner import plan_tail_board
-from geometry import compute_tail_layout
-from model import JointParams, MachineParams, TailLayout
+from laserdove.planner import plan_tail_board
+from laserdove.geometry import compute_tail_layout
+from laserdove.model import JointParams, MachineParams, TailLayout
 
 
 def make_joint_and_machine() -> tuple[JointParams, MachineParams, TailLayout]:

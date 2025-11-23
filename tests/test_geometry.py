@@ -1,6 +1,6 @@
 # tests/test_geometry.py
-from geometry import compute_tail_layout, z_offset_for_angle, kerf_offset_boundary
-from model import JointParams
+from laserdove.geometry import compute_tail_layout, z_offset_for_angle, kerf_offset_boundary
+from laserdove.model import JointParams
 
 
 def make_joint() -> JointParams:

@@ -6,7 +6,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Iterable, Callable, Dict
 
-from model import Command, CommandType
+from ..model import Command, CommandType
 
 log = logging.getLogger(__name__)
 

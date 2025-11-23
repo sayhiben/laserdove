@@ -1,8 +1,8 @@
 import pytest
 
-from hardware import DummyLaser, DummyRotary, execute_commands
-from model import Command, CommandType
-from hardware import SimulatedLaser, SimulatedRotary, RuidaLaser, RealRotary
+from laserdove.hardware import DummyLaser, DummyRotary, execute_commands
+from laserdove.model import Command, CommandType
+from laserdove.hardware import SimulatedLaser, SimulatedRotary, RuidaLaser, RealRotary
 
 
 def test_execute_commands_updates_state():

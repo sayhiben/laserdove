@@ -1,6 +1,6 @@
 import types
 
-from hardware.rotary import GPIOStepperDriver
+from laserdove.hardware.rotary import GPIOStepperDriver
 
 
 class FakeGPIO:
@@ -32,7 +32,7 @@ def test_gpio_stepper_driver(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "RPi", rpi_module)
     monkeypatch.setitem(__import__("sys").modules, "RPi.GPIO", gpio_module)
     # speed sleeps; patch time.sleep to no-op
-    monkeypatch.setattr("hardware.rotary.time.sleep", lambda _: None)
+    monkeypatch.setattr("laserdove.hardware.rotary.time.sleep", lambda _: None)
     driver = GPIOStepperDriver(step_pin=1, dir_pin=2, enable_pin=3, step_high_s=0.0, step_low_s=0.0, invert_dir=False)
     driver.move_steps(2, step_rate_hz=1000.0)
     assert fake_gpio.outputs  # pulses recorded

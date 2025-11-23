@@ -6,7 +6,7 @@ import math
 import time
 from typing import Dict, List, Optional
 
-from simulation_viewer import SimulationViewer
+from ..simulation_viewer import SimulationViewer
 from .base import LaserInterface, RotaryInterface
 
 log = logging.getLogger(__name__)

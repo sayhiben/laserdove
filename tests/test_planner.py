@@ -1,8 +1,8 @@
 import math
 
-from geometry import compute_tail_layout
-from model import JointParams, JigParams, MachineParams
-from planner import compute_pin_plan, plan_pin_board
+from laserdove.geometry import compute_tail_layout
+from laserdove.model import JointParams, JigParams, MachineParams
+from laserdove.planner import compute_pin_plan, plan_pin_board
 
 
 def make_joint() -> JointParams:

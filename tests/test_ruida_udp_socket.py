@@ -1,6 +1,6 @@
 import socket
 
-from hardware.ruida import RuidaLaser
+from laserdove.hardware.ruida import RuidaLaser
 
 
 class DummySock:

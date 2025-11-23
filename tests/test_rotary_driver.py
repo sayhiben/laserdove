@@ -1,4 +1,4 @@
-from hardware.rotary import RealRotary
+from laserdove.hardware.rotary import RealRotary
 
 
 class CaptureDriver:

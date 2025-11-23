@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from config import load_config_and_args
-from model import JointParams, JigParams, MachineParams
+from laserdove.config import load_config_and_args
+from laserdove.model import JointParams, JigParams, MachineParams
 
 
 def make_args(**overrides) -> argparse.Namespace:

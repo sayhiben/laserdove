@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import logging
 
@@ -13,7 +13,7 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore
 
-from model import JointParams, JigParams, MachineParams
+from .model import JointParams, JigParams, MachineParams
 
 log = logging.getLogger(__name__)
 

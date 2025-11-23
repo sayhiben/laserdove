@@ -1,4 +1,4 @@
-from hardware.ruida import RuidaLaser
+from laserdove.hardware.ruida import RuidaLaser
 
 
 def test_ruida_swizzle_magic_override():
@@ -18,4 +18,3 @@ def test_ruida_dry_run_sends_without_socket(monkeypatch):
     laser.set_laser_power(25.0)
     # Speed cache should avoid re-send
     laser.move(x=5.0, y=6.0, speed=100.0)
-

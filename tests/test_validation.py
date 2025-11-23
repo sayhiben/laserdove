@@ -1,8 +1,8 @@
 import pytest
 
-from geometry import compute_tail_layout
-from model import JointParams, JigParams, MachineParams, TailLayout
-from validation import (
+from laserdove.geometry import compute_tail_layout
+from laserdove.model import JointParams, JigParams, MachineParams, TailLayout
+from laserdove.validation import (
     validate_joint_params,
     validate_tail_layout,
     validate_machine_limits,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import List, Dict
 
-from model import (
+from .model import (
     JointParams,
     JigParams,
     MachineParams,
@@ -15,7 +15,7 @@ from model import (
     Command,
     CommandType,
 )
-from geometry import (
+from .geometry import (
     kerf_offset_boundary,
     z_offset_for_angle,
     center_outward_indices,
