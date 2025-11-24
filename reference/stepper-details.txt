@@ -1,0 +1,99 @@
+Model: 23HS45-4204D-E1000
+
+Nema 23 Closed Loop Stepper Motor 3.0Nm(424.83oz.in) Encoder 1000PPR(4000CPR)
+
+Motor Specification
+
+    Manufacturer Part Number: 23HS45-4204D-E1000
+    Motor Type: Bipolar Stepper
+    Step Angle: 1.8deg
+    Holding Torque: 3.0Nm(424.83oz.in)
+    Rated Current/phase: 4.2A
+    Phase Resistance: 0.82ohms
+    Inductance: 3.6mH ± 20%(1KHz)
+    Insulation Class: B 130°C[266°F]
+    Frame Size: 57 x 57mm
+    Body Length: 135mm
+    Shaft Diameter: Φ8mm
+    Shaft Length: 21mm
+    D-Cut Length: 15mm
+    Number of Leads: 4
+    Lead Length: 300mm
+
+Encoder Specification
+
+    Output Circuit Type: Differential type
+    Encoder Type: Optical Incremental
+    Encoder Resolution: 1000PPR(4000CPR)
+    Output Signal Channels: 2 channels
+    Minimum Supply Voltage: 4.5V
+    Maximum Supply Voltage: 5V
+    Output Current: 25mA
+    Output High Voltage: 4.5V
+    Output Low Voltage: 4.2-4.3V
+    Output Frequency Max: 60kHZ
+
+Connection
+A+
+	
+A-
+	
+B+
+	
+B-
+1
+	
+2
+	
+3
+	
+4
+
+PIN
+	
+1
+	
+2
+	
+3
+	
+11
+	
+12
+	
+13
+Encoder
+	
+EA+
+	
+VCC
+	
+GND
+	
+EB+
+	
+EB-
+	
+EA-
+
+Product Type
+Product Type 	Closed Loop Stepper Motor
+Electrical Specification
+Encoder Resolution 	1000PPR
+Encoder Type 	Optical Incremental
+Has Torque/Thrust Curve? 	Yes
+Holding Torque(Ncm) 	300
+Holding Torque(oz.in) 	424.83
+Inductance(mH) 	3.6
+Output Circuit Type 	Differential
+Output Signal Channels 	2
+Phase Resistance(ohms) 	0.82
+Rated Current(A) 	4.2
+Physical Specification
+Body Length(mm) 	138
+Frame Size(mm) 	Nema 23 (57 x 57)
+Inventory Method 	Dedicated Inventory
+IP Rating 	40
+Product Series 	S
+Shaft Diameter(mm) 	8
+Shaft Length(mm) 	21

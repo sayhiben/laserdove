@@ -45,6 +45,7 @@
   - `Network aware laser cutter security – Roger Clark.html` – network/attack surface notes for networked lasers.
   - `Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software.html` (+ `-messages.html`, `-linux.html`) – reverse-engineered Ruida/RDCAM protocol: USB via FTDI/D2XX, scrambling/descrambling (MAGIC 0x88 for 6442G), message framing (MSB-set lead byte, 0x80-0xFF then 0x00-0x7F payload), RD file decoding hints.
   - `cl57t` manual (in reference) – stepper driver documentation for CL57T (wiring, dip switch settings, current/microstep tables); use for rotary wiring, not for direct code imports.
+    - CL57T status notes: has ALM+/ALM- alarm output (fault), no documented in-position/busy line; ENA input to disable; min pulse width ~2.5µs; microstep and current via DIP.
   - `23HS45` datasheet (in reference) – NEMA23 stepper specs: phase current, holding torque, wiring pinout, electrical characteristics; use for selecting current/microstep settings.
   - Python tooling snapshots (reference only, do not import):  
     - `ruida.py` – builds `.rd` files: layer model, bounding boxes, power/speed encoding, scramble/unscramble, relative/absolute move encoding.  

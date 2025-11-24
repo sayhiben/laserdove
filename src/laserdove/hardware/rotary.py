@@ -30,6 +30,7 @@ class GPIOStepperDriver:
         step_pin: int,
         dir_pin: int,
         enable_pin: Optional[int] = None,
+        alarm_pin: Optional[int] = None,
         step_high_s: float = 5e-6,
         step_low_s: float = 5e-6,
         invert_dir: bool = False,
@@ -42,15 +43,19 @@ class GPIOStepperDriver:
         self.step_pin = step_pin
         self.dir_pin = dir_pin
         self.enable_pin = enable_pin
+        self.alarm_pin = alarm_pin
         self.step_high_s = step_high_s
         self.step_low_s = step_low_s
         self.invert_dir = invert_dir
+        self.busy = False
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(step_pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(dir_pin, GPIO.OUT, initial=GPIO.LOW)
         if enable_pin is not None:
             GPIO.setup(enable_pin, GPIO.OUT, initial=GPIO.LOW)
+        if alarm_pin is not None:
+            GPIO.setup(alarm_pin, GPIO.IN)
 
     def move_steps(self, steps: int, step_rate_hz: float) -> None:
         GPIO = self.GPIO  # local alias
@@ -61,12 +66,30 @@ class GPIOStepperDriver:
         delay = max(self.step_high_s + self.step_low_s, 1.0 / step_rate_hz)
         direction = GPIO.HIGH if (steps > 0) ^ self.invert_dir else GPIO.LOW
         GPIO.output(self.dir_pin, direction)
+        if self.enable_pin is not None:
+            GPIO.output(self.enable_pin, GPIO.LOW)  # active enable low on many drivers
+
+        def alarm_active() -> bool:
+            if self.alarm_pin is None:
+                return False
+            try:
+                return bool(GPIO.input(self.alarm_pin))
+            except Exception:
+                return False
+
+        if alarm_active():
+            raise RuntimeError("Rotary driver alarm active before move")
+
+        self.busy = True
         for _ in range(abs(steps)):
             GPIO.output(self.step_pin, GPIO.HIGH)
             time.sleep(self.step_high_s)
             GPIO.output(self.step_pin, GPIO.LOW)
             time.sleep(max(0.0, delay - self.step_high_s))
         # leave enable as-is to allow holding torque
+        self.busy = False
+        if alarm_active():
+            raise RuntimeError("Rotary driver alarm active after move")
 
 
 class RealRotary(RotaryInterface):
