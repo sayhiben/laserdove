@@ -149,7 +149,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                   | disabled                                   |
 | `--rotary-step-pin`, `--rotary-dir-pin` | BCM pins for STEP-/DIR- when `--rotary-backend real`.                               | 6 / 14                                     |
 | `--rotary-step-pin-pos`, `--rotary-dir-pin-pos` | BCM pins for STEP+/DIR+ (held HIGH to source opto current).                        | 11 / 13                                    |
-| `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional BCM pins for enable (active low) and alarm input.                          | unset                                      |
+| `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional BCM pins for enable (active low) and alarm input (omit if not wired).     | unset                                      |
 | `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                 | disabled                                   |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
 | `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                           | unset (use config/built‑in)                |
@@ -216,7 +216,7 @@ ruida_port = 50200
   - Rotary-only checkout: `laser_backend="dummy"`, `rotary_backend="real"`, `movement_only=true`.
   - XY-only checkout: `laser_backend="ruida"`, `rotary_backend="dummy"`, `movement_only=true`.
   - Combined motion without firing: `laser_backend="ruida"`, `rotary_backend="real"`, `movement_only=true`.
-- Real rotary GPIO pins (BCM numbering): `backend.rotary_step_pin`/`rotary_dir_pin` (STEP-/DIR-, default 6/14), `rotary_step_pin_pos`/`rotary_dir_pin_pos` (STEP+/DIR+, default 11/13, held HIGH), optional `rotary_enable_pin` (active low), `rotary_alarm_pin` (input), `rotary_invert_dir` (boolean).
+- Real rotary GPIO pins (BCM numbering): `backend.rotary_step_pin`/`rotary_dir_pin` (STEP-/DIR-, default 6/14), `rotary_step_pin_pos`/`rotary_dir_pin_pos` (STEP+/DIR+, default 11/13, held HIGH), optional `rotary_enable_pin` (active low) and `rotary_alarm_pin` (input); omit optional pins if not wired; `rotary_invert_dir` (boolean).
 
 `RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
 
