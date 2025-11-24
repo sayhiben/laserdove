@@ -263,9 +263,18 @@ def plan_pin_board(
         Side.RIGHT: False,  # pin material at Y < boundary; keep negative side
     }
 
+    current_y = 0.0  # track last Y to order cuts and reduce long travel moves
+
     for rotation_deg, sides in sides_by_angle.items():
-        # Process in ascending Y to minimize travel swings.
-        ordered_sides = sorted(sides, key=lambda s: s.y_boundary_mm)
+        # Nearest-neighbor ordering from current_y to reduce travel swings.
+        remaining = sides[:]
+        ordered_sides: List[PinSide] = []
+        cursor = current_y
+        while remaining:
+            next_index = min(range(len(remaining)), key=lambda i: abs(remaining[i].y_boundary_mm - cursor))
+            next_side = remaining.pop(next_index)
+            ordered_sides.append(next_side)
+            cursor = next_side.y_boundary_mm
 
         commands.append(Command(
             type=CommandType.ROTATE,
@@ -344,5 +353,6 @@ def plan_pin_board(
                 power_pct=machine_params.travel_power_pct,
                 comment="Pin: laser off",
             ))
+            current_y = y_cut
 
     return commands

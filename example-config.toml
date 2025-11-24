@@ -31,5 +31,10 @@ z_zero_pin_mm       = 0.0
 # If use_dummy = true, novadovetail will use DummyLaser/DummyRotary
 # regardless of ruida_host.
 use_dummy = true
+laser_backend = "dummy"  # "dummy" or "ruida"
+rotary_backend = "dummy" # "dummy" or "real"
+# Keep the laser off but still move the head when talking to a real Ruida.
+# Useful for first hardware shakedowns without firing the tube.
+movement_only = false
 ruida_host = "192.168.1.100"
 ruida_port = 50200

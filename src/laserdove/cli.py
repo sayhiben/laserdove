@@ -23,7 +23,7 @@ def main() -> None:
         machine_params,
         mode,
         dry_run,
-        backend_use_dummy,
+        _backend_use_dummy,
         backend_host,
         backend_port,
         ruida_magic,
@@ -32,6 +32,9 @@ def main() -> None:
         rotary_steps_per_rev,
         rotary_microsteps,
         simulate,
+        laser_backend,
+        rotary_backend,
+        movement_only,
     ) = load_config_and_args(args)
 
     # Compute shared layout once (pins and tails must agree)
@@ -67,18 +70,27 @@ def main() -> None:
         laser = SimulatedLaser(real_time=True)
         rotary = SimulatedRotary(laser, real_time=True)
         laser.setup_viewer()  # Open the window before execution to show progress.
-    elif backend_use_dummy:
-        laser = DummyLaser()
-        rotary = DummyRotary()
     else:
-        laser = RuidaLaser(
-            host=backend_host,
-            port=backend_port,
-            magic=ruida_magic,
-            timeout_s=ruida_timeout_s,
-            source_port=ruida_source_port,
-        )
-        rotary = RealRotary(steps_per_rev=rotary_steps_per_rev, microsteps=rotary_microsteps)
+        if laser_backend == "dummy":
+            laser = DummyLaser()
+        elif laser_backend == "ruida":
+            laser = RuidaLaser(
+                host=backend_host,
+                port=backend_port,
+                magic=ruida_magic,
+                timeout_s=ruida_timeout_s,
+                source_port=ruida_source_port,
+                movement_only=movement_only,
+            )
+        else:
+            raise ValueError(f"Unsupported laser backend {laser_backend}")
+
+        if rotary_backend == "dummy":
+            rotary = DummyRotary()
+        elif rotary_backend == "real":
+            rotary = RealRotary(steps_per_rev=rotary_steps_per_rev, microsteps=rotary_microsteps)
+        else:
+            raise ValueError(f"Unsupported rotary backend {rotary_backend}")
 
     execute_commands(all_commands, laser, rotary)
 

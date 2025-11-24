@@ -13,6 +13,7 @@ def make_args(**overrides) -> argparse.Namespace:
         mode="both",
         dry_run=False,
         simulate=False,
+        movement_only=False,
         edge_length_mm=None,
         thickness_mm=None,
         num_tails=None,
@@ -27,6 +28,8 @@ def make_args(**overrides) -> argparse.Namespace:
         ruida_source_port=None,
         rotary_steps_per_rev=None,
         rotary_microsteps=None,
+        laser_backend=None,
+        rotary_backend=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -36,7 +39,25 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     # Ensure we don't accidentally pick up a real config.toml.
     monkeypatch.chdir(tmp_path)
     args = make_args()
-    joint, jig, machine, mode, dry_run, use_dummy, host, port, _, _, _, _, _, simulate = load_config_and_args(args)
+    (
+        joint,
+        jig,
+        machine,
+        mode,
+        dry_run,
+        use_dummy,
+        host,
+        port,
+        _,
+        _,
+        _,
+        _,
+        _,
+        simulate,
+        laser_backend,
+        rotary_backend,
+        movement_only,
+    ) = load_config_and_args(args)
 
     assert isinstance(joint, JointParams)
     assert isinstance(jig, JigParams)
@@ -47,6 +68,9 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert use_dummy is True
     assert host == "192.168.1.100"
     assert port == 50200
+    assert laser_backend == "dummy"
+    assert rotary_backend == "dummy"
+    assert movement_only is False
 
 
 def test_load_config_missing_explicit_path_raises(tmp_path):
@@ -78,9 +102,29 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         mode="pins",
         dry_run=True,
         simulate=True,
+        laser_backend="dummy",
+        rotary_backend="dummy",
     )
 
-    joint, jig, machine, mode, dry_run, use_dummy, host, port, _, _, _, _, _, simulate = load_config_and_args(args)
+    (
+        joint,
+        jig,
+        machine,
+        mode,
+        dry_run,
+        use_dummy,
+        host,
+        port,
+        _,
+        _,
+        _,
+        _,
+        _,
+        simulate,
+        laser_backend,
+        rotary_backend,
+        movement_only,
+    ) = load_config_and_args(args)
 
     assert joint.thickness_mm == 7.0
     assert joint.tail_depth_mm == 7.0  # thickness override also updates tail depth
@@ -97,3 +141,53 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
     assert use_dummy is True
     assert host == "192.168.1.100"
     assert port == 50200
+    assert laser_backend == "dummy"
+    assert rotary_backend == "dummy"
+    assert movement_only is False
+
+
+def test_backend_overrides_and_movement_only(tmp_path):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        """
+        [backend]
+        use_dummy = false
+        laser_backend = "ruida"
+        rotary_backend = "real"
+        movement_only = true
+        ruida_host = "10.0.0.5"
+        ruida_port = 60000
+        """
+    )
+    args = make_args(
+        config=cfg_path,
+        # Override rotary backend to dummy via CLI to test precedence.
+        rotary_backend="dummy",
+    )
+
+    (
+        _joint,
+        _jig,
+        _machine,
+        _mode,
+        _dry_run,
+        use_dummy,
+        host,
+        port,
+        _magic,
+        _timeout,
+        _src_port,
+        _steps_per_rev,
+        _microsteps,
+        _simulate,
+        laser_backend,
+        rotary_backend,
+        movement_only,
+    ) = load_config_and_args(args)
+
+    assert use_dummy is False
+    assert host == "10.0.0.5"
+    assert port == 60000
+    assert laser_backend == "ruida"
+    assert rotary_backend == "dummy"  # CLI override wins
+    assert movement_only is True

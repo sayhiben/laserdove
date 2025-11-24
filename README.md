@@ -101,6 +101,9 @@ z_zero_pin_mm       = 0.0
 
 [backend]
 use_dummy  = true
+laser_backend = "dummy"  # "dummy" or "ruida"
+rotary_backend = "dummy" # "dummy" or "real"
+movement_only = false    # keep beam off while still moving when using Ruida
 ruida_host = "192.168.1.100"
 ruida_port = 50200
 ```
@@ -141,6 +144,9 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--mode {tails,pins,both}` | Which board(s) to plan.                                                                      | `both`                                     |
 | `--config PATH`        | TOML file to load (`[joint]`, `[jig]`, `[machine]`, `[backend]`). If provided and the file is missing or invalid, the program exits with an error. | `config.toml` if present, otherwise built‑ins shown above |
 | `--dry-run`            | Do not talk to hardware; print `Command` objects instead.                                      | disabled                                   |
+| `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs only, ruida for UDP motion).                     | from config/`use_dummy`                    |
+| `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs only, real for stepper GPIO).                    | from config/`use_dummy`                    |
+| `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                   | disabled                                   |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
 | `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                           | unset (use config/built‑in)                |
 | `--num-tails`          | Override `joint.num_tails`.                                                                    | unset (use config/built‑in)                |
@@ -191,12 +197,20 @@ Backend selection is driven by the `[backend]` section in the config:
 ```toml
 [backend]
 use_dummy  = true
+laser_backend = "dummy"
+rotary_backend = "dummy"
+movement_only = false
 ruida_host = "192.168.1.100"
 ruida_port = 50200
 ```
 
-- If `use_dummy = true`, `novadovetail` uses `DummyLaser` and `DummyRotary`.  
-- If `use_dummy = false`, it uses `RuidaLaser` (UDP to `ruida_host:ruida_port`, default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`) and `RealRotary`.
+- `use_dummy` keeps the legacy "all dummy vs all real" switch; `laser_backend`/`rotary_backend` override each side independently (e.g., real rotary + dummy laser).  
+- `movement_only = true` sends a single laser-off to Ruida then suppresses all further power changes while still issuing moves—useful for motion shakedowns on real hardware.  
+- `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev`, `backend.rotary_microsteps`).
+- Motion-only presets:
+  - Rotary-only checkout: `laser_backend="dummy"`, `rotary_backend="real"`, `movement_only=true`.
+  - XY-only checkout: `laser_backend="ruida"`, `rotary_backend="dummy"`, `movement_only=true`.
+  - Combined motion without firing: `laser_backend="ruida"`, `rotary_backend="real"`, `movement_only=true`.
 
 `RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
 

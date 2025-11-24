@@ -33,6 +33,7 @@ class RuidaLaser(LaserInterface):
         timeout_s: float = 3.0,
         dry_run: bool = False,
         magic: int = 0x88,
+        movement_only: bool = False,
         socket_factory=socket.socket,
     ) -> None:
         self.host = host
@@ -41,6 +42,7 @@ class RuidaLaser(LaserInterface):
         self.timeout_s = timeout_s
         self.dry_run = dry_run
         self.magic = magic
+        self.movement_only = movement_only
         self.sock: Optional[socket.socket] = None
         self._socket_factory = socket_factory
         self.x = 0.0
@@ -48,7 +50,15 @@ class RuidaLaser(LaserInterface):
         self.z = 0.0
         self.power = 0.0
         self._last_speed_ums: Optional[int] = None
-        log.info("RuidaLaser initialized for UDP host=%s port=%d dry_run=%s", host, port, dry_run)
+        self._movement_only_power_sent = False
+        self._last_requested_power = 0.0
+        log.info(
+            "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
+            host,
+            port,
+            dry_run,
+            movement_only,
+        )
 
     # ---------------- Swizzle/encoding helpers ----------------
     @staticmethod
@@ -188,9 +198,28 @@ class RuidaLaser(LaserInterface):
         self._send_packets(payload)
 
     def set_laser_power(self, power_pct) -> None:
-        if math.isclose(self.power, power_pct, abs_tol=1e-6):
+        requested_power = 0.0 if power_pct is None else power_pct
+        self._last_requested_power = requested_power
+
+        if self.movement_only:
+            log.info(
+                "[RUDA UDP] movement-only: requested laser power %.1f%% (suppressed)",
+                requested_power,
+            )
+            if self._movement_only_power_sent:
+                log.debug("[RUDA UDP] movement-only: suppressing laser power change")
+                return
+            log.info("[RUDA UDP] movement-only: sending single laser-off command")
+            self.power = 0.0
+            self._movement_only_power_sent = True
+            payload = bytes([0xC7]) + self._encode_power_pct(0.0)
+            self._send_packets(payload)
             return
-        self.power = power_pct
-        payload = bytes([0xC7]) + self._encode_power_pct(power_pct)
-        log.info("[RUDA UDP] SET_LASER_POWER %.1f%%", power_pct)
+
+        if math.isclose(self.power, requested_power, abs_tol=1e-6):
+            return
+
+        self.power = requested_power
+        payload = bytes([0xC7]) + self._encode_power_pct(requested_power)
+        log.info("[RUDA UDP] SET_LASER_POWER %.1f%%", requested_power)
         self._send_packets(payload)

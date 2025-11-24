@@ -36,6 +36,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run commands against the simulated backend with a Tkinter visualization",
     )
+    p.add_argument(
+        "--movement-only",
+        action="store_true",
+        help="Clamp laser power to 0 while still issuing motion to hardware",
+    )
 
     # Common overrides
     p.add_argument("--edge-length-mm", type=float)
@@ -53,6 +58,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Rotary tuning
     p.add_argument("--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)")
     p.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step (driver DIP)")
+    # Backend selection
+    p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
+    p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
 
     p.add_argument("--log-level", default="INFO")
     return p
@@ -86,7 +94,25 @@ def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
 
 def load_config_and_args(
     args: argparse.Namespace,
-) -> Tuple[JointParams, JigParams, MachineParams, str, bool, bool, str, int, int, float, int, float, Optional[int], bool]:
+) -> Tuple[
+    JointParams,
+    JigParams,
+    MachineParams,
+    str,
+    bool,
+    bool,
+    str,
+    int,
+    int,
+    float,
+    int,
+    float,
+    Optional[int],
+    bool,
+    str,
+    str,
+    bool,
+]:
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
     used_default = False
@@ -165,6 +191,9 @@ def load_config_and_args(
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
+    laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
+    rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
+    movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
     if args.ruida_timeout_s is not None:
         ruida_timeout_s = args.ruida_timeout_s
     if args.ruida_source_port is not None:
@@ -173,6 +202,24 @@ def load_config_and_args(
         rotary_steps_per_rev = args.rotary_steps_per_rev
     if args.rotary_microsteps is not None:
         rotary_microsteps = args.rotary_microsteps
+    if args.laser_backend is not None:
+        laser_backend = args.laser_backend
+    if args.rotary_backend is not None:
+        rotary_backend = args.rotary_backend
+    movement_only = movement_only or args.movement_only
+
+    # Default backend selection preserves legacy use_dummy behavior.
+    if laser_backend is None:
+        laser_backend = "dummy" if backend_use_dummy else "ruida"
+    if rotary_backend is None:
+        rotary_backend = "dummy" if backend_use_dummy else "real"
+
+    valid_laser_backends = {"dummy", "ruida"}
+    valid_rotary_backends = {"dummy", "real"}
+    if laser_backend not in valid_laser_backends:
+        raise SystemExit(f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}")
+    if rotary_backend not in valid_rotary_backends:
+        raise SystemExit(f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}")
 
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
@@ -193,4 +240,7 @@ def load_config_and_args(
         rotary_steps_per_rev,
         rotary_microsteps,
         args.simulate,
+        laser_backend,
+        rotary_backend,
+        movement_only,
     )

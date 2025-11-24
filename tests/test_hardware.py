@@ -67,3 +67,17 @@ def test_skeleton_backends_accept_calls():
 
     rotary = RealRotary()
     rotary.rotate_to(30.0, speed_dps=5.0)
+
+
+def test_ruida_movement_only_clamps_power(caplog):
+    ruida = RuidaLaser(host="127.0.0.1", port=50200, dry_run=True, movement_only=True)
+    sent = []
+    ruida._send_packets = lambda payload: sent.append(payload)  # type: ignore[attr-defined]
+
+    with caplog.at_level("INFO"):
+        ruida.set_laser_power(55.0)
+        ruida.set_laser_power(0.0)
+
+    assert any("requested laser power 55.0%" in rec.message for rec in caplog.records)
+    assert ruida.power == 0.0
+    assert len(sent) == 1  # single laser-off packet
