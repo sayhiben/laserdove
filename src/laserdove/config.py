@@ -58,6 +58,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Rotary tuning
     p.add_argument("--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)")
     p.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step (driver DIP)")
+    p.add_argument("--rotary-step-pin", type=int, help="BCM pin for STEP (real rotary only)")
+    p.add_argument("--rotary-dir-pin", type=int, help="BCM pin for DIR (real rotary only)")
+    p.add_argument("--rotary-step-pin-pos", type=int, help="BCM pin for STEP + (optional; defaults to held high)")
+    p.add_argument("--rotary-dir-pin-pos", type=int, help="BCM pin for DIR + (optional; defaults to held high)")
+    p.add_argument("--rotary-enable-pin", type=int, help="BCM pin for ENABLE (optional, active low)")
+    p.add_argument("--rotary-alarm-pin", type=int, help="BCM pin for ALARM input (optional)")
+    p.add_argument("--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)")
     # Backend selection
     p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
     p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
@@ -108,6 +115,13 @@ def load_config_and_args(
     int,
     float,
     Optional[int],
+    Optional[int],
+    Optional[int],
+    Optional[int],
+    Optional[int],
+    Optional[int],
+    Optional[int],
+    bool,
     bool,
     str,
     str,
@@ -191,6 +205,14 @@ def load_config_and_args(
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
+    # Default pins match the current lab wiring (BCM numbers).
+    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", 6)   # PUL-
+    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", 14)    # DIR-
+    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)  # PUL+
+    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 13)    # DIR+
+    rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
+    rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
+    rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
@@ -202,6 +224,20 @@ def load_config_and_args(
         rotary_steps_per_rev = args.rotary_steps_per_rev
     if args.rotary_microsteps is not None:
         rotary_microsteps = args.rotary_microsteps
+    if args.rotary_step_pin is not None:
+        rotary_step_pin = args.rotary_step_pin
+    if args.rotary_dir_pin is not None:
+        rotary_dir_pin = args.rotary_dir_pin
+    if args.rotary_step_pin_pos is not None:
+        rotary_step_pin_pos = args.rotary_step_pin_pos
+    if args.rotary_dir_pin_pos is not None:
+        rotary_dir_pin_pos = args.rotary_dir_pin_pos
+    if args.rotary_enable_pin is not None:
+        rotary_enable_pin = args.rotary_enable_pin
+    if args.rotary_alarm_pin is not None:
+        rotary_alarm_pin = args.rotary_alarm_pin
+    if args.rotary_invert_dir:
+        rotary_invert_dir = True
     if args.laser_backend is not None:
         laser_backend = args.laser_backend
     if args.rotary_backend is not None:
@@ -239,6 +275,13 @@ def load_config_and_args(
         ruida_source_port,
         rotary_steps_per_rev,
         rotary_microsteps,
+        rotary_step_pin,
+        rotary_dir_pin,
+        rotary_step_pin_pos,
+        rotary_dir_pin_pos,
+        rotary_enable_pin,
+        rotary_alarm_pin,
+        rotary_invert_dir,
         args.simulate,
         laser_backend,
         rotary_backend,

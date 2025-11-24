@@ -36,5 +36,10 @@ rotary_backend = "dummy" # "dummy" or "real"
 # Keep the laser off but still move the head when talking to a real Ruida.
 # Useful for first hardware shakedowns without firing the tube.
 movement_only = false
+rotary_step_pin = 6       # BCM pins (match lab wiring: PUL- on GPIO6, PUL+ on GPIO11 held high)
+rotary_dir_pin  = 14      # BCM pin (DIR- on GPIO14, DIR+ on GPIO13 held high)
+rotary_enable_pin = 25    # optional, active low
+rotary_alarm_pin  = 18    # optional input
+rotary_invert_dir = false
 ruida_host = "192.168.1.100"
 ruida_port = 50200

@@ -29,6 +29,8 @@ class GPIOStepperDriver:
         self,
         step_pin: int,
         dir_pin: int,
+        step_pin_pos: Optional[int] = None,
+        dir_pin_pos: Optional[int] = None,
         enable_pin: Optional[int] = None,
         alarm_pin: Optional[int] = None,
         step_high_s: float = 5e-6,
@@ -42,6 +44,8 @@ class GPIOStepperDriver:
         self.GPIO = GPIO
         self.step_pin = step_pin
         self.dir_pin = dir_pin
+        self.step_pin_pos = step_pin_pos
+        self.dir_pin_pos = dir_pin_pos
         self.enable_pin = enable_pin
         self.alarm_pin = alarm_pin
         self.step_high_s = step_high_s
@@ -52,6 +56,10 @@ class GPIOStepperDriver:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(step_pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(dir_pin, GPIO.OUT, initial=GPIO.LOW)
+        if step_pin_pos is not None:
+            GPIO.setup(step_pin_pos, GPIO.OUT, initial=GPIO.HIGH)  # hold PUL+ high
+        if dir_pin_pos is not None:
+            GPIO.setup(dir_pin_pos, GPIO.OUT, initial=GPIO.HIGH)   # hold DIR+ high
         if enable_pin is not None:
             GPIO.setup(enable_pin, GPIO.OUT, initial=GPIO.LOW)
         if alarm_pin is not None:
@@ -66,6 +74,8 @@ class GPIOStepperDriver:
         delay = max(self.step_high_s + self.step_low_s, 1.0 / step_rate_hz)
         direction = GPIO.HIGH if (steps > 0) ^ self.invert_dir else GPIO.LOW
         GPIO.output(self.dir_pin, direction)
+        if self.dir_pin_pos is not None:
+            GPIO.output(self.dir_pin_pos, GPIO.HIGH)
         if self.enable_pin is not None:
             GPIO.output(self.enable_pin, GPIO.LOW)  # active enable low on many drivers
 

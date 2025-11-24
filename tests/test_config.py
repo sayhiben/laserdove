@@ -28,6 +28,13 @@ def make_args(**overrides) -> argparse.Namespace:
         ruida_source_port=None,
         rotary_steps_per_rev=None,
         rotary_microsteps=None,
+        rotary_step_pin=None,
+        rotary_dir_pin=None,
+        rotary_step_pin_pos=None,
+        rotary_dir_pin_pos=None,
+        rotary_enable_pin=None,
+        rotary_alarm_pin=None,
+        rotary_invert_dir=False,
         laser_backend=None,
         rotary_backend=None,
     )
@@ -53,6 +60,13 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
         _,
         _,
         _,
+        _step_pin,
+        _dir_pin,
+        _step_pin_pos,
+        _dir_pin_pos,
+        _enable_pin,
+        _alarm_pin,
+        _invert_dir,
         simulate,
         laser_backend,
         rotary_backend,
@@ -68,8 +82,16 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert use_dummy is True
     assert host == "192.168.1.100"
     assert port == 50200
+    assert simulate is False
     assert laser_backend == "dummy"
     assert rotary_backend == "dummy"
+    assert _step_pin == 6
+    assert _dir_pin == 14
+    assert _step_pin_pos == 11
+    assert _dir_pin_pos == 13
+    assert _enable_pin is None
+    assert _alarm_pin is None
+    assert _invert_dir is False
     assert movement_only is False
 
 
@@ -115,11 +137,18 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         use_dummy,
         host,
         port,
-        _,
-        _,
-        _,
-        _,
-        _,
+        _magic,
+        _timeout,
+        _src_port,
+        _steps_per_rev,
+        _microsteps,
+        _step_pin,
+        _dir_pin,
+        _step_pin_pos,
+        _dir_pin_pos,
+        _enable_pin,
+        _alarm_pin,
+        _invert_dir,
         simulate,
         laser_backend,
         rotary_backend,
@@ -157,6 +186,11 @@ def test_backend_overrides_and_movement_only(tmp_path):
         movement_only = true
         ruida_host = "10.0.0.5"
         ruida_port = 60000
+        rotary_step_pin = 23
+        rotary_dir_pin = 24
+        rotary_enable_pin = 25
+        rotary_alarm_pin = 18
+        rotary_invert_dir = true
         """
     )
     args = make_args(
@@ -179,6 +213,13 @@ def test_backend_overrides_and_movement_only(tmp_path):
         _src_port,
         _steps_per_rev,
         _microsteps,
+        _step_pin,
+        _dir_pin,
+        _step_pin_pos,
+        _dir_pin_pos,
+        _enable_pin,
+        _alarm_pin,
+        _invert,
         _simulate,
         laser_backend,
         rotary_backend,
@@ -191,3 +232,10 @@ def test_backend_overrides_and_movement_only(tmp_path):
     assert laser_backend == "ruida"
     assert rotary_backend == "dummy"  # CLI override wins
     assert movement_only is True
+    assert _step_pin == 23
+    assert _dir_pin == 24
+    assert _step_pin_pos == 11  # defaults remain unless overridden
+    assert _dir_pin_pos == 13
+    assert _enable_pin == 25
+    assert _alarm_pin == 18
+    assert _invert is True
