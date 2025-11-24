@@ -33,11 +33,12 @@ z_zero_pin_mm       = 0.0
 use_dummy = true
 laser_backend = "dummy"  # "dummy" or "ruida"
 rotary_backend = "dummy" # "dummy" or "real"
+rotary_pin_numbering = "board"  # "board" for physical pin numbers, "bcm" for BCM
 # Keep the laser off but still move the head when talking to a real Ruida.
 # Useful for first hardware shakedowns without firing the tube.
 movement_only = false
-rotary_step_pin_pos = 17  # PUL+ (default working wiring; PUL- tied to GND)
-rotary_dir_pin_pos  = 27  # DIR+ (DIR- tied to GND)
+rotary_step_pin_pos = 11  # PUL+ (physical pin 11; PUL- tied to GND)
+rotary_dir_pin_pos  = 13  # DIR+ (physical pin 13; DIR- tied to GND)
 # rotary_step_pin = 6       # optional PUL- if you drive negative side instead of PUL+
 # rotary_dir_pin  = 14      # optional DIR- if you drive negative side instead of DIR+
 # rotary_enable_pin = 25    # optional, active low (omit if not wired)

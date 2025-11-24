@@ -65,6 +65,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--rotary-enable-pin", type=int, help="BCM pin for ENABLE (optional, active low)")
     p.add_argument("--rotary-alarm-pin", type=int, help="BCM pin for ALARM input (optional)")
     p.add_argument("--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)")
+    p.add_argument("--rotary-pin-numbering", choices=["bcm", "board"], default="board", help="Pin numbering scheme for rotary GPIO (BCM vs physical)")
     # Backend selection
     p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
     p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
@@ -121,6 +122,7 @@ def load_config_and_args(
     Optional[int],
     Optional[int],
     Optional[int],
+    str,
     bool,
     bool,
     str,
@@ -205,11 +207,12 @@ def load_config_and_args(
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
-    # Default pins match the known working script (BCM): pulse PUL+/DIR+, PUL-/DIR- to GND.
+    # Default pins match the known working script (BOARD/physical numbers): pulse PUL+/DIR+, PUL-/DIR- tied to GND.
+    rotary_pin_numbering = _dict_get_nested(cfg_data, "backend.rotary_pin_numbering", "board").lower()
     rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)   # PUL-
     rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)    # DIR-
-    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 17)  # PUL+
-    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 27)    # DIR+
+    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)  # PUL+ (physical pin 11)
+    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 13)    # DIR+ (physical pin 13)
     rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
@@ -238,6 +241,8 @@ def load_config_and_args(
         rotary_alarm_pin = args.rotary_alarm_pin
     if args.rotary_invert_dir:
         rotary_invert_dir = True
+    if args.rotary_pin_numbering is not None:
+        rotary_pin_numbering = args.rotary_pin_numbering.lower()
     if args.laser_backend is not None:
         laser_backend = args.laser_backend
     if args.rotary_backend is not None:
@@ -256,6 +261,8 @@ def load_config_and_args(
         raise SystemExit(f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}")
     if rotary_backend not in valid_rotary_backends:
         raise SystemExit(f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}")
+    if rotary_pin_numbering not in ("bcm", "board"):
+        raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
 
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
@@ -282,6 +289,7 @@ def load_config_and_args(
         rotary_enable_pin,
         rotary_alarm_pin,
         rotary_invert_dir,
+        rotary_pin_numbering,
         args.simulate,
         laser_backend,
         rotary_backend,

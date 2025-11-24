@@ -36,6 +36,7 @@ class GPIOStepperDriver:
         step_high_s: float = 5e-6,
         step_low_s: float = 5e-6,
         invert_dir: bool = False,
+        pin_mode: str = "BOARD",
     ) -> None:
         try:
             import RPi.GPIO as GPIO  # type: ignore
@@ -65,7 +66,8 @@ class GPIOStepperDriver:
         self.invert_dir = invert_dir
         self.busy = False
 
-        GPIO.setmode(GPIO.BCM)
+        mode = GPIO.BCM if pin_mode.upper() == "BCM" else GPIO.BOARD
+        GPIO.setmode(mode)
         GPIO.setup(self.step_pulse_pin, GPIO.OUT, initial=GPIO.LOW)
         if self.step_static_pin is not None:
             GPIO.setup(self.step_static_pin, GPIO.OUT, initial=self.step_static_level)

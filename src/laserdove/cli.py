@@ -49,6 +49,7 @@ def main() -> None:
         rotary_enable_pin,
         rotary_alarm_pin,
         rotary_invert_dir,
+        rotary_pin_numbering,
         simulate,
         laser_backend,
         rotary_backend,
@@ -117,6 +118,7 @@ def main() -> None:
                         enable_pin=rotary_enable_pin,
                         alarm_pin=rotary_alarm_pin,
                         invert_dir=rotary_invert_dir,
+                        pin_mode=rotary_pin_numbering.upper(),
                     )
                 except Exception as e:
                     log.warning("Failed to initialize GPIO rotary driver; using logging driver instead: %s", e)

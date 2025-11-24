@@ -5,6 +5,7 @@ from laserdove.hardware.rotary import GPIOStepperDriver
 
 class FakeGPIO:
     BCM = "BCM"
+    BOARD = "BOARD"
     OUT = "OUT"
     LOW = 0
     HIGH = 1
@@ -43,6 +44,7 @@ def test_gpio_stepper_driver(monkeypatch):
         step_high_s=0.0,
         step_low_s=0.0,
         invert_dir=False,
+        pin_mode="BCM",
     )
     driver.move_steps(2, step_rate_hz=1000.0)
     assert fake_gpio.outputs  # pulses recorded
