@@ -66,6 +66,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--rotary-alarm-pin", type=int, help="BCM pin for ALARM input (optional)")
     p.add_argument("--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)")
     p.add_argument("--rotary-pin-numbering", choices=["bcm", "board"], default="board", help="Pin numbering scheme for rotary GPIO (BCM vs physical)")
+    p.add_argument("--rotary-max-step-rate-hz", type=float, help="Cap rotary step pulse rate (Hz)")
     # Backend selection
     p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
     p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
@@ -122,6 +123,7 @@ def load_config_and_args(
     Optional[int],
     Optional[int],
     Optional[int],
+    Optional[float],
     str,
     bool,
     bool,
@@ -216,6 +218,7 @@ def load_config_and_args(
     rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
+    rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 1200.0)
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
@@ -243,6 +246,8 @@ def load_config_and_args(
         rotary_invert_dir = True
     if args.rotary_pin_numbering is not None:
         rotary_pin_numbering = args.rotary_pin_numbering.lower()
+    if args.rotary_max_step_rate_hz is not None:
+        rotary_max_step_rate_hz = args.rotary_max_step_rate_hz
     if args.laser_backend is not None:
         laser_backend = args.laser_backend
     if args.rotary_backend is not None:
@@ -289,6 +294,7 @@ def load_config_and_args(
         rotary_enable_pin,
         rotary_alarm_pin,
         rotary_invert_dir,
+        rotary_max_step_rate_hz,
         rotary_pin_numbering,
         args.simulate,
         laser_backend,

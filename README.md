@@ -152,6 +152,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional BCM pins for enable (active low) and alarm input (omit if not wired).     | unset                                      |
 | `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                 | disabled                                   |
 | `--rotary-pin-numbering {bcm,board}` | Pin numbering scheme for rotary GPIO (BCM vs physical BOARD).                         | `board`                                    |
+| `--rotary-max-step-rate-hz` | Cap rotary step pulse rate (Hz); prevents over-speeding when using high pulses/rev.     | 1200.0                                     |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
 | `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                           | unset (use config/built‑in)                |
 | `--num-tails`          | Override `joint.num_tails`.                                                                    | unset (use config/built‑in)                |
@@ -211,7 +212,7 @@ ruida_port = 50200
 
 - `use_dummy` keeps the legacy "all dummy vs all real" switch; `laser_backend`/`rotary_backend` override each side independently (e.g., real rotary + dummy laser).  
 - `movement_only = true` sends a single laser-off to Ruida then suppresses all further power changes while still issuing moves—useful for motion shakedowns on real hardware.  
-- `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev` default 4000 pulses/rev, `backend.rotary_microsteps` multiplier).
+- `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev` default 4000 pulses/rev, `backend.rotary_microsteps` multiplier, `backend.rotary_max_step_rate_hz` cap).
 - Default rotary pins match the working Pi script (physical BOARD numbering): pulse PUL+/DIR+ (`rotary_step_pin_pos=11`, `rotary_dir_pin_pos=13`) with PUL-/DIR- tied to GND. You can instead drive the negative side (e.g., BCM6/14) by setting `rotary_step_pin`/`rotary_dir_pin` and leaving the opposite side tied high.
 - Motion-only presets:
   - Rotary-only checkout: `laser_backend="dummy"`, `rotary_backend="real"`, `movement_only=true`.

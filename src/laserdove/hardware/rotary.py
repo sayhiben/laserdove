@@ -129,15 +129,18 @@ class RealRotary(RotaryInterface):
         steps_per_rev: float | None = 4000.0,
         microsteps: int | None = None,
         driver: Optional[object] = None,
+        max_step_rate_hz: float | None = 1200.0,
     ) -> None:
         self.angle = 0.0
         self.steps_per_rev = steps_per_rev
         self.microsteps = microsteps
         self.driver = driver or LoggingStepperDriver()
+        self.max_step_rate_hz = max_step_rate_hz
         log.info(
-            "RealRotary initialized (steps_per_rev=%s microsteps=%s)",
+            "RealRotary initialized (steps_per_rev=%s microsteps=%s max_step_rate_hz=%s)",
             steps_per_rev,
             microsteps,
+            max_step_rate_hz,
         )
 
     def rotate_to(self, angle_deg: float, speed_dps: float) -> None:
@@ -149,6 +152,13 @@ class RealRotary(RotaryInterface):
             steps = int(round((delta / 360.0) * self.steps_per_rev * micro))
             duration_s = abs(delta) / speed_dps if speed_dps > 0 else 0.0
             step_rate_hz = (abs(steps) / duration_s) if duration_s > 0 else 0.0
+            if self.max_step_rate_hz and step_rate_hz > self.max_step_rate_hz:
+                log.info(
+                    "[ROTARY] capping step rate from %.1f Hz to %.1f Hz",
+                    step_rate_hz,
+                    self.max_step_rate_hz,
+                )
+                step_rate_hz = self.max_step_rate_hz
             log.debug("Computed step target: %d steps (microsteps=%s, rate=%.1f Hz)", steps, micro, step_rate_hz)
             if hasattr(self.driver, "move_steps"):
                 try:

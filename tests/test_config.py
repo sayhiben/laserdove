@@ -35,6 +35,7 @@ def make_args(**overrides) -> argparse.Namespace:
         rotary_enable_pin=None,
         rotary_alarm_pin=None,
         rotary_invert_dir=False,
+        rotary_max_step_rate_hz=None,
         rotary_pin_numbering="board",
         laser_backend=None,
         rotary_backend=None,
@@ -68,6 +69,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
         _enable_pin,
         _alarm_pin,
         _invert_dir,
+        _max_step_rate,
         _pin_scheme,
         simulate,
         laser_backend,
@@ -94,6 +96,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert _enable_pin is None
     assert _alarm_pin is None
     assert _invert_dir is False
+    assert _max_step_rate == 1200.0
     assert _pin_scheme == "board"
     assert movement_only is False
 
@@ -152,6 +155,7 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         _enable_pin,
         _alarm_pin,
         _invert_dir,
+        _max_step_rate,
         _pin_scheme,
         simulate,
         laser_backend,
@@ -224,6 +228,7 @@ def test_backend_overrides_and_movement_only(tmp_path):
         _enable_pin,
         _alarm_pin,
         _invert,
+        _max_step_rate,
         _pin_scheme,
         _simulate,
         laser_backend,
@@ -244,4 +249,5 @@ def test_backend_overrides_and_movement_only(tmp_path):
     assert _enable_pin == 25
     assert _alarm_pin == 18
     assert _invert is True
+    assert _max_step_rate == 1200.0
     assert _pin_scheme == "board"

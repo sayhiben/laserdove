@@ -11,12 +11,12 @@ class CaptureDriver:
 
 def test_real_rotary_computes_steps_and_calls_driver():
     driver = CaptureDriver()
-    rotary = RealRotary(steps_per_rev=4000.0, microsteps=1, driver=driver)
-    rotary.rotate_to(90.0, speed_dps=180.0)  # quarter turn
+    rotary = RealRotary(steps_per_rev=4000.0, microsteps=1, driver=driver, max_step_rate_hz=1200.0)
+    rotary.rotate_to(90.0, speed_dps=180.0)  # quarter turn => raw rate 2000 Hz, capped to 1200
     assert driver.calls, "Driver should be invoked"
     steps, rate = driver.calls[0]
     assert steps == 1000  # 4000 pulses/rev * 0.25 turn
-    assert rate > 0
+    assert rate == 1200.0
 
 
 def test_real_rotary_skips_when_no_steps_per_rev():

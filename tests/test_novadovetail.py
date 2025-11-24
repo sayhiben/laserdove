@@ -57,6 +57,7 @@ def test_main_exits_on_validation_error(monkeypatch):
             None,
             None,
             None,
+            None,
             "board",
             False,
             False,

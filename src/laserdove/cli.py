@@ -49,6 +49,7 @@ def main() -> None:
         rotary_enable_pin,
         rotary_alarm_pin,
         rotary_invert_dir,
+        rotary_max_step_rate_hz,
         rotary_pin_numbering,
         simulate,
         laser_backend,
@@ -129,6 +130,7 @@ def main() -> None:
                 steps_per_rev=rotary_steps_per_rev,
                 microsteps=rotary_microsteps,
                 driver=driver,
+                max_step_rate_hz=rotary_max_step_rate_hz,
             )
         else:
             raise ValueError(f"Unsupported rotary backend {rotary_backend}")
