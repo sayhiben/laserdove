@@ -211,7 +211,7 @@ ruida_port = 50200
 
 - `use_dummy` keeps the legacy "all dummy vs all real" switch; `laser_backend`/`rotary_backend` override each side independently (e.g., real rotary + dummy laser).  
 - `movement_only = true` sends a single laser-off to Ruida then suppresses all further power changes while still issuing moves—useful for motion shakedowns on real hardware.  
-- `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev`, `backend.rotary_microsteps`).
+- `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev` default 4000 pulses/rev, `backend.rotary_microsteps` multiplier).
 - Default rotary pins match the working Pi script (physical BOARD numbering): pulse PUL+/DIR+ (`rotary_step_pin_pos=11`, `rotary_dir_pin_pos=13`) with PUL-/DIR- tied to GND. You can instead drive the negative side (e.g., BCM6/14) by setting `rotary_step_pin`/`rotary_dir_pin` and leaving the opposite side tied high.
 - Motion-only presets:
   - Rotary-only checkout: `laser_backend="dummy"`, `rotary_backend="real"`, `movement_only=true`.

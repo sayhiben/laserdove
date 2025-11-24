@@ -126,7 +126,7 @@ class RealRotary(RotaryInterface):
 
     def __init__(
         self,
-        steps_per_rev: float | None = 200.0,
+        steps_per_rev: float | None = 4000.0,
         microsteps: int | None = None,
         driver: Optional[object] = None,
     ) -> None:

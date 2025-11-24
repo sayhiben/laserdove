@@ -205,7 +205,7 @@ def load_config_and_args(
     backend_use_dummy, backend_host, backend_port, ruida_magic = load_backend_config(cfg_data)
     ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
-    rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
+    rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
     # Default pins match the known working script (BOARD/physical numbers): pulse PUL+/DIR+, PUL-/DIR- tied to GND.
     rotary_pin_numbering = _dict_get_nested(cfg_data, "backend.rotary_pin_numbering", "board").lower()
