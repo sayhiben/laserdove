@@ -96,7 +96,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert _enable_pin is None
     assert _alarm_pin is None
     assert _invert_dir is False
-    assert _max_step_rate == 1200.0
+    assert _max_step_rate == 500.0
     assert _pin_scheme == "board"
     assert movement_only is False
 
@@ -249,5 +249,5 @@ def test_backend_overrides_and_movement_only(tmp_path):
     assert _enable_pin == 25
     assert _alarm_pin == 18
     assert _invert is True
-    assert _max_step_rate == 1200.0
+    assert _max_step_rate == 500.0
     assert _pin_scheme == "board"

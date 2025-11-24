@@ -129,7 +129,7 @@ class RealRotary(RotaryInterface):
         steps_per_rev: float | None = 4000.0,
         microsteps: int | None = None,
         driver: Optional[object] = None,
-        max_step_rate_hz: float | None = 1200.0,
+        max_step_rate_hz: float | None = 500.0,
     ) -> None:
         self.angle = 0.0
         self.steps_per_rev = steps_per_rev

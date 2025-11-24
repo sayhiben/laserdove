@@ -218,7 +218,7 @@ def load_config_and_args(
     rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
-    rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 1200.0)
+    rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 500.0)
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))

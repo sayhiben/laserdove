@@ -124,6 +124,16 @@ def plan_tail_board(
             comment="Tail: laser off",
         ))
 
+    # Return to a known origin after finishing tails.
+    commands.append(Command(
+        type=CommandType.MOVE,
+        x=0.0,
+        y=0.0,
+        z=machine_params.z_zero_tail_mm,
+        speed_mm_s=machine_params.rapid_speed_mm_s,
+        comment="Tail: return to origin",
+    ))
+
     return commands
 
 
@@ -354,5 +364,21 @@ def plan_pin_board(
                 comment="Pin: laser off",
             ))
             current_y = y_cut
+
+    # Return rotary and head to zeroed positions after pins.
+    commands.append(Command(
+        type=CommandType.ROTATE,
+        angle_deg=jig_params.rotation_zero_deg,
+        speed_mm_s=jig_params.rotation_speed_dps,
+        comment="Rotate jig back to zero",
+    ))
+    commands.append(Command(
+        type=CommandType.MOVE,
+        x=0.0,
+        y=0.0,
+        z=machine_params.z_zero_pin_mm,
+        speed_mm_s=machine_params.rapid_speed_mm_s,
+        comment="Pin: return to origin",
+    ))
 
     return commands

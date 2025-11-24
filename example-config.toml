@@ -36,7 +36,7 @@ rotary_backend = "dummy" # "dummy" or "real"
 rotary_steps_per_rev = 4000.0  # pulses per rev from driver (CL57T default)
 rotary_microsteps = 1         # optional extra microstep multiplier
 rotary_pin_numbering = "board"  # "board" for physical pin numbers, "bcm" for BCM
-rotary_max_step_rate_hz = 1200.0
+rotary_max_step_rate_hz = 500.0
 # Keep the laser off but still move the head when talking to a real Ruida.
 # Useful for first hardware shakedowns without firing the tube.
 movement_only = false
