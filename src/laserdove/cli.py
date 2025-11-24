@@ -107,7 +107,7 @@ def main() -> None:
             rotary = DummyRotary()
         elif rotary_backend == "real":
             driver = LoggingStepperDriver()
-            if rotary_step_pin is not None and rotary_dir_pin is not None:
+            if any(pin is not None for pin in (rotary_step_pin, rotary_step_pin_pos)) and any(pin is not None for pin in (rotary_dir_pin, rotary_dir_pin_pos)):
                 try:
                     driver = GPIOStepperDriver(
                         step_pin=rotary_step_pin,

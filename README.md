@@ -147,8 +147,8 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs only, ruida for UDP motion).                     | from config/`use_dummy`                    |
 | `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs only, real for stepper GPIO).                    | from config/`use_dummy`                    |
 | `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                   | disabled                                   |
-| `--rotary-step-pin`, `--rotary-dir-pin` | BCM pins for STEP-/DIR- when `--rotary-backend real`.                               | 6 / 14                                     |
-| `--rotary-step-pin-pos`, `--rotary-dir-pin-pos` | BCM pins for STEP+/DIR+ (held HIGH to source opto current).                        | 11 / 13                                    |
+| `--rotary-step-pin`, `--rotary-dir-pin` | BCM pins for STEP-/DIR- when `--rotary-backend real`.                               | unset (use STEP+/DIR+ defaults)            |
+| `--rotary-step-pin-pos`, `--rotary-dir-pin-pos` | BCM pins for STEP+/DIR+ (pulse these if PUL-/DIR- tied to GND).                     | 17 / 27                                    |
 | `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional BCM pins for enable (active low) and alarm input (omit if not wired).     | unset                                      |
 | `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                 | disabled                                   |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
@@ -211,12 +211,12 @@ ruida_port = 50200
 - `use_dummy` keeps the legacy "all dummy vs all real" switch; `laser_backend`/`rotary_backend` override each side independently (e.g., real rotary + dummy laser).  
 - `movement_only = true` sends a single laser-off to Ruida then suppresses all further power changes while still issuing moves—useful for motion shakedowns on real hardware.  
 - `RuidaLaser` uses UDP to `ruida_host:ruida_port` (default 50200/40200, timeout `backend.ruida_timeout_s`, source port `backend.ruida_source_port`, swizzle `backend.ruida_magic`). `RealRotary` drives the stepper (`backend.rotary_steps_per_rev`, `backend.rotary_microsteps`).
-- Default rotary pins match the current lab wiring (BCM): `rotary_step_pin=6` (PUL-), `rotary_dir_pin=14` (DIR-), `rotary_step_pin_pos=11` (PUL+), `rotary_dir_pin_pos=13` (DIR+). The `+` pins are held HIGH to source the opto inputs.
+- Default rotary pins match the working Pi script: pulse PUL+/DIR+ (`rotary_step_pin_pos=17`, `rotary_dir_pin_pos=27`) with PUL-/DIR- tied to GND. You can instead drive the negative side by setting `rotary_step_pin`/`rotary_dir_pin` and leaving the positive side tied high.
 - Motion-only presets:
   - Rotary-only checkout: `laser_backend="dummy"`, `rotary_backend="real"`, `movement_only=true`.
   - XY-only checkout: `laser_backend="ruida"`, `rotary_backend="dummy"`, `movement_only=true`.
   - Combined motion without firing: `laser_backend="ruida"`, `rotary_backend="real"`, `movement_only=true`.
-- Real rotary GPIO pins (BCM numbering): `backend.rotary_step_pin`/`rotary_dir_pin` (STEP-/DIR-, default 6/14), `rotary_step_pin_pos`/`rotary_dir_pin_pos` (STEP+/DIR+, default 11/13, held HIGH), optional `rotary_enable_pin` (active low) and `rotary_alarm_pin` (input); omit optional pins if not wired; `rotary_invert_dir` (boolean).
+- Real rotary GPIO pins (BCM numbering): `backend.rotary_step_pin_pos`/`rotary_dir_pin_pos` (STEP+/DIR+, default 17/27, pulse these with PUL-/DIR- to GND), optional `rotary_step_pin`/`rotary_dir_pin` if you prefer to pulse the negative side (tie the opposite side high), optional `rotary_enable_pin` (active low) and `rotary_alarm_pin` (input); omit optional pins if not wired; `rotary_invert_dir` (boolean).
 
 `RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
 

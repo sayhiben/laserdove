@@ -85,10 +85,10 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert simulate is False
     assert laser_backend == "dummy"
     assert rotary_backend == "dummy"
-    assert _step_pin == 6
-    assert _dir_pin == 14
-    assert _step_pin_pos == 11
-    assert _dir_pin_pos == 13
+    assert _step_pin is None
+    assert _dir_pin is None
+    assert _step_pin_pos == 17
+    assert _dir_pin_pos == 27
     assert _enable_pin is None
     assert _alarm_pin is None
     assert _invert_dir is False
@@ -234,8 +234,8 @@ def test_backend_overrides_and_movement_only(tmp_path):
     assert movement_only is True
     assert _step_pin == 23
     assert _dir_pin == 24
-    assert _step_pin_pos == 11  # defaults remain unless overridden
-    assert _dir_pin_pos == 13
+    assert _step_pin_pos == 17  # defaults remain unless overridden
+    assert _dir_pin_pos == 27
     assert _enable_pin == 25
     assert _alarm_pin == 18
     assert _invert is True

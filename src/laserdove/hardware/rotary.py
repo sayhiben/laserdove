@@ -27,8 +27,8 @@ class GPIOStepperDriver:
 
     def __init__(
         self,
-        step_pin: int,
-        dir_pin: int,
+        step_pin: Optional[int] = None,
+        dir_pin: Optional[int] = None,
         step_pin_pos: Optional[int] = None,
         dir_pin_pos: Optional[int] = None,
         enable_pin: Optional[int] = None,
@@ -42,10 +42,22 @@ class GPIOStepperDriver:
         except Exception as e:  # pragma: no cover - hardware only
             raise RuntimeError("RPi.GPIO required for GPIOStepperDriver") from e
         self.GPIO = GPIO
-        self.step_pin = step_pin
-        self.dir_pin = dir_pin
-        self.step_pin_pos = step_pin_pos
-        self.dir_pin_pos = dir_pin_pos
+        if step_pin is None and step_pin_pos is None:
+            raise ValueError("Provide at least one of step_pin or step_pin_pos")
+        if dir_pin is None and dir_pin_pos is None:
+            raise ValueError("Provide at least one of dir_pin or dir_pin_pos")
+
+        # Active pins: whichever side we toggle. Static pins are held to bias the optos.
+        self.step_pulse_pin = step_pin if step_pin is not None else step_pin_pos
+        self.step_pulse_is_pos = step_pin is None
+        self.step_static_pin = None if step_pin is None or step_pin_pos is None else (step_pin_pos if step_pin is not None else step_pin)
+        self.step_static_level = GPIO.HIGH if not self.step_pulse_is_pos else GPIO.LOW
+
+        self.dir_active_pin = dir_pin if dir_pin is not None else dir_pin_pos
+        self.dir_active_is_pos = dir_pin is None
+        self.dir_static_pin = None if dir_pin is None or dir_pin_pos is None else (dir_pin_pos if dir_pin is not None else dir_pin)
+        self.dir_static_level = GPIO.HIGH if not self.dir_active_is_pos else GPIO.LOW
+
         self.enable_pin = enable_pin
         self.alarm_pin = alarm_pin
         self.step_high_s = step_high_s
@@ -54,12 +66,12 @@ class GPIOStepperDriver:
         self.busy = False
 
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(step_pin, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(dir_pin, GPIO.OUT, initial=GPIO.LOW)
-        if step_pin_pos is not None:
-            GPIO.setup(step_pin_pos, GPIO.OUT, initial=GPIO.HIGH)  # hold PUL+ high
-        if dir_pin_pos is not None:
-            GPIO.setup(dir_pin_pos, GPIO.OUT, initial=GPIO.HIGH)   # hold DIR+ high
+        GPIO.setup(self.step_pulse_pin, GPIO.OUT, initial=GPIO.LOW)
+        if self.step_static_pin is not None:
+            GPIO.setup(self.step_static_pin, GPIO.OUT, initial=self.step_static_level)
+        GPIO.setup(self.dir_active_pin, GPIO.OUT, initial=GPIO.LOW)
+        if self.dir_static_pin is not None:
+            GPIO.setup(self.dir_static_pin, GPIO.OUT, initial=self.dir_static_level)
         if enable_pin is not None:
             GPIO.setup(enable_pin, GPIO.OUT, initial=GPIO.LOW)
         if alarm_pin is not None:
@@ -73,9 +85,9 @@ class GPIOStepperDriver:
             step_rate_hz = 200.0  # fallback default
         delay = max(self.step_high_s + self.step_low_s, 1.0 / step_rate_hz)
         direction = GPIO.HIGH if (steps > 0) ^ self.invert_dir else GPIO.LOW
-        GPIO.output(self.dir_pin, direction)
-        if self.dir_pin_pos is not None:
-            GPIO.output(self.dir_pin_pos, GPIO.HIGH)
+        GPIO.output(self.dir_active_pin, direction)
+        if self.dir_static_pin is not None:
+            GPIO.output(self.dir_static_pin, self.dir_static_level)
         if self.enable_pin is not None:
             GPIO.output(self.enable_pin, GPIO.LOW)  # active enable low on many drivers
 
@@ -92,9 +104,9 @@ class GPIOStepperDriver:
 
         self.busy = True
         for _ in range(abs(steps)):
-            GPIO.output(self.step_pin, GPIO.HIGH)
+            GPIO.output(self.step_pulse_pin, GPIO.HIGH)
             time.sleep(self.step_high_s)
-            GPIO.output(self.step_pin, GPIO.LOW)
+            GPIO.output(self.step_pulse_pin, GPIO.LOW)
             time.sleep(max(0.0, delay - self.step_high_s))
         # leave enable as-is to allow holding torque
         self.busy = False

@@ -205,11 +205,11 @@ def load_config_and_args(
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 200.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
-    # Default pins match the current lab wiring (BCM numbers).
-    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", 6)   # PUL-
-    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", 14)    # DIR-
-    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)  # PUL+
-    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 13)    # DIR+
+    # Default pins match the known working script (BCM): pulse PUL+/DIR+, PUL-/DIR- to GND.
+    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)   # PUL-
+    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)    # DIR-
+    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 17)  # PUL+
+    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 27)    # DIR+
     rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))

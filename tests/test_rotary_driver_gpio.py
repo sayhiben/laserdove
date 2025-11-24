@@ -34,11 +34,11 @@ def test_gpio_stepper_driver(monkeypatch):
     # speed sleeps; patch time.sleep to no-op
     monkeypatch.setattr("laserdove.hardware.rotary.time.sleep", lambda _: None)
     driver = GPIOStepperDriver(
-        step_pin=1,
-        dir_pin=2,
+        step_pin=None,
+        dir_pin=None,
         step_pin_pos=4,
         dir_pin_pos=5,
-        enable_pin=3,
+        enable_pin=None,
         alarm_pin=None,
         step_high_s=0.0,
         step_low_s=0.0,
@@ -46,5 +46,5 @@ def test_gpio_stepper_driver(monkeypatch):
     )
     driver.move_steps(2, step_rate_hz=1000.0)
     assert fake_gpio.outputs  # pulses recorded
-    assert (4, fake_gpio.OUT, fake_gpio.HIGH) in fake_gpio.setup_calls
-    assert (5, fake_gpio.OUT, fake_gpio.HIGH) in fake_gpio.setup_calls
+    assert (4, fake_gpio.OUT, fake_gpio.LOW) in fake_gpio.setup_calls  # pulse pin init low
+    assert (5, fake_gpio.OUT, fake_gpio.LOW) in fake_gpio.setup_calls
