@@ -264,9 +264,8 @@ def plan_pin_board(
     }
 
     for rotation_deg, sides in sides_by_angle.items():
-        # Center-outward by Y
-        ordered_indices = center_outward_indices([side.y_boundary_mm for side in sides])
-        ordered_sides = [sides[index] for index in ordered_indices]
+        # Process in ascending Y to minimize travel swings.
+        ordered_sides = sorted(sides, key=lambda s: s.y_boundary_mm)
 
         commands.append(Command(
             type=CommandType.ROTATE,
