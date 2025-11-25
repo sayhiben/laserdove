@@ -14,9 +14,13 @@ class FakeGPIO:
         self.mode = None
         self.setup_calls = []
         self.outputs = []
+        self.warnings_disabled = False
 
     def setmode(self, mode):
         self.mode = mode
+
+    def setwarnings(self, flag):
+        self.warnings_disabled = flag
 
     def setup(self, pin, mode, initial=None):
         self.setup_calls.append((pin, mode, initial))

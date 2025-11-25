@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Iterable, Callable, Dict
+from typing import Iterable, Callable, Dict, List
 
 from ..model import Command, CommandType
 
@@ -75,6 +75,11 @@ def execute_commands(
     """
     Interpret Command objects and call the appropriate laser/rotary methods.
     """
+    # Track drivers with cleanup to release GPIO pins after the run.
+    cleanup_funcs: List[Callable[[], None]] = []
+    for dev in (laser, rotary):
+        if hasattr(dev, "cleanup") and callable(getattr(dev, "cleanup")):
+            cleanup_funcs.append(getattr(dev, "cleanup"))
 
     def handle_move(command: Command) -> None:
         laser.move(x=command.x, y=command.y, z=command.z, speed=command.speed_mm_s)
@@ -107,11 +112,18 @@ def execute_commands(
         CommandType.DWELL: handle_dwell,
     }
 
-    for command in commands:
-        if command.comment:
-            log.debug("# %s", command.comment)
+    try:
+        for command in commands:
+            if command.comment:
+                log.debug("# %s", command.comment)
 
-        handler = dispatch.get(command.type)
-        if handler is None:
-            raise ValueError(f"Unsupported command type {command.type}")
-        handler(command)
+            handler = dispatch.get(command.type)
+            if handler is None:
+                raise ValueError(f"Unsupported command type {command.type}")
+            handler(command)
+    finally:
+        for cleanup in cleanup_funcs:
+            try:
+                cleanup()
+            except Exception:
+                log.debug("Cleanup failed", exc_info=True)

@@ -43,6 +43,7 @@ class GPIOStepperDriver:
         except Exception as e:  # pragma: no cover - hardware only
             raise RuntimeError("RPi.GPIO required for GPIOStepperDriver") from e
         self.GPIO = GPIO
+        GPIO.setwarnings(False)  # avoid noisy reuse warnings; we'll clean up pins we touch
         if step_pin is None and step_pin_pos is None:
             raise ValueError("Provide at least one of step_pin or step_pin_pos")
         if dir_pin is None and dir_pin_pos is None:
@@ -114,6 +115,24 @@ class GPIOStepperDriver:
         self.busy = False
         if alarm_active():
             raise RuntimeError("Rotary driver alarm active after move")
+
+    def cleanup(self) -> None:
+        """Release GPIO pins touched by this driver."""
+        try:
+            pins = [
+                p for p in (
+                    self.step_pulse_pin,
+                    self.step_static_pin,
+                    self.dir_active_pin,
+                    self.dir_static_pin,
+                    self.enable_pin,
+                    self.alarm_pin,
+                ) if p is not None
+            ]
+            if pins:
+                self.GPIO.cleanup(pins)
+        except Exception:
+            pass
 
 
 class RealRotary(RotaryInterface):
