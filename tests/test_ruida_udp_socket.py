@@ -27,9 +27,25 @@ class DummySock:
         pass
 
 
+def _ready_responses(laser: RuidaLaser):
+    def make_payload(address: bytes, data: bytes) -> bytes:
+        payload = b"\xDA\x01" + address + data
+        swizzled = laser._swizzle(payload)
+        return laser._checksum(swizzled) + swizzled
+
+    return [
+        bytes([RuidaLaser.ACK]),
+        make_payload(RuidaLaser.MEM_MACHINE_STATUS, (0).to_bytes(4, "big")),
+        bytes([RuidaLaser.ACK]),
+        make_payload(RuidaLaser.MEM_CURRENT_X, laser._encode_abscoord_mm(laser.x)),
+        bytes([RuidaLaser.ACK]),
+        make_payload(RuidaLaser.MEM_CURRENT_Y, laser._encode_abscoord_mm(laser.y)),
+    ]
+
+
 def test_ruida_udp_send_with_ack(monkeypatch):
     # First packet gets NACK then ACK, second packet ACK.
-    dummy = DummySock([bytes([0x46]), bytes([0xC6]), bytes([0xC6])])
+    dummy = DummySock([])
 
     def fake_socket(*args, **kwargs):
         return dummy
@@ -42,6 +58,7 @@ def test_ruida_udp_send_with_ack(monkeypatch):
         timeout_s=0.1,
         socket_factory=lambda *args, **kwargs: dummy,
     )
+    dummy.responses = _ready_responses(laser) + [bytes([0x46]), bytes([0xC6]), bytes([0xC6])]
     # Force small MTU to produce multiple chunks.
     laser.MTU = 4
     laser.set_laser_power(10.0)
