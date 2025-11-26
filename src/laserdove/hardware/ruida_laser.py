@@ -383,11 +383,12 @@ class RuidaLaser:
         # Wait for completion; treat PART_END as done.
         self._wait_for_ready(require_busy_transition=True)
 
-    def run_sequence_with_rotary(self, commands: Iterable, rotary) -> None:
+    def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False) -> None:
         """
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
         """
+        travel_only = travel_only or self.movement_only
         current_power = 0.0
         current_speed: float | None = None
         cursor_x = 0.0
@@ -413,7 +414,7 @@ class RuidaLaser:
                 continue
 
             if cmd.type.name == "SET_LASER_POWER":
-                if self.movement_only:
+                if travel_only:
                     current_power = 0.0
                 elif cmd.power_pct is not None:
                     current_power = cmd.power_pct
@@ -452,8 +453,13 @@ class RuidaLaser:
                     current_speed = cmd.speed_mm_s
                 if current_speed is None:
                     continue
-                block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
-                                    power_pct=current_power, is_cut=True))
+                block.append(RDMove(
+                    x_mm=x,
+                    y_mm=y,
+                    speed_mm_s=current_speed,
+                    power_pct=current_power,
+                    is_cut=not travel_only,
+                ))
                 cursor_x, cursor_y = x, y
                 continue
 

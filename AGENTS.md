@@ -36,7 +36,7 @@
 
 ## Safety & Configuration Tips
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
-- Use `--movement-only` or `--reset` before cutting on hardware; `--save-rd-dir` is helpful for inspecting what would be sent.
+- Use `--movement-only`/`--reset` to force travel-only RD jobs with power 0; `--save-rd-dir` is helpful for inspecting what would be sent.
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
 
 ## Reference Materials (do not import)

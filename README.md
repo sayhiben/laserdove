@@ -170,7 +170,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--save-rd-dir PATH`   | Write swizzled `.rd` payloads to this directory.                                                | disabled                                   |
 | `--simulate`           | Run against the simulated backend and open a Tkinter visualization.                             | disabled                                   |
 | `--reset`              | Skip planning; laser off, rotate to zero, move head to origin at pin Z0.                        | disabled                                   |
-| `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                     | disabled                                   |
+| `--movement-only`      | Keep laser power at 0 and emit travel-only RD jobs (no cut commands) while still driving motion. | disabled                                   |
 | `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs, ruida for UDP+RD).                              | from config/`use_dummy`                    |
 | `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs, real for stepper GPIO).                         | from config/`use_dummy`                    |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                                | unset (use config/built‑in)                |
@@ -225,7 +225,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 
 - `DummyLaser` / `DummyRotary`: log-only backends; safest for dev.  
 - `SimulatedLaser` / `SimulatedRotary`: Tkinter visualization; respects feed/rotation rates in real time.  
-- `RuidaLaser`: UDP (50200) transport with swizzle/checksum, RD job builder/uploader, optional RD file save, movement-only clamp.  
+- `RuidaLaser`: UDP (50200) transport with swizzle/checksum, RD job builder/uploader, optional RD file save, travel-only clamp (`--movement-only`/`--reset` force RD jobs to moves with 0 power).  
 - `RealRotary`: stepper wrapper that can emit GPIO DIR/STEP pulses (via `GPIOStepperDriver`) or just log (`LoggingStepperDriver`).
 
 Ruida communication waits for ACKs and polls for job completion; `movement_only=true` sends a single laser-off then suppresses further power changes while still moving.

@@ -1,6 +1,7 @@
 # cli entrypoint
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import List
 
@@ -149,7 +150,11 @@ def main() -> None:
 
     try:
         if isinstance(laser, RuidaLaser):
-            laser.run_sequence_with_rotary(all_commands, rotary)
+            run_kwargs = {}
+            sig = inspect.signature(laser.run_sequence_with_rotary)
+            if "travel_only" in sig.parameters:
+                run_kwargs["travel_only"] = run_config.movement_only or run_config.reset_only
+            laser.run_sequence_with_rotary(all_commands, rotary, **run_kwargs)
         else:
             execute_commands(all_commands, laser, rotary)
 
