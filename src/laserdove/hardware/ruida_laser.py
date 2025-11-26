@@ -252,22 +252,32 @@ class RuidaLaser:
         y_mm = self._decode_abscoord_mm(y_payload) if y_payload else None
         return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm)
 
-    def _wait_for_ready(self, *, max_attempts: int = 60, delay_s: float = 0.5) -> MachineState:
+    def _wait_for_ready(
+        self,
+        *,
+        max_attempts: int = 60,
+        delay_s: float = 0.5,
+        require_busy_transition: bool = False,
+    ) -> MachineState:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y)
 
         last_state: Optional[RuidaLaser.MachineState] = None
+        seen_busy = False
         for attempt in range(1, max_attempts + 1):
             state = self._read_machine_state()
             if state:
                 last_state = state
-                if not (state.status_bits & self.BUSY_MASK):
-                    if state.x_mm is not None:
-                        self.x = state.x_mm
-                    if state.y_mm is not None:
-                        self.y = state.y_mm
-                    log.debug("[RUIDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f", attempt, state.status_bits, self.x, self.y)
-                    return state
+                if state.status_bits & self.BUSY_MASK:
+                    seen_busy = True
+                else:
+                    if not require_busy_transition or seen_busy:
+                        if state.x_mm is not None:
+                            self.x = state.x_mm
+                        if state.y_mm is not None:
+                            self.y = state.y_mm
+                        log.debug("[RUIDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f", attempt, state.status_bits, self.x, self.y)
+                        return state
             log.debug("[RUIDA UDP] Busy state (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
 
@@ -368,7 +378,7 @@ class RuidaLaser:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
         # Wait for completion
-        self._wait_for_ready()
+        self._wait_for_ready(require_busy_transition=True)
 
     def run_sequence_with_rotary(self, commands: Iterable, rotary) -> None:
         """

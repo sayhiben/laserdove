@@ -185,7 +185,7 @@ def test_wait_for_ready_raises_after_attempts(monkeypatch):
     monkeypatch.setattr(laser, "_read_machine_state", lambda: busy_state)
     monkeypatch.setattr("laserdove.hardware.ruida_laser.time.sleep", lambda *_: None)
     with pytest.raises(RuntimeError):
-        laser._wait_for_ready(max_attempts=2, delay_s=0)
+        laser._wait_for_ready(max_attempts=2, delay_s=0, require_busy_transition=True)
 
 
 def test_get_memory_value_truncated(monkeypatch):

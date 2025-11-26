@@ -73,7 +73,7 @@ def test_wait_for_ready_polls_until_idle_and_updates_position():
     ready_snapshot = build_snapshot(laser, 0, 11.0, 21.0)
     laser.sock = FakeSocket(busy_snapshot + ready_snapshot)
 
-    state = laser._wait_for_ready(max_attempts=3, delay_s=0)
+    state = laser._wait_for_ready(max_attempts=3, delay_s=0, require_busy_transition=True)
 
     assert state.status_bits == 0
     assert pytest.approx(laser.x) == 11.0
