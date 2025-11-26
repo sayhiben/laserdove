@@ -294,6 +294,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
 
     dry_run_rd = bool(getattr(args, "dry_run_rd", False))
+    reset_only = bool(getattr(args, "reset", False))
 
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
@@ -328,5 +329,5 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         rotary_backend=rotary_backend,
         movement_only=movement_only,
         save_rd_dir=save_rd_dir,
-        reset_only=args.reset,
+        reset_only=reset_only,
     )

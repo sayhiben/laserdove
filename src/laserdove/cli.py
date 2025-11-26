@@ -30,6 +30,8 @@ def main() -> None:
     setup_logging(args.log_level)
 
     run_config = load_config_and_args(args)
+    if run_config.reset_only:
+        run_config.movement_only = True
 
     # Early exit: reset-only mode just zeros rotary/head with laser off.
     if run_config.reset_only:
