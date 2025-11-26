@@ -145,6 +145,7 @@ class _RDJobBuilder:
             d8 12           # Red Light on ?
             f0 f1 02 00     # file type ?
             d8 00           # Green Light off ?
+            e6 01           # Set Absolute positioning
             """
         )
         data += self.enc("-nn", ["e7 06", 0, 0])  # Feeding
