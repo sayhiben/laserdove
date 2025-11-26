@@ -208,7 +208,7 @@ class _RDJobBuilder:
             )
 
             data += self.enc(
-                "-bc-bb-bnn-bnn-bnn-bnn-",
+                "-bc-bb-bnn-bnn-bnn-bnn",
                 [
                     "ca 06",
                     lnum,
@@ -235,9 +235,11 @@ class _RDJobBuilder:
                 ],
             )
 
-        data += self.enc("-b-", ["ca 22", len(layers) - 1])
+        data += self.enc("-b", ["ca 22", len(layers) - 1])
+        # Trailing job metadata blocks (bbox copies, offsets, array defaults) mirrored
+        # from reference RD captures; kept verbatim because the controller expects them.
         data += self.enc(
-            "-nn-nn-nn-nn-nn-nn-nn-nn-",
+            "---------nn-nn-nn--nn---nn-nn-nn--nn",
             [
                 "e7 54 00 00 00 00 00 00",
                 "e7 54 01 00 00 00 00 00",
@@ -323,32 +325,47 @@ class _RDJobBuilder:
                 )
             )
 
+            # Layer prolog: speed, cut delays, per-laser min/max power, layer flags.
+            SPEED_SET = "c9 02"  # set laser speed
+            CUT_DELAY_ON = "c6 15 00 00 00 00 00"
+            CUT_DELAY_OFF = "c6 16 00 00 00 00 00"
+            L1_MIN = "c6 01"
+            L1_MAX = "c6 02"
+            L2_MIN = "c6 21"
+            L2_MAX = "c6 22"
+            L3_MIN = "c6 05"
+            L3_MAX = "c6 06"
+            L4_MIN = "c6 07"
+            L4_MAX = "c6 08"
+            ENABLE_LAYER = "ca 03 01"
+            IO_FLAGS = "ca 10 00"
+
             data.extend(
                 self.enc(
-                    "-n-p-p-p-p-p-p-p-p-",
+                    "-n---p-p-p-p-p-p-p-p--",
                     [
-                        "c9 02",
+                        SPEED_SET,
                         laserspeed,
-                        "c6 15 00 00 00 00 00",
-                        "c6 16 00 00 00 00 00",
-                        "c6 01",
+                        CUT_DELAY_ON,
+                        CUT_DELAY_OFF,
+                        L1_MIN,
                         power[0],
-                        "c6 02",
+                        L1_MAX,
                         power[1],
-                        "c6 21",
+                        L2_MIN,
                         power[2],
-                        "c6 22",
+                        L2_MAX,
                         power[3],
-                        "c6 05",
+                        L3_MIN,
                         power[4],
-                        "c6 06",
+                        L3_MAX,
                         power[5],
-                        "c6 07",
+                        L4_MIN,
                         power[6],
-                        "c6 08",
+                        L4_MAX,
                         power[7],
-                        "ca 03 01",
-                        "ca 10 00",
+                        ENABLE_LAYER,
+                        IO_FLAGS,
                     ],
                 )
             )
@@ -361,15 +378,23 @@ class _RDJobBuilder:
                     if relok(last_point, point) and (self._forceabs == 0 or relcounter < self._forceabs):
                         if self._forceabs > 0:
                             relcounter += 1
+                        MOVE_REL_X = "8a"
+                        MOVE_REL_Y = "8b"
+                        MOVE_REL_XY = "89"
+                        CUT_REL_X = "aa"
+                        CUT_REL_Y = "ab"
+                        CUT_REL_XY = "a9"
                         if point[1] == last_point[1]:
-                            data += self.enc("-r", ["8a" if travel else "aa", point[0] - last_point[0]])
+                            data += self.enc("-r", [MOVE_REL_X if travel else CUT_REL_X, point[0] - last_point[0]])
                         elif point[0] == last_point[0]:
-                            data += self.enc("-r", ["8b" if travel else "ab", point[1] - last_point[1]])
+                            data += self.enc("-r", [MOVE_REL_Y if travel else CUT_REL_Y, point[1] - last_point[1]])
                         else:
-                            data += self.enc("-rr", ["89" if travel else "a9", point[0] - last_point[0], point[1] - last_point[1]])
+                            data += self.enc("-rr", [MOVE_REL_XY if travel else CUT_REL_XY, point[0] - last_point[0], point[1] - last_point[1]])
                     else:
+                        MOVE_ABS_XY = "88"
+                        CUT_ABS_XY = "a8"
                         relcounter = 0
-                        data += self.enc("-nn", ["88" if travel else "a8", point[0], point[1]])
+                        data += self.enc("-nn", [MOVE_ABS_XY if travel else CUT_ABS_XY, point[0], point[1]])
                     last_point = point
                     travel = False
         return bytes(data)
@@ -431,14 +456,13 @@ def _compute_odometer(moves: List[RDMove]) -> Tuple[float, float]:
     travel = 0.0
     prev_x = moves[0].x_mm
     prev_y = moves[0].y_mm
-    prev_is_cut = moves[0].is_cut
     for mv in moves[1:]:
         dist = math.hypot(mv.x_mm - prev_x, mv.y_mm - prev_y)
-        if prev_is_cut:
+        if mv.is_cut:
             cut += dist
         else:
             travel += dist
-        prev_x, prev_y, prev_is_cut = mv.x_mm, mv.y_mm, mv.is_cut
+        prev_x, prev_y = mv.x_mm, mv.y_mm
     return (cut, travel)
 
 
