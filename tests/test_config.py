@@ -251,3 +251,4 @@ def test_backend_overrides_and_movement_only(tmp_path):
     assert _invert is True
     assert _max_step_rate == 500.0
     assert _pin_scheme == "board"
+    assert _max_step_rate == 500.0

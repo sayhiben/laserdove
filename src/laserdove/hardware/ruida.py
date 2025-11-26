@@ -9,6 +9,7 @@ import time
 from typing import Iterable, List, NamedTuple, Optional
 
 from .base import LaserInterface
+from .rd_builder import build_rd_job, RDMove
 
 log = logging.getLogger(__name__)
 
@@ -344,6 +345,95 @@ class RuidaLaser(LaserInterface):
         payload = bytes([0xC7]) + self._encode_power_pct(requested_power)
         log.info("[RUDA UDP] SET_LASER_POWER %.1f%%", requested_power)
         self._send_packets(payload)
+
+    # ---------------- RD job upload/run helpers ----------------
+    def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None) -> None:
+        """
+        Build a minimal RD job and send it over UDP 50200. Auto-runs on receipt.
+        """
+        if not moves:
+            return
+        if self.movement_only:
+            for mv in moves:
+                mv.power_pct = 0.0
+        payload = build_rd_job(moves, job_z_mm=job_z_mm)
+        log.info("[RUDA UDP] Uploading RD job with %d moves%s",
+                 len(moves), f" z={job_z_mm:.3f}" if job_z_mm is not None else "")
+        if self.dry_run:
+            log.debug("[RUDA UDP DRY RD] %s", payload.hex(" "))
+        self._send_packets(payload)
+        # Wait for completion
+        self._wait_for_ready()
+
+    def run_sequence_with_rotary(self, commands: Iterable, rotary) -> None:
+        """
+        Partition commands at ROTATE boundaries; send each laser block as an RD job;
+        run rotary moves via provided rotary interface in between.
+        """
+        current_power = 0.0
+        current_speed: float | None = None
+        cursor_x = 0.0
+        cursor_y = 0.0
+        current_z: float | None = None
+
+        def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
+            if not block_moves:
+                return
+            self.send_rd_job(block_moves, job_z_mm=block_z)
+
+        block: List[RDMove] = []
+        block_z: float | None = None
+
+        for cmd in commands:
+            if cmd.type.name == "ROTATE":
+                flush_block(block, block_z)
+                block = []
+                block_z = None
+                rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
+                continue
+
+            if cmd.type.name == "SET_LASER_POWER":
+                if cmd.power_pct is not None:
+                    current_power = cmd.power_pct
+                continue
+
+            if cmd.type.name == "MOVE":
+                x = cursor_x if cmd.x is None else cmd.x
+                y = cursor_y if cmd.y is None else cmd.y
+                if cmd.z is not None:
+                    if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                        flush_block(block, block_z)
+                        block = []
+                    current_z = cmd.z
+                    block_z = current_z
+                if cmd.speed_mm_s is not None:
+                    current_speed = cmd.speed_mm_s
+                if current_speed is None:
+                    continue
+                block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
+                                    power_pct=current_power, is_cut=False))
+                cursor_x, cursor_y = x, y
+                continue
+
+            if cmd.type.name == "CUT_LINE":
+                x = cursor_x if cmd.x is None else cmd.x
+                y = cursor_y if cmd.y is None else cmd.y
+                if cmd.z is not None:
+                    if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                        flush_block(block, block_z)
+                        block = []
+                    current_z = cmd.z
+                    block_z = current_z
+                if cmd.speed_mm_s is not None:
+                    current_speed = cmd.speed_mm_s
+                if current_speed is None:
+                    continue
+                block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
+                                    power_pct=current_power, is_cut=True))
+                cursor_x, cursor_y = x, y
+                continue
+
+        flush_block(block, block_z)
 
 
 class RuidaPanelInterface:

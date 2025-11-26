@@ -67,6 +67,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)")
     p.add_argument("--rotary-pin-numbering", choices=["bcm", "board"], default="board", help="Pin numbering scheme for rotary GPIO (BCM vs physical)")
     p.add_argument("--rotary-max-step-rate-hz", type=float, help="Cap rotary step pulse rate (Hz)")
+    p.add_argument(
+        "--dry-run-rd",
+        action="store_true",
+        help="Build RD jobs and log them without talking to Ruida (overrides --dry-run behavior)",
+    )
     # Backend selection
     p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
     p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
@@ -129,6 +134,7 @@ def load_config_and_args(
     bool,
     str,
     str,
+    bool,
     bool,
 ]:
     cfg_data: dict = {}

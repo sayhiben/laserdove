@@ -30,7 +30,7 @@ z_zero_pin_mm       = 0.0
 [backend]
 # If use_dummy = true, novadovetail will use DummyLaser/DummyRotary
 # regardless of ruida_host.
-use_dummy = true
+use_dummy = false
 laser_backend = "dummy"  # "dummy" or "ruida"
 rotary_backend = "dummy" # "dummy" or "real"
 rotary_steps_per_rev = 4000.0  # pulses per rev from driver (CL57T default)

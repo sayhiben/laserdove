@@ -78,7 +78,7 @@ def main() -> None:
         pin_commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
         all_commands.extend(pin_commands)
 
-    if dry_run and not simulate:
+    if dry_run and not simulate and laser_backend != "ruida":
         for command in all_commands:
             print(command)
         return
@@ -100,6 +100,7 @@ def main() -> None:
                 magic=ruida_magic,
                 timeout_s=ruida_timeout_s,
                 source_port=ruida_source_port,
+                dry_run=dry_run,
                 movement_only=movement_only,
             )
         else:
@@ -135,7 +136,10 @@ def main() -> None:
         else:
             raise ValueError(f"Unsupported rotary backend {rotary_backend}")
 
-    execute_commands(all_commands, laser, rotary)
+    if isinstance(laser, RuidaLaser):
+        laser.run_sequence_with_rotary(all_commands, rotary)
+    else:
+        execute_commands(all_commands, laser, rotary)
 
     if simulate and hasattr(laser, "show"):
         laser.show()
