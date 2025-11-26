@@ -268,10 +268,11 @@ class RuidaLaser:
             state = self._read_machine_state()
             if state:
                 last_state = state
-                if state.status_bits & self.BUSY_MASK:
+                part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
+                if state.status_bits & self.BUSY_MASK and not part_end:
                     seen_busy = True
                 else:
-                    if not require_busy_transition or seen_busy:
+                    if not require_busy_transition or seen_busy or part_end:
                         if state.x_mm is not None:
                             self.x = state.x_mm
                         if state.y_mm is not None:
@@ -377,7 +378,7 @@ class RuidaLaser:
         if self.dry_run:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
-        # Wait for completion
+        # Wait for completion; treat PART_END as done.
         self._wait_for_ready(require_busy_transition=True)
 
     def run_sequence_with_rotary(self, commands: Iterable, rotary) -> None:

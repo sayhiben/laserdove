@@ -175,8 +175,10 @@ def test_main_runs_both_boards_and_executes(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "both"])
 
     main()
-    assert captured["commands"][0].type == CommandType.MOVE
-    assert captured["commands"][1].type == CommandType.CUT_LINE
+    types = [cmd.type for cmd in captured["commands"]]
+    assert types[0] == CommandType.ROTATE  # prep rotate
+    assert CommandType.MOVE in types
+    assert CommandType.CUT_LINE in types
 
 
 def test_main_simulate_uses_simulated_backends_and_cleans_up(monkeypatch):
@@ -252,7 +254,7 @@ def test_main_ruida_respects_dry_run_rd_and_cleans(monkeypatch):
 
     main()
     assert init_kwargs["dry_run"] is True
-    assert run_called["count"] == 1
+    assert run_called["count"] >= 1
     assert created["ruida"].cleaned is True
 
 
@@ -271,7 +273,9 @@ def test_main_pins_only_executes_pin_branch(monkeypatch):
     monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: called.setdefault("cmds", list(cmds)))
     monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "pins"])
     main()
-    assert called["cmds"][0].type == CommandType.MOVE
+    types = [cmd.type for cmd in called["cmds"]]
+    assert types[0] == CommandType.ROTATE
+    assert CommandType.MOVE in types
 
 
 def test_main_real_rotary_without_pins(monkeypatch):

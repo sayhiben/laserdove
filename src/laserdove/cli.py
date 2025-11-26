@@ -138,6 +138,15 @@ def main() -> None:
         else:
             raise ValueError(f"Unsupported rotary backend {run_config.rotary_backend}")
 
+    # If not simulating, ensure we start from known rotation zero.
+    if not run_config.simulate and not run_config.reset_only:
+        all_commands.insert(0, Command(
+            type=CommandType.ROTATE,
+            angle_deg=run_config.jig_params.rotation_zero_deg,
+            speed_mm_s=run_config.jig_params.rotation_speed_dps,
+            comment="Prep: rotate jig to zero",
+        ))
+
     try:
         if isinstance(laser, RuidaLaser):
             laser.run_sequence_with_rotary(all_commands, rotary)
