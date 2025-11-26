@@ -252,7 +252,7 @@ class RuidaLaser:
         y_mm = self._decode_abscoord_mm(y_payload) if y_payload else None
         return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm)
 
-    def _wait_for_ready(self, *, max_attempts: int = 5, delay_s: float = 0.5) -> MachineState:
+    def _wait_for_ready(self, *, max_attempts: int = 60, delay_s: float = 0.5) -> MachineState:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y)
 
