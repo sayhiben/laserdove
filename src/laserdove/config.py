@@ -72,6 +72,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Build RD jobs and log them without talking to Ruida (overrides --dry-run behavior)",
     )
+    p.add_argument(
+        "--save-rd-dir",
+        type=Path,
+        help="Directory to save generated (scrambled) RD jobs for inspection",
+    )
     # Backend selection
     p.add_argument("--laser-backend", choices=["dummy", "ruida"], help="Laser backend to use")
     p.add_argument("--rotary-backend", choices=["dummy", "real"], help="Rotary backend to use")
@@ -136,6 +141,7 @@ def load_config_and_args(
     str,
     bool,
     bool,
+    Optional[Path],
 ]:
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
@@ -225,6 +231,7 @@ def load_config_and_args(
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
     rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 500.0)
+    save_rd_dir = _dict_get_nested(cfg_data, "backend.save_rd_dir", None)
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
@@ -254,11 +261,15 @@ def load_config_and_args(
         rotary_pin_numbering = args.rotary_pin_numbering.lower()
     if args.rotary_max_step_rate_hz is not None:
         rotary_max_step_rate_hz = args.rotary_max_step_rate_hz
+    if args.save_rd_dir is not None:
+        save_rd_dir = args.save_rd_dir
     if args.laser_backend is not None:
         laser_backend = args.laser_backend
     if args.rotary_backend is not None:
         rotary_backend = args.rotary_backend
     movement_only = movement_only or args.movement_only
+    if save_rd_dir is not None and not isinstance(save_rd_dir, Path):
+        save_rd_dir = Path(save_rd_dir)
 
     # Default backend selection preserves legacy use_dummy behavior.
     if laser_backend is None:
@@ -306,4 +317,5 @@ def load_config_and_args(
         laser_backend,
         rotary_backend,
         movement_only,
+        save_rd_dir,
     )

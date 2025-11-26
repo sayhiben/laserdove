@@ -55,6 +55,7 @@ def main() -> None:
         laser_backend,
         rotary_backend,
         movement_only,
+        save_rd_dir,
     ) = load_config_and_args(args)
 
     # Compute shared layout once (pins and tails must agree)
@@ -102,6 +103,7 @@ def main() -> None:
                 source_port=ruida_source_port,
                 dry_run=dry_run,
                 movement_only=movement_only,
+                save_rd_dir=save_rd_dir,
             )
         else:
             raise ValueError(f"Unsupported laser backend {laser_backend}")

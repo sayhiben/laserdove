@@ -6,6 +6,7 @@ import math
 import socket
 import struct
 import time
+from pathlib import Path
 from typing import Iterable, List, NamedTuple, Optional
 
 from .base import LaserInterface
@@ -52,6 +53,7 @@ class RuidaLaser(LaserInterface):
         dry_run: bool = False,
         magic: int = 0x88,
         movement_only: bool = False,
+        save_rd_dir: Path | None = None,
         socket_factory=socket.socket,
     ) -> None:
         self.host = host
@@ -70,6 +72,8 @@ class RuidaLaser(LaserInterface):
         self._last_speed_ums: Optional[int] = None
         self._movement_only_power_sent = False
         self._last_requested_power = 0.0
+        self.save_rd_dir = Path(save_rd_dir) if save_rd_dir else None
+        self._rd_job_counter = 0
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -357,6 +361,16 @@ class RuidaLaser(LaserInterface):
             for mv in moves:
                 mv.power_pct = 0.0
         payload = build_rd_job(moves, job_z_mm=job_z_mm)
+        if self.save_rd_dir:
+            self.save_rd_dir.mkdir(parents=True, exist_ok=True)
+            self._rd_job_counter += 1
+            filename = f"job_{self._rd_job_counter:03d}"
+            if job_z_mm is not None:
+                filename += f"_z{job_z_mm:.3f}"
+            path = self.save_rd_dir / f"{filename}.rd"
+            swizzled = self._swizzle(payload)
+            path.write_bytes(swizzled)
+            log.info("[RUDA UDP] Saved RD job to %s", path)
         log.info("[RUDA UDP] Uploading RD job with %d moves%s",
                  len(moves), f" z={job_z_mm:.3f}" if job_z_mm is not None else "")
         if self.dry_run:
