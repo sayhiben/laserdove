@@ -72,9 +72,11 @@ def test_panel_warns_on_empty_or_timeout(monkeypatch):
     iface.send_command(RuidaPanelInterface.CMD_STOP)
     assert empty_resp.sent
 
-    timeout_sock = DummySock(responses=[])
-    # make recvfrom raise timeout
-    timeout_sock.recvfrom = lambda *_: (_ for _ in ()).throw(TimeoutError())
+    class TimeoutSock(DummySock):
+        def recvfrom(self, *_):
+            raise TimeoutError()
+
+    timeout_sock = TimeoutSock(responses=[])
     iface = RuidaPanelInterface(
         host="127.0.0.1",
         socket_factory=lambda *args, **kwargs: timeout_sock,

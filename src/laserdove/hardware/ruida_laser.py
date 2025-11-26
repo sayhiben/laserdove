@@ -154,11 +154,11 @@ class RuidaLaser:
         """
         swizzled = self._swizzle(payload, magic=self.magic)
         if self.dry_run:
-            log.info("[RUDA UDP DRY] %s", swizzled.hex(" "))
+            log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
             return None
         self._ensure_socket()
         if self.sock is None:
-            log.info("[RUDA UDP DRY] %s", swizzled.hex(" "))
+            log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
             return None
 
         # Chunk
@@ -227,11 +227,11 @@ class RuidaLaser:
         elif reply.startswith(address):
             data = reply[2:]
         else:
-            log.warning("[RUDA UDP] Unexpected reply %s for address %s", reply.hex(" "), address.hex(" "))
+            log.warning("[RUIDA UDP] Unexpected reply %s for address %s", reply.hex(" "), address.hex(" "))
             return None
 
         if len(data) < expected_len:
-            log.warning("[RUDA UDP] Truncated reply for %s: %s", address.hex(" "), data.hex(" "))
+            log.warning("[RUIDA UDP] Truncated reply for %s: %s", address.hex(" "), data.hex(" "))
             return None
         return data[:expected_len]
 
@@ -241,7 +241,7 @@ class RuidaLaser:
             x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5)
             y_payload = self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5)
         except RuntimeError as exc:
-            log.warning("[RUDA UDP] Failed to poll machine state: %s", exc)
+            log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
             return None
 
         if status_payload is None:
@@ -266,9 +266,9 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
-                    log.debug("[RUDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f", attempt, state.status_bits, self.x, self.y)
+                    log.debug("[RUIDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f", attempt, state.status_bits, self.x, self.y)
                     return state
-            log.debug("[RUDA UDP] Busy state (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
+            log.debug("[RUIDA UDP] Busy state (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
 
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
@@ -279,7 +279,7 @@ class RuidaLaser:
             return
         self._last_speed_ums = speed_ums
         payload = bytes([0xC9, 0x02]) + self._encode_abscoord_mm(speed_mm_s)
-        log.info("[RUDA UDP] SET_SPEED %.3f mm/s", speed_mm_s)
+        log.info("[RUIDA UDP] SET_SPEED %.3f mm/s", speed_mm_s)
         self._send_packets(payload)
 
     def move(self, x=None, y=None, z=None, speed=None) -> None:
@@ -299,7 +299,7 @@ class RuidaLaser:
         x_mm = self.x if x is None else x
         y_mm = self.y if y is None else y
         payload = bytes([0x88]) + self._encode_abscoord_mm(x_mm) + self._encode_abscoord_mm(y_mm)
-        log.info("[RUDA UDP] MOVE x=%.3f y=%.3f z=%.3f speed=%s", self.x, self.y, self.z, speed)
+        log.info("[RUIDA UDP] MOVE x=%.3f y=%.3f z=%.3f speed=%s", self.x, self.y, self.z, speed)
         self._send_packets(payload)
 
     def cut_line(self, x, y, speed) -> None:
@@ -309,7 +309,7 @@ class RuidaLaser:
         if speed is not None:
             self._set_speed(speed)
         payload = bytes([0xA8]) + self._encode_abscoord_mm(x) + self._encode_abscoord_mm(y)
-        log.info("[RUDA UDP] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%",
+        log.info("[RUIDA UDP] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%",
                  x, y, speed, self.power)
         self._send_packets(payload)
 
@@ -320,13 +320,13 @@ class RuidaLaser:
 
         if self.movement_only:
             log.info(
-                "[RUDA UDP] movement-only: requested laser power %.1f%% (suppressed)",
+                "[RUIDA UDP] movement-only: requested laser power %.1f%% (suppressed)",
                 requested_power,
             )
             if self._movement_only_power_sent:
-                log.debug("[RUDA UDP] movement-only: suppressing laser power change")
+                log.debug("[RUIDA UDP] movement-only: suppressing laser power change")
                 return
-            log.info("[RUDA UDP] movement-only: sending single laser-off command")
+            log.info("[RUIDA UDP] movement-only: sending single laser-off command")
             self.power = 0.0
             self._movement_only_power_sent = True
             payload = bytes([0xC7]) + self._encode_power_pct(0.0)
@@ -338,7 +338,7 @@ class RuidaLaser:
 
         self.power = requested_power
         payload = bytes([0xC7]) + self._encode_power_pct(requested_power)
-        log.info("[RUDA UDP] SET_LASER_POWER %.1f%%", requested_power)
+        log.info("[RUIDA UDP] SET_LASER_POWER %.1f%%", requested_power)
         self._send_packets(payload)
 
     # ---------------- RD job upload/run helpers ----------------
@@ -361,11 +361,11 @@ class RuidaLaser:
             path = self.save_rd_dir / f"{filename}.rd"
             swizzled = self._swizzle(payload, magic=self.magic)
             path.write_bytes(swizzled)
-            log.info("[RUDA UDP] Saved RD job to %s", path)
-        log.info("[RUDA UDP] Uploading RD job with %d moves%s",
+            log.info("[RUIDA UDP] Saved RD job to %s", path)
+        log.info("[RUIDA UDP] Uploading RD job with %d moves%s",
                  len(moves), f" z={job_z_mm:.3f}" if job_z_mm is not None else "")
         if self.dry_run:
-            log.debug("[RUDA UDP DRY RD] %s", payload.hex(" "))
+            log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
         # Wait for completion
         self._wait_for_ready()
