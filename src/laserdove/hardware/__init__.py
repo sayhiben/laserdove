@@ -6,7 +6,7 @@ from .base import (
     execute_commands,
 )
 from .sim import SimulatedLaser, SimulatedRotary
-from .ruida import RuidaLaser
+from .ruida import RuidaLaser, RuidaPanelInterface
 from .rotary import RealRotary, LoggingStepperDriver, GPIOStepperDriver
 
 __all__ = [
@@ -17,6 +17,7 @@ __all__ = [
     "SimulatedLaser",
     "SimulatedRotary",
     "RuidaLaser",
+    "RuidaPanelInterface",
     "RealRotary",
     "LoggingStepperDriver",
     "GPIOStepperDriver",
