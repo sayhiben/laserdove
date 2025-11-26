@@ -45,7 +45,8 @@ class RuidaLaser:
     STATUS_BIT_PART_END = 0x00000002
     STATUS_BIT_JOB_RUNNING = 0x00000001
 
-    BUSY_MASK = STATUS_BIT_MOVING | STATUS_BIT_JOB_RUNNING | STATUS_BIT_PART_END
+    # Consider "busy" only when moving or actively running; PART_END means finished.
+    BUSY_MASK = STATUS_BIT_MOVING | STATUS_BIT_JOB_RUNNING
 
     class MachineState(NamedTuple):
         status_bits: int
@@ -255,7 +256,7 @@ class RuidaLaser:
     def _wait_for_ready(
         self,
         *,
-        max_attempts: int = 60,
+        max_attempts: int = 200,
         delay_s: float = 0.5,
         require_busy_transition: bool = False,
     ) -> MachineState:
@@ -269,7 +270,8 @@ class RuidaLaser:
             if state:
                 last_state = state
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
-                if state.status_bits & self.BUSY_MASK and not part_end:
+                busy = bool(state.status_bits & self.BUSY_MASK)
+                if busy and not part_end:
                     seen_busy = True
                 else:
                     if not require_busy_transition or seen_busy or part_end:
