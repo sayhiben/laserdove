@@ -398,6 +398,16 @@ class RuidaPanelInterface:
             except Exception:
                 self.dry_run = True
                 self.sock = None
+        # Best-effort handshake: send 0xCC to elicit 0xCC ACK on this port.
+        if self.sock is not None:
+            try:
+                self.sock.sendto(bytes([self.ACK]), (self.host, self.port))
+                data, _ = self.sock.recvfrom(8)
+                if data and data[0] != self.ACK:
+                    log.debug("[RUDA PANEL] Unexpected handshake response %s", data.hex(" "))
+            except Exception:
+                # Ignore handshake failures; some controllers stay silent until a real command.
+                pass
 
     def send_command(self, cmd: bytes) -> None:
         """
@@ -414,7 +424,9 @@ class RuidaPanelInterface:
         self.sock.sendto(payload, (self.host, self.port))
         try:
             data, _ = self.sock.recvfrom(8)
-            if data and data[0] != self.ACK:
+            if not data:
+                log.warning("[RUDA PANEL] Empty response for command %s", cmd.hex(" "))
+            elif data[0] != self.ACK:
                 log.warning("[RUDA PANEL] Unexpected response %s", data.hex(" "))
         except socket.timeout:
             log.warning("[RUDA PANEL] ACK timeout for command %s", cmd.hex(" "))
