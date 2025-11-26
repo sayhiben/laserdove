@@ -35,3 +35,49 @@ def test_panel_interface_sends_and_accepts_ack(monkeypatch):
     iface.send_command(RuidaPanelInterface.CMD_STOP)
     assert dummy.sent, "Should have sent a panel command"
 
+
+def test_panel_interface_dry_run(monkeypatch):
+    dummy = DummySock()
+    iface = RuidaPanelInterface(
+        host="127.0.0.1",
+        socket_factory=lambda *args, **kwargs: dummy,
+        dry_run=True,
+    )
+    iface.send_command(RuidaPanelInterface.CMD_STOP)
+    assert dummy.sent == []
+
+
+def test_panel_bind_failure_sets_dry_run(monkeypatch):
+    class FailBind(DummySock):
+        def bind(self, addr):
+            raise OSError("fail")
+
+    dummy = FailBind()
+    iface = RuidaPanelInterface(
+        host="127.0.0.1",
+        socket_factory=lambda *args, **kwargs: dummy,
+        dry_run=False,
+    )
+    iface.send_command(RuidaPanelInterface.CMD_STOP)
+    assert getattr(iface, "sock") is None  # fell back to dry_run path
+
+
+def test_panel_warns_on_empty_or_timeout(monkeypatch):
+    empty_resp = DummySock(responses=[b""])
+    iface = RuidaPanelInterface(
+        host="127.0.0.1",
+        socket_factory=lambda *args, **kwargs: empty_resp,
+        dry_run=False,
+    )
+    iface.send_command(RuidaPanelInterface.CMD_STOP)
+    assert empty_resp.sent
+
+    timeout_sock = DummySock(responses=[])
+    # make recvfrom raise timeout
+    timeout_sock.recvfrom = lambda *_: (_ for _ in ()).throw(TimeoutError())
+    iface = RuidaPanelInterface(
+        host="127.0.0.1",
+        socket_factory=lambda *args, **kwargs: timeout_sock,
+        dry_run=False,
+    )
+    iface.send_command(RuidaPanelInterface.CMD_STOP)
