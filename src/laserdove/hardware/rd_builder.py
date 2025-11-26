@@ -1,36 +1,21 @@
 from __future__ import annotations
 
 """
-Minimal RD job builder for straight-line moves/cuts.
+RD job builder for simple XY move/cut sequences.
 
-This is intentionally tiny and only covers what the current planner emits:
-  - Absolute XY moves and cuts
-  - Single layer with speed/power
-  - EOF terminator
+This borrows the on-wire structure observed in public Ruida RD examples:
+ - full header/body/trailer framing
+ - single layer, absolute XY moves (0x88) and cuts (0xA8)
+ - per-job Z (optional) emitted ahead of the layer prolog
 
-Notes:
-- This is NOT a full RD generator; it only builds enough to jog/run simple paths.
-- Z moves are not encoded here; set Z separately before sending the job.
+It is intentionally small and only covers what our planner emits.
 """
 
+import copy
+import math
+import re
 from dataclasses import dataclass
-from typing import List, Tuple
-
-
-def _encode_abscoord_mm(value_mm: float) -> bytes:
-    microns = int(round(value_mm * 1000.0))
-    res = []
-    for _ in range(5):
-        res.append(microns & 0x7F)
-        microns >>= 7
-    res.reverse()
-    return bytes(res)
-
-
-def _encode_power_pct(power_pct: float) -> bytes:
-    clamped = max(0.0, min(100.0, power_pct))
-    raw = int(round(clamped * (0x3FFF / 100.0)))
-    return bytes([(raw >> 7) & 0x7F, raw & 0x7F])
+from typing import Iterable, List, Sequence, Tuple
 
 
 @dataclass
@@ -42,54 +27,445 @@ class RDMove:
     is_cut: bool
 
 
-def build_rd_job(moves: List[RDMove], job_z_mm: float | None = None) -> bytes:
+@dataclass
+class _Layer:
+    paths: List[List[Tuple[float, float]]]
+    bbox: List[List[float]]
+    speed: Sequence[float]
+    power: Sequence[float]
+    color: Sequence[int] = (255, 0, 0)
+
+
+class _RDJobBuilder:
     """
-    Build a minimal RD job buffer for a sequence of moves/cuts.
+    Minimal RD job builder (single layer) adapted from community protocol notes.
+    Produces the unswizzled RD payload; transport is responsible for swizzling.
+    """
+
+    def __init__(self, *, forceabs: int = 100) -> None:
+        self._globalbbox: List[List[float]] | None = None
+        self._forceabs = forceabs
+
+    # ---------------- Encoding helpers ----------------
+    @staticmethod
+    def encode_number(num: float, length: int = 5, scale: int = 1000) -> bytes:
+        res = []
+        nn = int(num * scale)
+        while nn > 0:
+            res.append(nn & 0x7F)
+            nn >>= 7
+        while len(res) < length:
+            res.append(0)
+        res.reverse()
+        return bytes(res)
+
+    @staticmethod
+    def encode_percent(n: float) -> bytes:
+        a = int(n * 0x3FFF * 0.01)
+        return bytes([a >> 7, a & 0x7F])
+
+    def encode_relcoord(self, n: float) -> bytes:
+        nn = int(n * 1000)
+        if nn > 8191 or nn < -8191:
+            raise ValueError("relcoord out of range; use abscoords")
+        if nn < 0:
+            nn += 16384
+        return self.encode_number(nn, length=2, scale=1)
+
+    def encode_byte(self, n: int) -> bytes:
+        return self.encode_number(n, length=1, scale=1)
+
+    @staticmethod
+    def encode_color(color: Sequence[int]) -> bytes:
+        cc = ((color[2] & 0xFF) << 16) + ((color[1] & 0xFF) << 8) + (color[0] & 0xFF)
+        return _RDJobBuilder.encode_number(cc, scale=1)
+
+    @staticmethod
+    def encode_hex(str_val: str) -> bytes:
+        str_val = re.sub(r"#.*$", "", str_val, flags=re.MULTILINE)
+        return bytes(int(x, 16) for x in str_val.split())
+
+    def enc(self, fmt: str, tupl: Sequence) -> bytes:
+        if len(fmt) != len(tupl):
+            raise ValueError("format length differs from tuple length")
+        ret = b""
+        for i, ch in enumerate(fmt):
+            if ch == "-":
+                ret += self.encode_hex(tupl[i])
+            elif ch == "n":
+                ret += self.encode_number(tupl[i])
+            elif ch == "p":
+                ret += self.encode_percent(tupl[i])
+            elif ch == "r":
+                ret += self.encode_relcoord(tupl[i])
+            elif ch == "b":
+                ret += self.encode_byte(tupl[i])
+            elif ch == "c":
+                ret += self.encode_color(tupl[i])
+            else:
+                raise ValueError(f"unknown format character {ch}")
+        return ret
+
+    @staticmethod
+    def boundingbox(paths: List[List[Tuple[float, float]]]) -> List[List[float]]:
+        xmin = xmax = paths[0][0][0]
+        ymin = ymax = paths[0][0][1]
+        for path in paths:
+            for point in path:
+                xmin = min(xmin, point[0])
+                xmax = max(xmax, point[0])
+                ymin = min(ymin, point[1])
+                ymax = max(ymax, point[1])
+        return [[xmin, ymin], [xmax, ymax]]
+
+    @staticmethod
+    def bbox_combine(bbox1: List[List[float]] | None, bbox2: List[List[float]] | None) -> List[List[float]] | None:
+        if bbox1 is None:
+            return bbox2
+        if bbox2 is None:
+            return bbox1
+        x0 = min(bbox1[0][0], bbox2[0][0])
+        y0 = min(bbox1[0][1], bbox2[0][1])
+        x1 = max(bbox1[1][0], bbox2[1][0])
+        y1 = max(bbox1[1][1], bbox2[1][1])
+        return [[x0, y0], [x1, y1]]
+
+    # ---------------- RD structure builders ----------------
+    def header(self, layers: Sequence[_Layer], filename: str) -> bytes:
+        bbox: List[List[float]] | None = self._globalbbox
+        for layer in layers:
+            bbox = self.bbox_combine(bbox, layer.bbox)
+        if bbox is None:
+            bbox = [[0.0, 0.0], [0.0, 0.0]]
+        (xmin, ymin) = bbox[0]
+        (xmax, ymax) = bbox[1]
+
+        data = self.encode_hex(
+            """
+            d8 12           # Red Light on ?
+            f0 f1 02 00     # file type ?
+            d8 00           # Green Light off ?
+            """
+        )
+        # File name (null-terminated)
+        safe_name = filename.encode("ascii", errors="ignore")[:31] + b"\x00"
+        data += b"\xE7\x01" + safe_name
+        data += self.enc("-nn", ["e7 06", 0, 0])  # Feeding
+        data += self.enc("-nn", ["e7 03", xmin, ymin])  # Top_Left_E7_07
+        data += self.enc("-nn", ["e7 07", xmax, ymax])  # Bottom_Right_E7_07
+        data += self.enc("-nn", ["e7 50", xmin, ymin])  # Top_Left_E7_50
+        data += self.enc("-nn", ["e7 51", xmax, ymax])  # Bottom_Right_E7_51
+        data += self.enc("-nn", ["e7 04 00 01 00 01", 0, 0])  # E7 04 ???
+        data += self.enc("-", ["e7 05 00"])  # E7 05 ???
+
+        for lnum, layer in enumerate(layers):
+            power = list(layer.power)
+            if len(power) % 2:
+                raise ValueError("Even number of elements needed in power[]")
+            while len(power) < 8:
+                power += power[-2:]
+
+            speed = list(layer.speed)
+            if isinstance(speed, (float, int)):
+                speed = [1000, speed]  # travel, laser
+            laserspeed = speed[1]
+
+            data += self.enc("-bn", ["c9 04", lnum, laserspeed])
+
+            data += self.enc(
+                "-bp-bp-bp-bp",
+                [
+                    "c6 31",
+                    lnum,
+                    power[0],
+                    "c6 32",
+                    lnum,
+                    power[1],
+                    "c6 41",
+                    lnum,
+                    power[2],
+                    "c6 42",
+                    lnum,
+                    power[3],
+                ],
+            )
+            data += self.enc(
+                "-bp-bp-bp-bp",
+                [
+                    "c6 35",
+                    lnum,
+                    power[4],
+                    "c6 36",
+                    lnum,
+                    power[5],
+                    "c6 37",
+                    lnum,
+                    power[6],
+                    "c6 38",
+                    lnum,
+                    power[7],
+                ],
+            )
+
+            data += self.enc(
+                "-bc-bb-bnn-bnn-bnn-bnn-",
+                [
+                    "ca 06",
+                    lnum,
+                    layer.color,
+                    "ca 41",
+                    lnum,
+                    0,
+                    "e7 52",
+                    lnum,
+                    layer.bbox[0][0],
+                    layer.bbox[0][1],
+                    "e7 53",
+                    lnum,
+                    layer.bbox[1][0],
+                    layer.bbox[1][1],
+                    "e7 61",
+                    lnum,
+                    layer.bbox[0][0],
+                    layer.bbox[0][1],
+                    "e7 62",
+                    lnum,
+                    layer.bbox[1][0],
+                    layer.bbox[1][1],
+                ],
+            )
+
+        data += self.enc("-b-", ["ca 22", len(layers) - 1])
+        data += self.enc(
+            "-nn-nn-nn-nn-nn-nn-nn-nn-",
+            [
+                "e7 54 00 00 00 00 00 00",
+                "e7 54 01 00 00 00 00 00",
+                "f1 03 00 00 00 00 00 00 00 00 00 00",
+                "f1 00 00",
+                "f1 01 00",
+                "f2 00 00",
+                "f2 01 00",
+                "f2 02 05 2a 39 1c 41 04 6a 15 08 20",
+                "f2 03",
+                xmin,
+                ymin,
+                "f2 04",
+                xmax,
+                ymax,
+                "f2 06",
+                xmin,
+                ymin,
+                "f2 07 00",
+                "f2 05 00 01 00 01",
+                xmax,
+                ymax,
+                "ea 00",
+                "e7 60 00",
+                "e7 13",
+                xmin,
+                ymin,
+                "e7 17",
+                xmax,
+                ymax,
+                "e7 23",
+                xmin,
+                ymin,
+                "e7 24 00",
+                "e7 08 00 01 00 01",
+                xmax,
+                ymax,
+            ],
+        )
+        return data
+
+    def body(self, layers: Sequence[_Layer], *, job_z_mm: float | None = None) -> bytes:
+        def relok(last: Tuple[float, float] | None, point: Tuple[float, float]) -> bool:
+            maxrel = 8.191
+            if last is None:
+                return False
+            dx = abs(point[0] - last[0])
+            dy = abs(point[1] - last[1])
+            return max(dx, dy) <= maxrel
+
+        data = bytearray()
+
+        if job_z_mm is not None:
+            data.extend(bytes([0x80, 0x01]))
+            data.extend(self.encode_number(job_z_mm))
+
+        for lnum, layer in enumerate(layers):
+            power = list(layer.power)
+            if len(power) % 2:
+                raise ValueError("Even number of elements needed in power[]")
+            while len(power) < 8:
+                power += power[-2:]
+
+            speed = list(layer.speed)
+            if isinstance(speed, (float, int)):
+                speed = [1000, speed]
+            laserspeed = speed[1]
+
+            data.extend(
+                self.enc(
+                    "-b-",
+                    [
+                        """
+                        ca 01 00
+                        ca 02""",
+                        lnum,
+                        """
+                        ca 01 30
+                        ca 01 10
+                        ca 01 13
+                        """,
+                    ],
+                )
+            )
+
+            data.extend(
+                self.enc(
+                    "-n-p-p-p-p-p-p-p-p-",
+                    [
+                        "c9 02",
+                        laserspeed,
+                        "c6 15 00 00 00 00 00",
+                        "c6 16 00 00 00 00 00",
+                        "c6 01",
+                        power[0],
+                        "c6 02",
+                        power[1],
+                        "c6 21",
+                        power[2],
+                        "c6 22",
+                        power[3],
+                        "c6 05",
+                        power[4],
+                        "c6 06",
+                        power[5],
+                        "c6 07",
+                        power[6],
+                        "c6 08",
+                        power[7],
+                        "ca 03 01",
+                        "ca 10 00",
+                    ],
+                )
+            )
+
+            relcounter = 0
+            last_point: Tuple[float, float] | None = None
+            for path in layer.paths:
+                travel = True
+                for point in path:
+                    if relok(last_point, point) and (self._forceabs == 0 or relcounter < self._forceabs):
+                        if self._forceabs > 0:
+                            relcounter += 1
+                        if point[1] == last_point[1]:
+                            data += self.enc("-r", ["8a" if travel else "aa", point[0] - last_point[0]])
+                        elif point[0] == last_point[0]:
+                            data += self.enc("-r", ["8b" if travel else "ab", point[1] - last_point[1]])
+                        else:
+                            data += self.enc("-rr", ["89" if travel else "a9", point[0] - last_point[0], point[1] - last_point[1]])
+                    else:
+                        relcounter = 0
+                        data += self.enc("-nn", ["88" if travel else "a8", point[0], point[1]])
+                    last_point = point
+                    travel = False
+        return bytes(data)
+
+    def trailer(self, odo: Sequence[float] = (0.0, 0.0)) -> bytes:
+        return self.enc(
+            "-nn-",
+            [
+                """
+                eb e7 00
+                da 01 06 20""",
+                odo[0] * 0.001,
+                odo[0] * 0.001,
+                """
+                d7
+                """,
+            ],
+        )
+
+
+def _moves_to_paths(moves: Iterable[RDMove]) -> Tuple[List[List[Tuple[float, float]]], List[List[float]]]:
+    paths: List[List[Tuple[float, float]]] = []
+    cursor: Tuple[float, float] | None = None
+    current_path: List[Tuple[float, float]] | None = None
+    cutting = False
+
+    for mv in moves:
+        point = (mv.x_mm, mv.y_mm)
+        if mv.is_cut:
+            if cutting and current_path is not None:
+                current_path.append(point)
+            else:
+                if current_path:
+                    paths.append(current_path)
+                start_point = cursor if cursor is not None else point
+                current_path = [start_point, point] if start_point != point else [point]
+                cutting = True
+        else:
+            if current_path:
+                paths.append(current_path)
+            current_path = [point]
+            cutting = False
+        cursor = point
+
+    if current_path:
+        paths.append(current_path)
+
+    bbox = _RDJobBuilder.boundingbox(paths) if paths else [[0.0, 0.0], [0.0, 0.0]]
+    return paths, bbox
+
+
+def _compute_odometer(moves: List[RDMove]) -> Tuple[float, float]:
+    """
+    Compute cut and travel distances in mm (simple segment lengths).
+    """
+    if not moves:
+        return (0.0, 0.0)
+    cut = 0.0
+    travel = 0.0
+    prev_x = moves[0].x_mm
+    prev_y = moves[0].y_mm
+    prev_is_cut = moves[0].is_cut
+    for mv in moves[1:]:
+        dist = math.hypot(mv.x_mm - prev_x, mv.y_mm - prev_y)
+        if prev_is_cut:
+            cut += dist
+        else:
+            travel += dist
+        prev_x, prev_y, prev_is_cut = mv.x_mm, mv.y_mm, mv.is_cut
+    return (cut, travel)
+
+
+def build_rd_job(moves: List[RDMove], job_z_mm: float | None = None, *, filename: str = "LASERDOVE") -> bytes:
+    """
+    Build an unswizzled RD payload for a sequence of moves.
     """
     if not moves:
         return b""
 
-    # Header: very small job, single layer. This is a simplified header seen in practice.
-    header = bytes([
-        0x55, 0xAA,             # magic
-        0x00, 0x00, 0x00, 0x00, # file length placeholder (filled later)
-        0x00, 0x00, 0x00, 0x00, # layer count etc. minimal
-    ])
+    paths, bbox = _moves_to_paths(moves)
+    travel_speed = next((mv.speed_mm_s for mv in moves if not mv.is_cut), moves[0].speed_mm_s)
+    cut_speed = next((mv.speed_mm_s for mv in moves if mv.is_cut), travel_speed)
+    power = next((mv.power_pct for mv in moves if mv.is_cut), next((mv.power_pct for mv in moves), 0.0))
+    power = max(0.0, power)
 
-    body = bytearray()
+    layer = _Layer(
+        paths=paths,
+        bbox=bbox,
+        speed=[travel_speed, cut_speed],
+        power=[power, power],
+    )
+    builder = _RDJobBuilder()
+    builder._globalbbox = bbox
+    cut_dist, travel_dist = _compute_odometer(moves)
 
-    # Optional Z move first (absolute)
-    if job_z_mm is not None:
-        body.extend(bytes([0x80, 0x01]))  # AXIS_Z_MOVE (abs)
-        body.extend(_encode_abscoord_mm(job_z_mm))
-
-    # Set speed/power once at start
-    first = moves[0]
-    body.extend(bytes([0xC9, 0x02]))  # set speed
-    body.extend(_encode_abscoord_mm(first.speed_mm_s))
-    body.extend(bytes([0xC7]))        # set power
-    body.extend(_encode_power_pct(first.power_pct))
-
-    for mv in moves:
-        if mv.speed_mm_s != first.speed_mm_s:
-            body.extend(bytes([0xC9, 0x02]))
-            body.extend(_encode_abscoord_mm(mv.speed_mm_s))
-            first.speed_mm_s = mv.speed_mm_s
-        if mv.power_pct != first.power_pct:
-            body.extend(bytes([0xC7]))
-            body.extend(_encode_power_pct(mv.power_pct))
-            first.power_pct = mv.power_pct
-
-        op = 0xA8 if mv.is_cut else 0x88
-        body.append(op)
-        body.extend(_encode_abscoord_mm(mv.x_mm))
-        body.extend(_encode_abscoord_mm(mv.y_mm))
-
-    # EOF marker (observed as 0xF0 0x0F in some dumps; using a simple terminator)
-    body.extend(bytes([0xF0, 0x0F]))
-
-    # Fill header length
-    total_len = len(header) + len(body)
-    header = header[:2] + total_len.to_bytes(4, "big") + header[6:]
-
-    return header + bytes(body)
+    header = builder.header([layer], filename=filename)
+    body = builder.body([layer], job_z_mm=job_z_mm)
+    trailer = builder.trailer((cut_dist, travel_dist))
+    return header + body + trailer
