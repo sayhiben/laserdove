@@ -75,6 +75,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
         laser_backend,
         rotary_backend,
         movement_only,
+        _save_rd_dir,
     ) = load_config_and_args(args)
 
     assert isinstance(joint, JointParams)
@@ -161,6 +162,7 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         laser_backend,
         rotary_backend,
         movement_only,
+        _save_rd_dir,
     ) = load_config_and_args(args)
 
     assert joint.thickness_mm == 7.0
@@ -234,6 +236,7 @@ def test_backend_overrides_and_movement_only(tmp_path):
         laser_backend,
         rotary_backend,
         movement_only,
+        _save_rd_dir,
     ) = load_config_and_args(args)
 
     assert use_dummy is False

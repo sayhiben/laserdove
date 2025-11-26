@@ -28,6 +28,9 @@ def main() -> None:
 
     setup_logging(args.log_level)
 
+    loaded = load_config_and_args(args)
+    if len(loaded) == 26:
+        loaded = (*loaded, None)
     (
         joint_params,
         jig_params,
@@ -56,7 +59,7 @@ def main() -> None:
         rotary_backend,
         movement_only,
         save_rd_dir,
-    ) = load_config_and_args(args)
+    ) = loaded
 
     # Compute shared layout once (pins and tails must agree)
     tail_layout = compute_tail_layout(joint_params)

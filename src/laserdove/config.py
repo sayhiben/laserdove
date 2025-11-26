@@ -261,7 +261,7 @@ def load_config_and_args(
         rotary_pin_numbering = args.rotary_pin_numbering.lower()
     if args.rotary_max_step_rate_hz is not None:
         rotary_max_step_rate_hz = args.rotary_max_step_rate_hz
-    if args.save_rd_dir is not None:
+    if getattr(args, "save_rd_dir", None) is not None:
         save_rd_dir = args.save_rd_dir
     if args.laser_backend is not None:
         laser_backend = args.laser_backend
