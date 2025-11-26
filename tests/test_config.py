@@ -15,6 +15,7 @@ def make_args(**overrides) -> argparse.Namespace:
         simulate=False,
         movement_only=False,
         dry_run_rd=False,
+        reset=False,
         edge_length_mm=None,
         thickness_mm=None,
         num_tails=None,

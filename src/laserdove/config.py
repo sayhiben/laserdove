@@ -48,6 +48,7 @@ class RunConfig:
     rotary_backend: str
     movement_only: bool
     save_rd_dir: Optional[Path]
+    reset_only: bool
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -63,6 +64,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    default="both", help="Which board to plan")
     p.add_argument("--dry-run", action="store_true",
                    help="Do not talk to hardware; just print plan")
+    p.add_argument(
+        "--reset",
+        action="store_true",
+        help="Skip planning and just zero rotary/head with laser off",
+    )
     p.add_argument(
         "--simulate",
         action="store_true",
@@ -322,4 +328,5 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         rotary_backend=rotary_backend,
         movement_only=movement_only,
         save_rd_dir=save_rd_dir,
+        reset_only=args.reset,
     )

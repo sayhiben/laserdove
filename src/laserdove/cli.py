@@ -7,6 +7,7 @@ from typing import List
 from .config import build_arg_parser, load_config_and_args
 from .geometry import compute_tail_layout
 from .planner import plan_tail_board, compute_pin_plan, plan_pin_board
+from .model import Command, CommandType
 from .hardware import (
     DummyLaser,
     DummyRotary,
@@ -30,26 +31,50 @@ def main() -> None:
 
     run_config = load_config_and_args(args)
 
-    # Compute shared layout once (pins and tails must agree)
-    tail_layout = compute_tail_layout(run_config.joint_params)
+    # Early exit: reset-only mode just zeros rotary/head with laser off.
+    if run_config.reset_only:
+        all_commands: List[Command] = [
+            Command(
+                type=CommandType.SET_LASER_POWER,
+                power_pct=0.0,
+                comment="Reset: ensure laser off",
+            ),
+            Command(
+                type=CommandType.ROTATE,
+                angle_deg=run_config.jig_params.rotation_zero_deg,
+                speed_mm_s=run_config.jig_params.rotation_speed_dps,
+                comment="Reset: rotate jig to zero",
+            ),
+            Command(
+                type=CommandType.MOVE,
+                x=0.0,
+                y=0.0,
+                z=run_config.machine_params.z_zero_pin_mm,
+                speed_mm_s=run_config.machine_params.rapid_speed_mm_s,
+                comment="Reset: move head to origin at pin Z0",
+            ),
+        ]
+    else:
+        # Compute shared layout once (pins and tails must agree)
+        tail_layout = compute_tail_layout(run_config.joint_params)
 
-    # Validate geometry + machine/jig config
-    validation_errors = validate_all(run_config.joint_params, run_config.jig_params, run_config.machine_params, tail_layout)
-    if validation_errors:
-        for error in validation_errors:
-            print(f"ERROR: {error}")
-        raise SystemExit("Validation failed; fix configuration before running.")
+        # Validate geometry + machine/jig config
+        validation_errors = validate_all(run_config.joint_params, run_config.jig_params, run_config.machine_params, tail_layout)
+        if validation_errors:
+            for error in validation_errors:
+                print(f"ERROR: {error}")
+            raise SystemExit("Validation failed; fix configuration before running.")
 
-    all_commands: List = []
+        all_commands: List[Command] = []
 
-    if run_config.mode in ("tails", "both"):
-        tail_commands = plan_tail_board(run_config.joint_params, run_config.machine_params, tail_layout)
-        all_commands.extend(tail_commands)
+        if run_config.mode in ("tails", "both"):
+            tail_commands = plan_tail_board(run_config.joint_params, run_config.machine_params, tail_layout)
+            all_commands.extend(tail_commands)
 
-    if run_config.mode in ("pins", "both"):
-        pin_plan = compute_pin_plan(run_config.joint_params, run_config.jig_params, tail_layout)
-        pin_commands = plan_pin_board(run_config.joint_params, run_config.jig_params, run_config.machine_params, pin_plan)
-        all_commands.extend(pin_commands)
+        if run_config.mode in ("pins", "both"):
+            pin_plan = compute_pin_plan(run_config.joint_params, run_config.jig_params, tail_layout)
+            pin_commands = plan_pin_board(run_config.joint_params, run_config.jig_params, run_config.machine_params, pin_plan)
+            all_commands.extend(pin_commands)
 
     if run_config.dry_run and not run_config.simulate and run_config.laser_backend != "ruida":
         for command in all_commands:

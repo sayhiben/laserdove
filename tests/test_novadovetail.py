@@ -69,6 +69,7 @@ def make_run_config(**overrides) -> RunConfig:
         rotary_backend="dummy",
         movement_only=False,
         save_rd_dir=None,
+        reset_only=False,
     )
     defaults.update(overrides)
     return RunConfig(**defaults)
@@ -133,6 +134,7 @@ def test_main_exits_on_validation_error(monkeypatch):
         rotary_backend="dummy",
         movement_only=False,
         save_rd_dir=None,
+        reset_only=False,
     )
     monkeypatch.setattr(
         "laserdove.cli.load_config_and_args",
@@ -321,6 +323,23 @@ def test_main_simulate_calls_show(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "tails", "--simulate"])
     main()
     assert created["laser"].shown is True
+
+
+def test_main_reset_only(monkeypatch):
+    rc = make_run_config(mode="tails", reset_only=True)
+    captured = {}
+    monkeypatch.setattr("laserdove.cli.load_config_and_args", lambda args: rc)
+    monkeypatch.setattr(
+        "laserdove.cli.execute_commands",
+        lambda cmds, laser, rotary: captured.setdefault("cmds", list(cmds)),
+    )
+    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--reset"])
+    main()
+    assert [cmd.type for cmd in captured["cmds"]] == [
+        CommandType.SET_LASER_POWER,
+        CommandType.ROTATE,
+        CommandType.MOVE,
+    ]
 
 
 def test_main_invalid_backend_raises(monkeypatch):

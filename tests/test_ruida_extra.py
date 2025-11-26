@@ -133,6 +133,29 @@ def test_run_sequence_with_rotary_flushes_blocks(monkeypatch):
     assert blocks[2][1] == 1.0
 
 
+def test_run_sequence_movement_only_forces_zero_power(monkeypatch):
+    laser = RuidaLaser("127.0.0.1", dry_run=True, movement_only=True)
+    sent_blocks = []
+
+    def fake_send(moves, job_z_mm=None):
+        sent_blocks.append(moves)
+
+    laser.send_rd_job = fake_send  # type: ignore
+    class DummyRotary:
+        def rotate_to(self, angle_deg, speed_dps):
+            pass
+
+    cmds = [
+        Command(type=CommandType.SET_LASER_POWER, power_pct=60.0),
+        Command(type=CommandType.MOVE, x=0.0, y=0.0, speed_mm_s=100.0),
+        Command(type=CommandType.CUT_LINE, x=1.0, y=0.0, speed_mm_s=50.0),
+    ]
+    laser.run_sequence_with_rotary(cmds, DummyRotary())
+    assert sent_blocks
+    for mv in sent_blocks[0]:
+        assert mv.power_pct == 0.0
+
+
 def test_send_rd_job_zeroes_power_when_movement_only():
     moves = [RDMove(x_mm=0, y_mm=0, speed_mm_s=10.0, power_pct=60.0, is_cut=True)]
     laser = RuidaLaser("127.0.0.1", movement_only=True, dry_run=True)

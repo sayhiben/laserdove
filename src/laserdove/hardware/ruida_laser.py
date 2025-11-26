@@ -398,7 +398,9 @@ class RuidaLaser:
                 continue
 
             if cmd.type.name == "SET_LASER_POWER":
-                if cmd.power_pct is not None:
+                if self.movement_only:
+                    current_power = 0.0
+                elif cmd.power_pct is not None:
                     current_power = cmd.power_pct
                 continue
 
