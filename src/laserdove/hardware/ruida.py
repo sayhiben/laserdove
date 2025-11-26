@@ -20,8 +20,11 @@ class RuidaLaser(LaserInterface):
     per packet. Packets are chunked to <= MTU.
     """
 
+    # Some references report ACK/NACK as 0xCC/0xCF; others as 0xC6/0x46.
     ACK = 0xC6
     NACK = 0x46
+    ACK_VALUES = {ACK, 0xCC}
+    NACK_VALUES = {NACK, 0xCF}
     MTU = 1470
     MEM_MACHINE_STATUS = b"\x04\x00"
     MEM_CURRENT_X = b"\x04\x21"
@@ -188,9 +191,9 @@ class RuidaLaser(LaserInterface):
                     if retry > 3:
                         raise RuntimeError("UDP empty response")
                     continue
-                if data[0] == self.ACK:
+                if data[0] in self.ACK_VALUES:
                     break
-                if data[0] == self.NACK and idx == 0:
+                if data[0] in self.NACK_VALUES and idx == 0:
                     retry += 1
                     if retry > 3:
                         raise RuntimeError("UDP NACK on first packet")

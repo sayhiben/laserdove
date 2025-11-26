@@ -33,12 +33,13 @@ def _ready_responses(laser: RuidaLaser):
         swizzled = laser._swizzle(payload)
         return laser._checksum(swizzled) + swizzled
 
+    ack = bytes([next(iter(RuidaLaser.ACK_VALUES))])
     return [
-        bytes([RuidaLaser.ACK]),
+        ack,
         make_payload(RuidaLaser.MEM_MACHINE_STATUS, (0).to_bytes(4, "big")),
-        bytes([RuidaLaser.ACK]),
+        ack,
         make_payload(RuidaLaser.MEM_CURRENT_X, laser._encode_abscoord_mm(laser.x)),
-        bytes([RuidaLaser.ACK]),
+        ack,
         make_payload(RuidaLaser.MEM_CURRENT_Y, laser._encode_abscoord_mm(laser.y)),
     ]
 
