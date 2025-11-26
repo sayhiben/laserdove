@@ -47,5 +47,5 @@ rotary_dir_pin_pos  = 13  # DIR+ (physical pin 13; DIR- tied to GND)
 # rotary_enable_pin = 25    # optional, active low (omit if not wired)
 # rotary_alarm_pin  = 18    # optional input (omit if not wired)
 rotary_invert_dir = false
-ruida_host = "192.168.1.100"
+ruida_host = "10.0.3.3"
 ruida_port = 50200
