@@ -7,10 +7,10 @@ This repo focuses on:
 
 - **Geometry and math**: clean, testable geometry for pins/tails.
 - **Planning**: a simple planner that emits abstract motion commands.
-- **Hardware abstraction**: a minimal layer that can be wired to a Ruida controller and a NEMA‑23 rotary.
-- **Quality of life**: support for dry runs, logging, and basic tests.
+- **Hardware abstraction**: Dummy/simulated backends, a UDP Ruida transport + RD job builder, and a real rotary driver scaffold.
+- **Quality of life**: dry runs, Tk visualization, RD export, logging, and tests.
 
-v1 intentionally uses dummy hardware by default; it does *not* yet talk to a real Ruida unless you wire in the skeleton classes.
+v1 defaults to dummy hardware; enable Ruida/real rotary via config or CLI when you are on hardware.
 
 ---
 
@@ -19,12 +19,20 @@ v1 intentionally uses dummy hardware by default; it does *not* yet talk to a rea
 ```text
 novadovetail/
   src/laserdove/
-    cli.py                 # CLI entrypoint (python -m laserdove.cli)
+    cli.py                 # CLI entrypoint (python -m laserdove.cli / -m laserdove.novadovetail)
+    novadovetail.py        # Thin wrapper around cli.main
     config.py              # TOML + CLI config
     model.py               # Dataclasses (params, layouts, commands)
     geometry.py            # Pure math; tails, pins, Z offsets, kerf
     planner.py             # Convert geometry -> Command list
-    hardware/              # Laser + rotary interfaces (dummy/sim/UDP Ruida)
+    simulation_viewer.py   # Tkinter viewer for sim mode
+    hardware/
+      base.py              # Interfaces, DummyLaser/DummyRotary, executor
+      sim.py               # Tk-simulated laser/rotary backends
+      rd_builder.py        # Minimal RD job builder
+      ruida_common.py      # Swizzle/encode helpers
+      ruida_laser.py       # UDP Ruida transport + RD upload/run
+      rotary.py            # RealRotary wrapper with logging/GPIO drivers
     validation.py          # Geometry/machine/jig validation
     logging_utils.py       # Logging setup
   example-config.toml      # Example configuration
@@ -100,12 +108,15 @@ z_zero_tail_mm      = 0.0
 z_zero_pin_mm       = 0.0
 
 [backend]
-use_dummy  = true
-laser_backend = "dummy"  # "dummy" or "ruida"
-rotary_backend = "dummy" # "dummy" or "real"
-movement_only = false    # keep beam off while still moving when using Ruida
+use_dummy  = true                  # legacy toggle: dummy for both unless overridden below
+laser_backend = "dummy"            # "dummy" or "ruida"
+rotary_backend = "dummy"           # "dummy" or "real"
+movement_only = false              # keep beam off while still moving when using Ruida
 ruida_host = "192.168.1.100"
 ruida_port = 50200
+ruida_timeout_s = 3.0
+ruida_source_port = 40200
+# rotary_* pins may use BOARD or BCM numbering (rotary_pin_numbering)
 ```
 If you do **not** pass `--config`, these same values are used as the built‑in defaults. When you run without `--config`, `novadovetail` will also look for a local `config.toml` and use it automatically if present.
 
@@ -119,6 +130,14 @@ Then edit `config.toml` to match your machine, jig, and joint preferences, and r
 
 ```bash
 python3 -m laserdove.novadovetail --config config.toml
+```
+
+### Reset-only mode
+
+To zero the rotary and park the head at pin Z0 with the laser off (no planning/cutting):
+
+```bash
+python3 -m laserdove.novadovetail --reset
 ```
 
 ### CLI
@@ -137,33 +156,43 @@ Runs against the simulated backend and opens a Tkinter view of moves/cuts. Motio
 python3 -m laserdove.novadovetail --config example-config.toml --mode both --simulate
 ```
 
+#### RD export
+
+- `--save-rd-dir /path/to/out` writes swizzled `.rd` jobs to disk for inspection; works with real or dry-run Ruida modes.
+
 #### Options
 
 | **Option**              | **Description**                                                                                 | **Default**                                |
 |-------------------------|-------------------------------------------------------------------------------------------------|--------------------------------------------|
 | `--mode {tails,pins,both}` | Which board(s) to plan.                                                                      | `both`                                     |
 | `--config PATH`        | TOML file to load (`[joint]`, `[jig]`, `[machine]`, `[backend]`). If provided and the file is missing or invalid, the program exits with an error. | `config.toml` if present, otherwise built‑ins shown above |
-| `--dry-run`            | Do not talk to hardware; print `Command` objects instead.                                      | disabled                                   |
-| `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs only, ruida for UDP motion).                     | from config/`use_dummy`                    |
-| `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs only, real for stepper GPIO).                    | from config/`use_dummy`                    |
-| `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                   | disabled                                   |
-| `--rotary-step-pin`, `--rotary-dir-pin` | BCM pins for STEP-/DIR- when `--rotary-backend real`.                               | unset (use STEP+/DIR+ defaults)            |
-| `--rotary-step-pin-pos`, `--rotary-dir-pin-pos` | BCM pins for STEP+/DIR+ (pulse these if PUL-/DIR- tied to GND).                     | 17 / 27                                    |
-| `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional BCM pins for enable (active low) and alarm input (omit if not wired).     | unset                                      |
-| `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                 | disabled                                   |
-| `--rotary-pin-numbering {bcm,board}` | Pin numbering scheme for rotary GPIO (BCM vs physical BOARD).                         | `board`                                    |
+| `--dry-run`            | Do not talk to hardware; print `Command` objects (dummy/sim). Ruida honors dry-run by logging UDP payloads only. | disabled                                   |
+| `--save-rd-dir PATH`   | Write swizzled `.rd` payloads to this directory.                                                | disabled                                   |
+| `--simulate`           | Run against the simulated backend and open a Tkinter visualization.                             | disabled                                   |
+| `--reset`              | Skip planning; laser off, rotate to zero, move head to origin at pin Z0.                        | disabled                                   |
+| `--movement-only`      | Keep laser power at 0 while still driving Ruida motion (movement checkout).                     | disabled                                   |
+| `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs, ruida for UDP+RD).                              | from config/`use_dummy`                    |
+| `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs, real for stepper GPIO).                         | from config/`use_dummy`                    |
+| `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                                | unset (use config/built‑in)                |
+| `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                             | unset (use config/built‑in)                |
+| `--num-tails`          | Override `joint.num_tails`.                                                                     | unset (use config/built‑in)                |
+| `--dovetail-angle-deg` | Override `joint.dovetail_angle_deg`.                                                            | unset (use config/built‑in)                |
+| `--tail-width-mm`      | Override `joint.tail_outer_width_mm`.                                                           | unset (use config/built‑in)                |
+| `--clearance-mm`       | Override `joint.clearance_mm`.                                                                  | unset (use config/built‑in)                |
+| `--kerf-tail-mm`       | Override `joint.kerf_tail_mm`.                                                                  | unset (use config/built‑in)                |
+| `--kerf-pin-mm`        | Override `joint.kerf_pin_mm`.                                                                   | unset (use config/built‑in)                |
+| `--axis-offset-mm`     | Override `jig.axis_to_origin_mm`.                                                               | unset (use config/built‑in)                |
+| `--ruida-timeout-s`    | UDP ACK timeout seconds for Ruida.                                                              | `backend.ruida_timeout_s` (3.0)            |
+| `--ruida-source-port`  | Local UDP source port.                                                                          | `backend.ruida_source_port` (40200)        |
+| `--rotary-steps-per-rev` | Full steps per revolution for rotary driver.                                                   | `backend.rotary_steps_per_rev` (4000)      |
+| `--rotary-microsteps`  | Extra microstep multiplier from driver DIP switch.                                              | `backend.rotary_microsteps` (none)         |
+| `--rotary-step-pin`, `--rotary-dir-pin` | BCM pins for STEP-/DIR- when `--rotary-backend real`.                               | unset                                      |
+| `--rotary-step-pin-pos`, `--rotary-dir-pin-pos` | Pins for STEP+/DIR+ (pulse these if PUL-/DIR- tied to GND).                      | 11 / 13 (BOARD)                            |
+| `--rotary-enable-pin`, `--rotary-alarm-pin` | Optional pins for enable (active low) and alarm input.                           | unset                                      |
+| `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                    | disabled                                   |
+| `--rotary-pin-numbering {bcm,board}` | Pin numbering scheme for rotary GPIO.                                                 | `board`                                    |
 | `--rotary-max-step-rate-hz` | Cap rotary step pulse rate (Hz); prevents over-speeding when using high pulses/rev.     | 500.0                                      |
-| `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                               | unset (use config/built‑in)                |
-| `--thickness-mm`       | Override `joint.thickness_mm` (also sets `tail_depth_mm` to match).                           | unset (use config/built‑in)                |
-| `--num-tails`          | Override `joint.num_tails`.                                                                    | unset (use config/built‑in)                |
-| `--dovetail-angle-deg` | Override `joint.dovetail_angle_deg`.                                                           | unset (use config/built‑in)                |
-| `--tail-width-mm`      | Override `joint.tail_outer_width_mm`.                                                          | unset (use config/built‑in)                |
-| `--clearance-mm`       | Override `joint.clearance_mm`.                                                                 | unset (use config/built‑in)                |
-| `--kerf-tail-mm`       | Override `joint.kerf_tail_mm`.                                                                 | unset (use config/built‑in)                |
-| `--kerf-pin-mm`        | Override `joint.kerf_pin_mm`.                                                                  | unset (use config/built‑in)                |
-| `--axis-offset-mm`     | Override `jig.axis_to_origin_mm`.                                                              | unset (use config/built‑in)                |
-| `--simulate`           | Run against the simulated backend and open a Tkinter visualization.                           | disabled                                   |
-| `--log-level {DEBUG,INFO,WARNING,ERROR}` | Logging verbosity for `novadovetail`.                                        | `INFO`                                     |
+| `--log-level`          | Logging verbosity for `novadovetail`.                                                           | `INFO`                                     |
 
 ---
 
@@ -192,11 +221,14 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 
 ## Backends
 
-`hardware.py` defines four backends:
+`src/laserdove/hardware/` provides:
 
-- `DummyLaser` / `DummyRotary`: fully simulated; only log moves.  
-- `RuidaLaser`: skeleton wrapper intended to talk to a Ruida controller (via `RuidaProxy` or UDP).  
-- `RealRotary`: skeleton wrapper for the physical rotary stepper on the Pi.
+- `DummyLaser` / `DummyRotary`: log-only backends; safest for dev.  
+- `SimulatedLaser` / `SimulatedRotary`: Tkinter visualization; respects feed/rotation rates in real time.  
+- `RuidaLaser`: UDP (50200) transport with swizzle/checksum, RD job builder/uploader, optional RD file save, movement-only clamp.  
+- `RealRotary`: stepper wrapper that can emit GPIO DIR/STEP pulses (via `GPIOStepperDriver`) or just log (`LoggingStepperDriver`).
+
+Ruida communication waits for ACKs and polls for job completion; `movement_only=true` sends a single laser-off then suppresses further power changes while still moving.
 
 Backend selection is driven by the `[backend]` section in the config:
 
@@ -219,8 +251,6 @@ ruida_port = 50200
   - XY-only checkout: `laser_backend="ruida"`, `rotary_backend="dummy"`, `movement_only=true`.
   - Combined motion without firing: `laser_backend="ruida"`, `rotary_backend="real"`, `movement_only=true`.
 - Real rotary GPIO pins: `backend.rotary_pin_numbering` selects BCM vs BOARD numbering (default BOARD/physical). Defaults: `rotary_step_pin_pos=11`, `rotary_dir_pin_pos=13` (pulse + side, PUL-/DIR- to GND). Optional `rotary_step_pin`/`rotary_dir_pin` if you pulse the - side instead, optional `rotary_enable_pin` (active low) and `rotary_alarm_pin` (input); omit optional pins if not wired; `rotary_invert_dir` (boolean).
-
-`RuidaLaser` and `RealRotary` currently only log; you must fill in the TODOs with your actual UDP / RD‑job / GPIO / driver calls.
 
 ---
 
