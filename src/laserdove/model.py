@@ -81,6 +81,8 @@ class PinSide:
 @dataclass
 class PinPlan:
     sides: List[PinSide]
+    pin_outer_width: float
+    half_pin_width: float
 
 
 class CommandType(Enum):

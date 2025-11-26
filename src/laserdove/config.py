@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional
 
 import logging
 
@@ -16,6 +16,38 @@ except ImportError:
 from .model import JointParams, JigParams, MachineParams
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class RunConfig:
+    joint_params: JointParams
+    jig_params: JigParams
+    machine_params: MachineParams
+    mode: str
+    dry_run: bool
+    dry_run_rd: bool
+    backend_use_dummy: bool
+    backend_host: str
+    backend_port: int
+    ruida_magic: int
+    ruida_timeout_s: float
+    ruida_source_port: int
+    rotary_steps_per_rev: float
+    rotary_microsteps: Optional[int]
+    rotary_step_pin: Optional[int]
+    rotary_dir_pin: Optional[int]
+    rotary_step_pin_pos: Optional[int]
+    rotary_dir_pin_pos: Optional[int]
+    rotary_enable_pin: Optional[int]
+    rotary_alarm_pin: Optional[int]
+    rotary_invert_dir: bool
+    rotary_max_step_rate_hz: Optional[float]
+    rotary_pin_numbering: str
+    simulate: bool
+    laser_backend: str
+    rotary_backend: str
+    movement_only: bool
+    save_rd_dir: Optional[Path]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -111,38 +143,7 @@ def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
     return use_dummy, host, port, magic
 
 
-def load_config_and_args(
-    args: argparse.Namespace,
-) -> Tuple[
-    JointParams,
-    JigParams,
-    MachineParams,
-    str,
-    bool,
-    bool,
-    str,
-    int,
-    int,
-    float,
-    int,
-    float,
-    Optional[int],
-    Optional[int],
-    Optional[int],
-    Optional[int],
-    Optional[int],
-    Optional[int],
-    Optional[int],
-    Optional[float],
-    str,
-    bool,
-    bool,
-    str,
-    str,
-    bool,
-    bool,
-    Optional[Path],
-]:
+def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
     used_default = False
@@ -286,36 +287,39 @@ def load_config_and_args(
     if rotary_pin_numbering not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
 
+    dry_run_rd = bool(getattr(args, "dry_run_rd", False))
+
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
     log.debug("MachineParams: %s", asdict(machine_params))
 
-    return (
-        joint_params,
-        jig_params,
-        machine_params,
-        args.mode,
-        args.dry_run,
-        backend_use_dummy,
-        backend_host,
-        backend_port,
-        ruida_magic,
-        ruida_timeout_s,
-        ruida_source_port,
-        rotary_steps_per_rev,
-        rotary_microsteps,
-        rotary_step_pin,
-        rotary_dir_pin,
-        rotary_step_pin_pos,
-        rotary_dir_pin_pos,
-        rotary_enable_pin,
-        rotary_alarm_pin,
-        rotary_invert_dir,
-        rotary_max_step_rate_hz,
-        rotary_pin_numbering,
-        args.simulate,
-        laser_backend,
-        rotary_backend,
-        movement_only,
-        save_rd_dir,
+    return RunConfig(
+        joint_params=joint_params,
+        jig_params=jig_params,
+        machine_params=machine_params,
+        mode=args.mode,
+        dry_run=args.dry_run,
+        dry_run_rd=dry_run_rd,
+        backend_use_dummy=backend_use_dummy,
+        backend_host=backend_host,
+        backend_port=backend_port,
+        ruida_magic=ruida_magic,
+        ruida_timeout_s=ruida_timeout_s,
+        ruida_source_port=ruida_source_port,
+        rotary_steps_per_rev=rotary_steps_per_rev,
+        rotary_microsteps=rotary_microsteps,
+        rotary_step_pin=rotary_step_pin,
+        rotary_dir_pin=rotary_dir_pin,
+        rotary_step_pin_pos=rotary_step_pin_pos,
+        rotary_dir_pin_pos=rotary_dir_pin_pos,
+        rotary_enable_pin=rotary_enable_pin,
+        rotary_alarm_pin=rotary_alarm_pin,
+        rotary_invert_dir=rotary_invert_dir,
+        rotary_max_step_rate_hz=rotary_max_step_rate_hz,
+        rotary_pin_numbering=rotary_pin_numbering,
+        simulate=args.simulate,
+        laser_backend=laser_backend,
+        rotary_backend=rotary_backend,
+        movement_only=movement_only,
+        save_rd_dir=save_rd_dir,
     )

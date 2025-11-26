@@ -28,44 +28,13 @@ def main() -> None:
 
     setup_logging(args.log_level)
 
-    loaded = load_config_and_args(args)
-    if len(loaded) == 26:
-        loaded = (*loaded, None)
-    (
-        joint_params,
-        jig_params,
-        machine_params,
-        mode,
-        dry_run,
-        _backend_use_dummy,
-        backend_host,
-        backend_port,
-        ruida_magic,
-        ruida_timeout_s,
-        ruida_source_port,
-        rotary_steps_per_rev,
-        rotary_microsteps,
-        rotary_step_pin,
-        rotary_dir_pin,
-        rotary_step_pin_pos,
-        rotary_dir_pin_pos,
-        rotary_enable_pin,
-        rotary_alarm_pin,
-        rotary_invert_dir,
-        rotary_max_step_rate_hz,
-        rotary_pin_numbering,
-        simulate,
-        laser_backend,
-        rotary_backend,
-        movement_only,
-        save_rd_dir,
-    ) = loaded
+    run_config = load_config_and_args(args)
 
     # Compute shared layout once (pins and tails must agree)
-    tail_layout = compute_tail_layout(joint_params)
+    tail_layout = compute_tail_layout(run_config.joint_params)
 
     # Validate geometry + machine/jig config
-    validation_errors = validate_all(joint_params, jig_params, machine_params, tail_layout)
+    validation_errors = validate_all(run_config.joint_params, run_config.jig_params, run_config.machine_params, tail_layout)
     if validation_errors:
         for error in validation_errors:
             print(f"ERROR: {error}")
@@ -73,59 +42,60 @@ def main() -> None:
 
     all_commands: List = []
 
-    if mode in ("tails", "both"):
-        tail_commands = plan_tail_board(joint_params, machine_params, tail_layout)
+    if run_config.mode in ("tails", "both"):
+        tail_commands = plan_tail_board(run_config.joint_params, run_config.machine_params, tail_layout)
         all_commands.extend(tail_commands)
 
-    if mode in ("pins", "both"):
-        pin_plan = compute_pin_plan(joint_params, jig_params, tail_layout)
-        pin_commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
+    if run_config.mode in ("pins", "both"):
+        pin_plan = compute_pin_plan(run_config.joint_params, run_config.jig_params, tail_layout)
+        pin_commands = plan_pin_board(run_config.joint_params, run_config.jig_params, run_config.machine_params, pin_plan)
         all_commands.extend(pin_commands)
 
-    if dry_run and not simulate and laser_backend != "ruida":
+    if run_config.dry_run and not run_config.simulate and run_config.laser_backend != "ruida":
         for command in all_commands:
             print(command)
         return
 
     # Backend selection
-    if simulate:
+    if run_config.simulate:
         from .hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
 
         laser = SimulatedLaser(real_time=True)
         rotary = SimulatedRotary(laser, real_time=True)
         laser.setup_viewer()  # Open the window before execution to show progress.
     else:
-        if laser_backend == "dummy":
+        if run_config.laser_backend == "dummy":
             laser = DummyLaser()
-        elif laser_backend == "ruida":
+        elif run_config.laser_backend == "ruida":
+            ruida_dry_run = run_config.dry_run or run_config.dry_run_rd
             laser = RuidaLaser(
-                host=backend_host,
-                port=backend_port,
-                magic=ruida_magic,
-                timeout_s=ruida_timeout_s,
-                source_port=ruida_source_port,
-                dry_run=dry_run,
-                movement_only=movement_only,
-                save_rd_dir=save_rd_dir,
+                host=run_config.backend_host,
+                port=run_config.backend_port,
+                magic=run_config.ruida_magic,
+                timeout_s=run_config.ruida_timeout_s,
+                source_port=run_config.ruida_source_port,
+                dry_run=ruida_dry_run,
+                movement_only=run_config.movement_only,
+                save_rd_dir=run_config.save_rd_dir,
             )
         else:
-            raise ValueError(f"Unsupported laser backend {laser_backend}")
+            raise ValueError(f"Unsupported laser backend {run_config.laser_backend}")
 
-        if rotary_backend == "dummy":
+        if run_config.rotary_backend == "dummy":
             rotary = DummyRotary()
-        elif rotary_backend == "real":
+        elif run_config.rotary_backend == "real":
             driver = LoggingStepperDriver()
-            if any(pin is not None for pin in (rotary_step_pin, rotary_step_pin_pos)) and any(pin is not None for pin in (rotary_dir_pin, rotary_dir_pin_pos)):
+            if any(pin is not None for pin in (run_config.rotary_step_pin, run_config.rotary_step_pin_pos)) and any(pin is not None for pin in (run_config.rotary_dir_pin, run_config.rotary_dir_pin_pos)):
                 try:
                     driver = GPIOStepperDriver(
-                        step_pin=rotary_step_pin,
-                        dir_pin=rotary_dir_pin,
-                        step_pin_pos=rotary_step_pin_pos,
-                        dir_pin_pos=rotary_dir_pin_pos,
-                        enable_pin=rotary_enable_pin,
-                        alarm_pin=rotary_alarm_pin,
-                        invert_dir=rotary_invert_dir,
-                        pin_mode=rotary_pin_numbering.upper(),
+                        step_pin=run_config.rotary_step_pin,
+                        dir_pin=run_config.rotary_dir_pin,
+                        step_pin_pos=run_config.rotary_step_pin_pos,
+                        dir_pin_pos=run_config.rotary_dir_pin_pos,
+                        enable_pin=run_config.rotary_enable_pin,
+                        alarm_pin=run_config.rotary_alarm_pin,
+                        invert_dir=run_config.rotary_invert_dir,
+                        pin_mode=run_config.rotary_pin_numbering.upper(),
                     )
                 except Exception as e:
                     log.warning("Failed to initialize GPIO rotary driver; using logging driver instead: %s", e)
@@ -133,21 +103,29 @@ def main() -> None:
                 log.warning("Rotary backend 'real' selected but step/dir pins not configured; using logging driver.")
 
             rotary = RealRotary(
-                steps_per_rev=rotary_steps_per_rev,
-                microsteps=rotary_microsteps,
+                steps_per_rev=run_config.rotary_steps_per_rev,
+                microsteps=run_config.rotary_microsteps,
                 driver=driver,
-                max_step_rate_hz=rotary_max_step_rate_hz,
+                max_step_rate_hz=run_config.rotary_max_step_rate_hz,
             )
         else:
-            raise ValueError(f"Unsupported rotary backend {rotary_backend}")
+            raise ValueError(f"Unsupported rotary backend {run_config.rotary_backend}")
 
-    if isinstance(laser, RuidaLaser):
-        laser.run_sequence_with_rotary(all_commands, rotary)
-    else:
-        execute_commands(all_commands, laser, rotary)
+    try:
+        if isinstance(laser, RuidaLaser):
+            laser.run_sequence_with_rotary(all_commands, rotary)
+        else:
+            execute_commands(all_commands, laser, rotary)
 
-    if simulate and hasattr(laser, "show"):
-        laser.show()
+        if run_config.simulate and hasattr(laser, "show"):
+            laser.show()
+    finally:
+        for dev in (laser, rotary):
+            if hasattr(dev, "cleanup"):
+                try:
+                    dev.cleanup()  # type: ignore[attr-defined]
+                except Exception:
+                    log.debug("Cleanup failed", exc_info=True)
 
 
 if __name__ == "__main__":

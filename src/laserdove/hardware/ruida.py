@@ -449,6 +449,14 @@ class RuidaLaser(LaserInterface):
 
         flush_block(block, block_z)
 
+    def cleanup(self) -> None:
+        """Release UDP socket if open."""
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            except Exception:
+                log.debug("Failed to close Ruida socket", exc_info=True)
+            self.sock = None
 
 class RuidaPanelInterface:
     """

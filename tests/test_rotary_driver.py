@@ -24,3 +24,18 @@ def test_real_rotary_skips_when_no_steps_per_rev():
     rotary = RealRotary(steps_per_rev=None, driver=driver)
     rotary.rotate_to(45.0, speed_dps=90.0)
     assert driver.calls == []
+
+
+def test_real_rotary_handles_driver_exception(capfd):
+    class FailingDriver:
+        def __init__(self):
+            self.calls = 0
+
+        def move_steps(self, steps: int, step_rate_hz: float) -> None:
+            self.calls += 1
+            raise RuntimeError("fail")
+
+    driver = FailingDriver()
+    rotary = RealRotary(steps_per_rev=4000.0, microsteps=1, driver=driver, max_step_rate_hz=1000.0)
+    rotary.rotate_to(10.0, speed_dps=100.0)
+    assert driver.calls == 1

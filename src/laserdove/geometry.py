@@ -100,20 +100,3 @@ def z_offset_for_angle(y_b_mm: float, angle_deg: float, axis_to_origin_mm: float
     delta_physical = z_physical - z_physical_at_origin
     return -delta_physical
 
-
-def center_outward_indices(y_values: List[float]) -> List[int]:
-    """
-    Return indices of y_values ordered center-outward.
-
-    "Center" is taken as (min(y) + max(y)) / 2, which matches the joint
-    mid-edge when y-values span the full 0..L range.
-    """
-    if not y_values:
-        return []
-    y_min = min(y_values)
-    y_max = max(y_values)
-    y_center = 0.5 * (y_min + y_max)
-
-    indexed_values = list(enumerate(y_values))
-    indexed_values.sort(key=lambda index_value: abs(index_value[1] - y_center))
-    return [index for index, _ in indexed_values]

@@ -18,7 +18,6 @@ from .model import (
 from .geometry import (
     kerf_offset_boundary,
     z_offset_for_angle,
-    center_outward_indices,
 )
 
 
@@ -218,7 +217,11 @@ def compute_pin_plan(
                 x_depth_mm=joint_params.socket_depth_mm,
             ))
 
-    return PinPlan(sides=sides)
+    return PinPlan(
+        sides=sides,
+        pin_outer_width=pin_outer_width,
+        half_pin_width=half_pin_width,
+    )
 
 
 def plan_pin_board(
@@ -248,8 +251,7 @@ def plan_pin_board(
     # Pre-compute half-span to the neighboring boundary in the waste direction.
     # Each flank will clear a rectangular pocket of this half-gap width.
     unique_boundaries = sorted({side.y_boundary_mm for side in pin_plan.sides})
-    pin_outer_width = (joint_params.edge_length_mm - joint_params.num_tails * joint_params.tail_outer_width_mm) / joint_params.num_tails
-    half_pin_width = pin_outer_width / 2.0
+    half_pin_width = pin_plan.half_pin_width
 
     half_gap_by_side: Dict[tuple[int, Side], float] = {}
     for side in pin_plan.sides:

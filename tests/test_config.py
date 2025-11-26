@@ -14,6 +14,7 @@ def make_args(**overrides) -> argparse.Namespace:
         dry_run=False,
         simulate=False,
         movement_only=False,
+        dry_run_rd=False,
         edge_length_mm=None,
         thickness_mm=None,
         num_tails=None,
@@ -39,6 +40,7 @@ def make_args(**overrides) -> argparse.Namespace:
         rotary_pin_numbering="board",
         laser_backend=None,
         rotary_backend=None,
+        save_rd_dir=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -48,58 +50,51 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     # Ensure we don't accidentally pick up a real config.toml.
     monkeypatch.chdir(tmp_path)
     args = make_args()
-    (
-        joint,
-        jig,
-        machine,
-        mode,
-        dry_run,
-        use_dummy,
-        host,
-        port,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _step_pin,
-        _dir_pin,
-        _step_pin_pos,
-        _dir_pin_pos,
-        _enable_pin,
-        _alarm_pin,
-        _invert_dir,
-        _max_step_rate,
-        _pin_scheme,
-        simulate,
-        laser_backend,
-        rotary_backend,
-        movement_only,
-        _save_rd_dir,
-    ) = load_config_and_args(args)
+    rc = load_config_and_args(args)
 
-    assert isinstance(joint, JointParams)
-    assert isinstance(jig, JigParams)
-    assert isinstance(machine, MachineParams)
-    assert mode == "both"
-    assert dry_run is False
-    assert simulate is False
-    assert use_dummy is True
-    assert host == "192.168.1.100"
-    assert port == 50200
-    assert simulate is False
-    assert laser_backend == "dummy"
-    assert rotary_backend == "dummy"
-    assert _step_pin is None
-    assert _dir_pin is None
-    assert _step_pin_pos == 11
-    assert _dir_pin_pos == 13
-    assert _enable_pin is None
-    assert _alarm_pin is None
-    assert _invert_dir is False
-    assert _max_step_rate == 500.0
-    assert _pin_scheme == "board"
-    assert movement_only is False
+    assert isinstance(rc.joint_params, JointParams)
+    assert isinstance(rc.jig_params, JigParams)
+    assert isinstance(rc.machine_params, MachineParams)
+    assert rc.mode == "both"
+    assert rc.dry_run is False
+    assert rc.simulate is False
+    assert rc.backend_use_dummy is True
+    assert rc.backend_host == "192.168.1.100"
+    assert rc.backend_port == 50200
+    assert rc.laser_backend == "dummy"
+    assert rc.rotary_backend == "dummy"
+    assert rc.rotary_step_pin is None
+    assert rc.rotary_dir_pin is None
+    assert rc.rotary_step_pin_pos == 11
+    assert rc.rotary_dir_pin_pos == 13
+    assert rc.rotary_enable_pin is None
+    assert rc.rotary_alarm_pin is None
+    assert rc.rotary_invert_dir is False
+    assert rc.rotary_max_step_rate_hz == 500.0
+    assert rc.rotary_pin_numbering == "board"
+    assert rc.movement_only is False
+    assert rc.save_rd_dir is None
+
+
+def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        """
+        [joint]
+        edge_length_mm = 42.0
+        [backend]
+        laser_backend = "ruida"
+        rotary_backend = "real"
+        """
+    )
+    monkeypatch.chdir(tmp_path)
+    args = make_args(config=None)
+
+    rc = load_config_and_args(args)
+    # Default config.toml picked up and applied
+    assert rc.joint_params.edge_length_mm == 42.0
+    assert rc.laser_backend == "ruida"
+    assert rc.rotary_backend == "real"
 
 
 def test_load_config_missing_explicit_path_raises(tmp_path):
@@ -135,54 +130,26 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         rotary_backend="dummy",
     )
 
-    (
-        joint,
-        jig,
-        machine,
-        mode,
-        dry_run,
-        use_dummy,
-        host,
-        port,
-        _magic,
-        _timeout,
-        _src_port,
-        _steps_per_rev,
-        _microsteps,
-        _step_pin,
-        _dir_pin,
-        _step_pin_pos,
-        _dir_pin_pos,
-        _enable_pin,
-        _alarm_pin,
-        _invert_dir,
-        _max_step_rate,
-        _pin_scheme,
-        simulate,
-        laser_backend,
-        rotary_backend,
-        movement_only,
-        _save_rd_dir,
-    ) = load_config_and_args(args)
+    rc = load_config_and_args(args)
 
-    assert joint.thickness_mm == 7.0
-    assert joint.tail_depth_mm == 7.0  # thickness override also updates tail depth
-    assert joint.edge_length_mm == 50.0
-    assert joint.clearance_mm == 0.2
-    assert joint.num_tails == 2
+    assert rc.joint_params.thickness_mm == 7.0
+    assert rc.joint_params.tail_depth_mm == 7.0  # thickness override also updates tail depth
+    assert rc.joint_params.edge_length_mm == 50.0
+    assert rc.joint_params.clearance_mm == 0.2
+    assert rc.joint_params.num_tails == 2
 
-    assert jig.axis_to_origin_mm == 55.0  # CLI override wins over file
-    assert machine.cut_speed_tail_mm_s == 12.0
+    assert rc.jig_params.axis_to_origin_mm == 55.0  # CLI override wins over file
+    assert rc.machine_params.cut_speed_tail_mm_s == 12.0
 
-    assert mode == "pins"
-    assert dry_run is True
-    assert simulate is True
-    assert use_dummy is True
-    assert host == "192.168.1.100"
-    assert port == 50200
-    assert laser_backend == "dummy"
-    assert rotary_backend == "dummy"
-    assert movement_only is False
+    assert rc.mode == "pins"
+    assert rc.dry_run is True
+    assert rc.simulate is True
+    assert rc.backend_use_dummy is True
+    assert rc.backend_host == "192.168.1.100"
+    assert rc.backend_port == 50200
+    assert rc.laser_backend == "dummy"
+    assert rc.rotary_backend == "dummy"
+    assert rc.movement_only is False
 
 
 def test_backend_overrides_and_movement_only(tmp_path):
@@ -209,49 +176,77 @@ def test_backend_overrides_and_movement_only(tmp_path):
         rotary_backend="dummy",
     )
 
-    (
-        _joint,
-        _jig,
-        _machine,
-        _mode,
-        _dry_run,
-        use_dummy,
-        host,
-        port,
-        _magic,
-        _timeout,
-        _src_port,
-        _steps_per_rev,
-        _microsteps,
-        _step_pin,
-        _dir_pin,
-        _step_pin_pos,
-        _dir_pin_pos,
-        _enable_pin,
-        _alarm_pin,
-        _invert,
-        _max_step_rate,
-        _pin_scheme,
-        _simulate,
-        laser_backend,
-        rotary_backend,
-        movement_only,
-        _save_rd_dir,
-    ) = load_config_and_args(args)
+    rc = load_config_and_args(args)
 
-    assert use_dummy is False
-    assert host == "10.0.0.5"
-    assert port == 60000
-    assert laser_backend == "ruida"
-    assert rotary_backend == "dummy"  # CLI override wins
-    assert movement_only is True
-    assert _step_pin == 23
-    assert _dir_pin == 24
-    assert _step_pin_pos == 11  # defaults remain unless overridden
-    assert _dir_pin_pos == 13
-    assert _enable_pin == 25
-    assert _alarm_pin == 18
-    assert _invert is True
-    assert _max_step_rate == 500.0
-    assert _pin_scheme == "board"
-    assert _max_step_rate == 500.0
+    assert rc.backend_use_dummy is False
+    assert rc.backend_host == "10.0.0.5"
+    assert rc.backend_port == 60000
+    assert rc.laser_backend == "ruida"
+    assert rc.rotary_backend == "dummy"  # CLI override wins
+    assert rc.movement_only is True
+    assert rc.rotary_step_pin == 23
+    assert rc.rotary_dir_pin == 24
+    assert rc.rotary_step_pin_pos == 11  # defaults remain unless overridden
+    assert rc.rotary_dir_pin_pos == 13
+    assert rc.rotary_enable_pin == 25
+    assert rc.rotary_alarm_pin == 18
+    assert rc.rotary_invert_dir is True
+    assert rc.rotary_max_step_rate_hz == 500.0
+    assert rc.rotary_pin_numbering == "board"
+
+
+def test_invalid_backends_raise(monkeypatch):
+    args = make_args(laser_backend="bogus")
+    with pytest.raises(SystemExit):
+        load_config_and_args(args)
+
+    args = make_args(rotary_backend="nope")
+    with pytest.raises(SystemExit):
+        load_config_and_args(args)
+
+    args = make_args(rotary_pin_numbering="weird")
+    with pytest.raises(SystemExit):
+        load_config_and_args(args)
+
+
+def test_cli_overrides_apply_to_optional_fields(tmp_path):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[backend]\nrotary_steps_per_rev = 1000.0\n")
+    args = make_args(
+        config=cfg_path,
+        edge_length_mm=10.0,
+        num_tails=5,
+        dovetail_angle_deg=10.0,
+        tail_width_mm=12.0,
+        kerf_tail_mm=0.2,
+        kerf_pin_mm=0.25,
+        rotary_steps_per_rev=1234.0,
+        rotary_microsteps=8,
+        rotary_enable_pin=7,
+        rotary_alarm_pin=8,
+        rotary_max_step_rate_hz=900.0,
+        ruida_timeout_s=1.5,
+        ruida_source_port=41000,
+        rotary_step_pin=9,
+        rotary_dir_pin=10,
+        save_rd_dir=tmp_path / "rd",
+        dry_run_rd=True,
+    )
+    rc = load_config_and_args(args)
+    assert rc.joint_params.edge_length_mm == 10.0
+    assert rc.joint_params.num_tails == 5
+    assert rc.joint_params.dovetail_angle_deg == 10.0
+    assert rc.joint_params.tail_outer_width_mm == 12.0
+    assert rc.joint_params.kerf_tail_mm == 0.2
+    assert rc.joint_params.kerf_pin_mm == 0.25
+    assert rc.rotary_steps_per_rev == 1234.0
+    assert rc.rotary_microsteps == 8
+    assert rc.rotary_enable_pin == 7
+    assert rc.rotary_alarm_pin == 8
+    assert rc.rotary_max_step_rate_hz == 900.0
+    assert rc.ruida_timeout_s == 1.5
+    assert rc.ruida_source_port == 41000
+    assert rc.rotary_step_pin == 9
+    assert rc.rotary_dir_pin == 10
+    assert rc.save_rd_dir == tmp_path / "rd"
+    assert rc.dry_run_rd is True
