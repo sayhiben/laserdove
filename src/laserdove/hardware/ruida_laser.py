@@ -256,7 +256,7 @@ class RuidaLaser:
     def _wait_for_ready(
         self,
         *,
-        max_attempts: int = 200,
+        max_attempts: int = 400,
         delay_s: float = 0.5,
         require_busy_transition: bool = False,
     ) -> MachineState:
@@ -393,11 +393,13 @@ class RuidaLaser:
         cursor_x = 0.0
         cursor_y = 0.0
         current_z: float | None = None
+        last_set_z: float | None = None
 
         def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
             if not block_moves:
                 return
-            self.send_rd_job(block_moves, job_z_mm=block_z)
+            job_z = block_z if block_z is not None else last_set_z
+            self.send_rd_job(block_moves, job_z_mm=job_z)
 
         block: List[RDMove] = []
         block_z: float | None = None
@@ -425,6 +427,7 @@ class RuidaLaser:
                         flush_block(block, block_z)
                         block = []
                     current_z = cmd.z
+                    last_set_z = current_z
                     block_z = current_z
                 if cmd.speed_mm_s is not None:
                     current_speed = cmd.speed_mm_s
@@ -443,6 +446,7 @@ class RuidaLaser:
                         flush_block(block, block_z)
                         block = []
                     current_z = cmd.z
+                    last_set_z = current_z
                     block_z = current_z
                 if cmd.speed_mm_s is not None:
                     current_speed = cmd.speed_mm_s
