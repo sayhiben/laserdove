@@ -21,15 +21,15 @@ def test_odometer_splits_travel_and_cut():
     assert travel == 3.0
 
 
-def test_build_rd_job_contains_filename_z_speed_and_power_blocks():
+def test_build_rd_job_contains_z_speed_and_power_blocks():
     moves = [
         RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False),
         RDMove(10.0, 0.0, speed_mm_s=20.0, power_pct=50.0, is_cut=True),
     ]
     payload = build_rd_job(moves, job_z_mm=5.0, filename="TESTFILE")
 
-    # Filename is emitted with E7 01 and null-terminated.
-    assert b"\xE7\x01TESTFILE\x00" in payload
+    # Filename block (E7 01) is intentionally omitted.
+    assert b"\xE7\x01" not in payload
 
     # Z move block (AXIS_Z_MOVE) should be present.
     z_bytes = _RDJobBuilder.encode_number(5.0)

@@ -6,7 +6,7 @@ RD job builder for simple XY move/cut sequences.
 This borrows the on-wire structure observed in public Ruida RD examples:
  - full header/body/trailer framing
  - single layer, absolute XY moves (0x88) and cuts (0xA8)
- - per-job Z (optional) emitted ahead of the layer prolog
+ - optional job Z emitted before the first layer movement
 
 It is intentionally small and only covers what our planner emits.
 """
@@ -147,9 +147,6 @@ class _RDJobBuilder:
             d8 00           # Green Light off ?
             """
         )
-        # File name (null-terminated)
-        safe_name = filename.encode("ascii", errors="ignore")[:31] + b"\x00"
-        data += b"\xE7\x01" + safe_name
         data += self.enc("-nn", ["e7 06", 0, 0])  # Feeding
         data += self.enc("-nn", ["e7 03", xmin, ymin])  # Top_Left_E7_07
         data += self.enc("-nn", ["e7 07", xmax, ymax])  # Bottom_Right_E7_07
@@ -239,10 +236,12 @@ class _RDJobBuilder:
         # Trailing job metadata blocks (bbox copies, offsets, array defaults) mirrored
         # from reference RD captures; kept verbatim because the controller expects them.
         data += self.enc(
-            "---------nn-nn-nn--nn---nn-nn-nn--nn",
+            "-----------nn-nn-nn--nn---nn-nn-nn--nn",
             [
                 "e7 54 00 00 00 00 00 00",
                 "e7 54 01 00 00 00 00 00",
+                "e7 55 00 00 00 00 00 00",
+                "e7 55 01 00 00 00 00 00",
                 "f1 03 00 00 00 00 00 00 00 00 00 00",
                 "f1 00 00",
                 "f1 01 00",
@@ -291,10 +290,6 @@ class _RDJobBuilder:
             return max(dx, dy) <= maxrel
 
         data = bytearray()
-
-        if job_z_mm is not None:
-            data.extend(bytes([0x80, 0x01]))
-            data.extend(self.encode_number(job_z_mm))
 
         for lnum, layer in enumerate(layers):
             power = list(layer.power)
@@ -369,6 +364,10 @@ class _RDJobBuilder:
                     ],
                 )
             )
+
+            if job_z_mm is not None:
+                data.extend(bytes([0x80, 0x01]))
+                data.extend(self.encode_number(job_z_mm))
 
             relcounter = 0
             last_point: Tuple[float, float] | None = None
