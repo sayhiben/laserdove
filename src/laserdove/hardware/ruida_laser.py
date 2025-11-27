@@ -276,18 +276,21 @@ class RuidaLaser:
                 last_state = state
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
                 busy = bool(state.status_bits & self.BUSY_MASK)
-                if state.status_bits != last_bits:
-                    log.debug(
-                        "[RUIDA UDP] Status 0x%08X busy=%s part_end=%s seen_busy=%s (attempt %d/%d)",
-                        state.status_bits,
-                        busy,
-                        part_end,
-                        seen_busy,
-                        attempt,
-                        max_attempts,
-                    )
-                    last_bits = state.status_bits
-                if busy and not part_end:
+                move_low = bool(state.status_bits & 0x10)  # lower-byte IsMove per EduTech wiki
+                run_low = bool(state.status_bits & 0x01)  # lower-byte JobRunning bit on some firmwares
+                log.debug(
+                    "[RUIDA UDP] Status poll %d/%d: raw=0x%08X busy_mask=%s low_move=%s low_run=%s part_end=%s seen_busy=%s",
+                    attempt,
+                    max_attempts,
+                    state.status_bits,
+                    busy,
+                    move_low,
+                    run_low,
+                    part_end,
+                    seen_busy,
+                )
+                last_bits = state.status_bits
+                if (busy or move_low or run_low) and not part_end:
                     seen_busy = True
                 else:
                     if not require_busy_transition or seen_busy or part_end:
