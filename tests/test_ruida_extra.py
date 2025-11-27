@@ -156,6 +156,65 @@ def test_run_sequence_movement_only_forces_zero_power(monkeypatch):
         assert mv.power_pct == 0.0
 
 
+def test_run_sequence_parks_before_rotary(monkeypatch):
+    laser = RuidaLaser("127.0.0.1", dry_run=True)
+    sends = []
+    laser.send_rd_job = lambda moves, job_z_mm=None: sends.append((moves, job_z_mm))  # type: ignore
+    moves_called = []
+    def track_move(x=None, y=None, z=None, speed=None):
+        moves_called.append((x, y, z, speed))
+    monkeypatch.setattr(laser, "move", track_move)
+
+    class DummyRotary:
+        def __init__(self):
+            self.rotations = []
+
+        def rotate_to(self, angle_deg, speed_dps):
+            self.rotations.append(angle_deg)
+
+    cmds = [
+        Command(type=CommandType.MOVE, x=5.0, y=5.0, z=1.0, speed_mm_s=100.0),
+        Command(type=CommandType.ROTATE, angle_deg=90.0, speed_mm_s=10.0),
+    ]
+
+    laser.run_sequence_with_rotary(cmds, DummyRotary())
+
+    assert moves_called, "Head should be parked before rotary move"
+    assert moves_called[0][0:3] == (0.0, 0.0, 1.0)  # back to origin with initial Z
+
+
+def test_rotary_parking_orders_z_first_if_below(monkeypatch):
+    laser = RuidaLaser("127.0.0.1", dry_run=True)
+    moves_called = []
+    monkeypatch.setattr(laser, "move", lambda x=None, y=None, z=None, speed=None: moves_called.append((x, y, z)))
+    class DummyRotary:
+        def rotate_to(self, angle_deg, speed_dps):
+            pass
+    cmds = [
+        Command(type=CommandType.MOVE, x=5.0, y=5.0, z=1.0, speed_mm_s=100.0),  # origin z
+        Command(type=CommandType.MOVE, x=6.0, y=6.0, z=0.0, speed_mm_s=50.0),   # below origin
+        Command(type=CommandType.ROTATE, angle_deg=45.0, speed_mm_s=5.0),
+    ]
+    laser.run_sequence_with_rotary(cmds, DummyRotary())
+    assert moves_called[-2:] == [(None, None, 1.0), (0.0, 0.0, None)]  # raise Z first, then XY
+
+
+def test_rotary_parking_orders_z_last_if_above(monkeypatch):
+    laser = RuidaLaser("127.0.0.1", dry_run=True)
+    moves_called = []
+    monkeypatch.setattr(laser, "move", lambda x=None, y=None, z=None, speed=None: moves_called.append((x, y, z)))
+    class DummyRotary:
+        def rotate_to(self, angle_deg, speed_dps):
+            pass
+    cmds = [
+        Command(type=CommandType.MOVE, x=5.0, y=5.0, z=1.0, speed_mm_s=100.0),  # origin z
+        Command(type=CommandType.MOVE, x=6.0, y=6.0, z=2.0, speed_mm_s=50.0),   # above origin
+        Command(type=CommandType.ROTATE, angle_deg=45.0, speed_mm_s=5.0),
+    ]
+    laser.run_sequence_with_rotary(cmds, DummyRotary())
+    assert moves_called[-2:] == [(0.0, 0.0, None), (None, None, 1.0)]  # XY first, then lower Z
+
+
 def test_send_rd_job_zeroes_power_when_movement_only():
     moves = [RDMove(x_mm=0, y_mm=0, speed_mm_s=10.0, power_pct=60.0, is_cut=True)]
     laser = RuidaLaser("127.0.0.1", movement_only=True, dry_run=True)

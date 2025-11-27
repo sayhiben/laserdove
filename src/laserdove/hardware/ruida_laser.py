@@ -411,6 +411,67 @@ class RuidaLaser:
         cursor_y = 0.0
         current_z: float | None = None
         last_set_z: float | None = None
+        origin_x = cursor_x
+        origin_y = cursor_y
+        origin_z: float | None = None
+        origin_speed: float | None = None
+
+        def park_head_before_rotary() -> None:
+            nonlocal cursor_x, cursor_y, current_z, last_set_z, block_z
+            target_z = origin_z if origin_z is not None else last_set_z
+            move_speed = origin_speed or current_speed
+            need_xy = not math.isclose(cursor_x, origin_x, abs_tol=1e-9) or not math.isclose(cursor_y, origin_y, abs_tol=1e-9)
+            need_z = target_z is not None and (last_set_z is None or not math.isclose(last_set_z or 0.0, target_z, abs_tol=1e-6))
+
+            if not need_xy and not need_z:
+                return
+
+            current_z_for_order = current_z if current_z is not None else last_set_z
+
+            # If we know the target Z and current Z, order moves to avoid collisions.
+            if need_xy and need_z and current_z_for_order is not None and target_z is not None:
+                if current_z_for_order < target_z:
+                    # Raise first, then translate.
+                    self.move(z=target_z, speed=move_speed)
+                    current_z = target_z
+                    last_set_z = target_z
+                    block_z = target_z
+                    self.move(x=origin_x, y=origin_y, speed=move_speed)
+                    cursor_x, cursor_y = origin_x, origin_y
+                    return
+                else:
+                    # Translate first, then lower.
+                    self.move(x=origin_x, y=origin_y, speed=move_speed)
+                    cursor_x, cursor_y = origin_x, origin_y
+                    self.move(z=target_z, speed=move_speed)
+                    current_z = target_z
+                    last_set_z = target_z
+                    block_z = target_z
+                    return
+
+            # If we have a target Z but no current Z (e.g., never set), do a combined move.
+            if need_z and target_z is not None:
+                self.move(x=origin_x if need_xy else None, y=origin_y if need_xy else None, z=target_z, speed=move_speed)
+                if need_xy:
+                    cursor_x, cursor_y = origin_x, origin_y
+                current_z = target_z
+                last_set_z = target_z
+                block_z = target_z
+                return
+
+            # Only XY to park; include Z if known to keep at origin height.
+            if need_xy:
+                self.move(
+                    x=origin_x,
+                    y=origin_y,
+                    z=target_z if target_z is not None else None,
+                    speed=move_speed,
+                )
+                cursor_x, cursor_y = origin_x, origin_y
+                if target_z is not None:
+                    current_z = target_z
+                    last_set_z = target_z
+                    block_z = target_z
 
         def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
             if not block_moves:
@@ -426,6 +487,9 @@ class RuidaLaser:
                 flush_block(block, block_z)
                 block = []
                 block_z = None
+                park_head_before_rotary()
+                # After parking, cursor/last_set_z reflect parked position.
+                current_z = last_set_z
                 rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
                 continue
 
@@ -444,10 +508,14 @@ class RuidaLaser:
                         flush_block(block, block_z)
                         block = []
                     current_z = cmd.z
+                    if origin_z is None:
+                        origin_z = current_z
                     last_set_z = current_z
                     block_z = current_z
                 if cmd.speed_mm_s is not None:
                     current_speed = cmd.speed_mm_s
+                    if origin_speed is None:
+                        origin_speed = current_speed
                 if current_speed is None:
                     continue
                 block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
