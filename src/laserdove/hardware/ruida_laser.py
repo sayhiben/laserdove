@@ -267,12 +267,24 @@ class RuidaLaser:
 
         last_state: Optional[RuidaLaser.MachineState] = None
         seen_busy = False
+        last_bits: Optional[int] = None
         for attempt in range(1, max_attempts + 1):
             state = self._read_machine_state()
             if state:
                 last_state = state
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
                 busy = bool(state.status_bits & self.BUSY_MASK)
+                if state.status_bits != last_bits:
+                    log.debug(
+                        "[RUIDA UDP] Status 0x%08X busy=%s part_end=%s seen_busy=%s (attempt %d/%d)",
+                        state.status_bits,
+                        busy,
+                        part_end,
+                        seen_busy,
+                        attempt,
+                        max_attempts,
+                    )
+                    last_bits = state.status_bits
                 if busy and not part_end:
                     seen_busy = True
                 else:
@@ -283,6 +295,8 @@ class RuidaLaser:
                             self.y = state.y_mm
                         log.debug("[RUIDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f", attempt, state.status_bits, self.x, self.y)
                         return state
+            if attempt == max_attempts // 2 and require_busy_transition and not seen_busy:
+                log.warning("[RUIDA UDP] Still waiting for busy transition (status=0x%08X); controller may not be setting expected bits", last_bits or 0)
             log.debug("[RUIDA UDP] Busy state (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
 
