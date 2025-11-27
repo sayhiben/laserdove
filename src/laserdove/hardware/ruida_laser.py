@@ -139,15 +139,25 @@ class RuidaLaser:
             return
         if self.sock is not None:
             return
-        self.sock = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(self.timeout_s)
+        if self._socket_factory is socket.socket:
+            sock = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            sock = self._socket_factory()
+        if sock is None:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = sock
+        if hasattr(self.sock, "settimeout"):
+            try:
+                self.sock.settimeout(self.timeout_s)
+            except Exception:
+                pass
         try:
             self.sock.bind(("", self.source_port))
-        except PermissionError:
+        except Exception:
             log.warning("Falling back to ephemeral source port for Ruida UDP (bind failed)")
             try:
                 self.sock.bind(("", 0))
-            except PermissionError:
+            except Exception:
                 log.error("Unable to bind UDP socket; switching to dry_run for safety")
                 self.dry_run = True
                 self.sock = None
