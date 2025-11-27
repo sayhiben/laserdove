@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable, List, NamedTuple, Optional
 
 from .rd_builder import build_rd_job, RDMove
+from .ruida_panel import RuidaPanelInterface
 from .ruida_common import (
     checksum,
     clamp_power,
@@ -106,6 +107,7 @@ class RuidaLaser:
         z_positive_moves_bed_up: bool = True,
         z_speed_mm_s: float = 5.0,
         socket_factory=socket.socket,
+        panel_z_step_mm: float = 0.05,
         min_stable_s: float = 0.0,
     ) -> None:
         self.host = host
@@ -130,6 +132,8 @@ class RuidaLaser:
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
         self.z_speed_mm_s = z_speed_mm_s
         self.min_stable_s = min_stable_s
+        self.panel_z_step_mm = panel_z_step_mm
+        self._panel_iface: RuidaPanelInterface | None = None
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -423,6 +427,42 @@ class RuidaLaser:
 
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
 
+    def _apply_job_z(self, job_z_mm: float | None) -> None:
+        """
+        Optionally move Z via the panel/jog port before running an RD job.
+        """
+        if job_z_mm is None:
+            return
+        delta = job_z_mm - self.z
+        if abs(delta) < 1e-6:
+            return
+        if self.panel_z_step_mm and self.panel_z_step_mm > 0:
+            steps = int(round(delta / self.panel_z_step_mm))
+            if steps != 0:
+                # Panel jog direction: "up" raises the bed (reduces clearance) on most machines.
+                direction_up = steps > 0
+                if not self.z_positive_moves_bed_up:
+                    direction_up = not direction_up
+                cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
+                if self._panel_iface is None:
+                    self._panel_iface = RuidaPanelInterface(
+                        self.host,
+                        timeout_s=self.timeout_s,
+                        dry_run=self.dry_run,
+                    )
+                log.info(
+                    "[RUIDA UDP] Jogging Z via panel: target=%.3f current=%.3f step=%.3f count=%d cmd=%s",
+                    job_z_mm,
+                    self.z,
+                    self.panel_z_step_mm,
+                    abs(steps),
+                    "Z_UP" if direction_up else "Z_DOWN",
+                )
+                for _ in range(abs(steps)):
+                    self._panel_iface.send_command(cmd)
+                    time.sleep(0.05)
+        self.z = job_z_mm
+
     def _set_speed(self, speed_mm_s: float) -> None:
         speed_ums, changed = should_force_speed(self._last_speed_ums, speed_mm_s)
         if not changed:
@@ -498,6 +538,8 @@ class RuidaLaser:
         """
         if not moves:
             return
+        # Attempt Z move via panel port first, if configured.
+        self._apply_job_z(job_z_mm)
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
