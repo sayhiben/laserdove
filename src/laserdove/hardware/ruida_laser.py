@@ -106,6 +106,7 @@ class RuidaLaser:
         z_positive_moves_bed_up: bool = True,
         z_speed_mm_s: float = 5.0,
         socket_factory=socket.socket,
+        min_stable_s: float = 0.0,
     ) -> None:
         self.host = host
         self.port = port
@@ -128,6 +129,7 @@ class RuidaLaser:
         self.air_assist = air_assist
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
         self.z_speed_mm_s = z_speed_mm_s
+        self.min_stable_s = min_stable_s
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -278,6 +280,7 @@ class RuidaLaser:
         stable_polls: int = 3,
         pos_tol_mm: float = 1e-3,
         read_positions: bool = True,
+        min_stable_s: float = 0.0,
     ) -> MachineState:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y)
@@ -289,6 +292,7 @@ class RuidaLaser:
         saw_activity = False
         last_pos: Optional[tuple[float, float]] = None
         stable_target = 1
+        stable_start: Optional[float] = None
         for attempt in range(1, max_attempts + 1):
             try:
                 state = self._read_machine_state(read_positions=read_positions)
@@ -343,55 +347,73 @@ class RuidaLaser:
                 if last_pos and state.x_mm is not None and state.y_mm is not None:
                     pos_stable = abs(state.x_mm - last_pos[0]) <= pos_tol_mm and abs(state.y_mm - last_pos[1]) <= pos_tol_mm
                 if stable_match and pos_stable:
+                    if stable_counter == 0:
+                        stable_start = time.monotonic()
                     stable_counter += 1
                 else:
                     stable_counter = 0
+                    stable_start = None
 
-                if not require_busy_transition and stable_counter >= stable_polls:
+                stable_elapsed = 0.0 if stable_start is None else time.monotonic() - stable_start
+
+                if not require_busy_transition and stable_counter >= stable_polls and stable_elapsed >= min_stable_s:
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d",
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
                         stable_counter,
+                        stable_elapsed,
                     )
                     return state
 
-                if not require_busy_transition and stable_counter >= stable_target:
+                if not require_busy_transition and stable_counter >= stable_target and stable_elapsed >= min_stable_s:
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d",
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
                         stable_counter,
+                        stable_elapsed,
                     )
                     return state
 
-                if stable_counter >= stable_target and (saw_activity or move_low or run_low or part_end):
+                if (
+                    stable_counter >= stable_target
+                    and (saw_activity or move_low or run_low or part_end)
+                    and stable_elapsed >= min_stable_s
+                ):
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f activity_seen=%s stable_counter=%d",
+                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f activity_seen=%s stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
                         saw_activity,
                         stable_counter,
+                        stable_elapsed,
                     )
                     return state
+                if stable_counter >= stable_target and stable_elapsed < min_stable_s:
+                    log.debug(
+                        "[RUIDA UDP] Stable but waiting for %.2fs (elapsed %.2fs)",
+                        min_stable_s,
+                        stable_elapsed,
+                    )
             else:
                 if last_state and not require_busy_transition:
                     log.debug("[RUIDA UDP] Returning last known state after missing poll (no busy transition required)")
@@ -507,7 +529,10 @@ class RuidaLaser:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
         # Wait for completion; treat PART_END as done.
-        self._wait_for_ready(require_busy_transition=require_busy_transition)
+        self._wait_for_ready(
+            require_busy_transition=require_busy_transition,
+            min_stable_s=self.min_stable_s,
+        )
 
     def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False, edge_length_mm: float | None = None) -> None:
         """

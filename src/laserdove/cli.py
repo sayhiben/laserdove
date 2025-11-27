@@ -121,6 +121,7 @@ def main() -> None:
                 air_assist=run_config.machine_params.air_assist,
                 z_positive_moves_bed_up=run_config.machine_params.z_positive_moves_bed_up,
                 z_speed_mm_s=run_config.machine_params.z_speed_mm_s,
+                min_stable_s=5.0,
             )
         else:
             raise ValueError(f"Unsupported laser backend {run_config.laser_backend}")
