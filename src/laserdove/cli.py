@@ -105,6 +105,7 @@ def main() -> None:
                 dry_run=ruida_dry_run,
                 movement_only=run_config.movement_only,
                 save_rd_dir=run_config.save_rd_dir,
+                air_assist=run_config.machine_params.air_assist,
             )
         else:
             raise ValueError(f"Unsupported laser backend {run_config.laser_backend}")

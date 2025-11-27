@@ -102,6 +102,7 @@ class RuidaLaser:
         magic: int = 0x88,
         movement_only: bool = False,
         save_rd_dir: Path | None = None,
+        air_assist: bool = True,
         socket_factory=socket.socket,
     ) -> None:
         self.host = host
@@ -122,6 +123,7 @@ class RuidaLaser:
         self._last_requested_power = 0.0
         self.save_rd_dir = Path(save_rd_dir) if save_rd_dir else None
         self._rd_job_counter = 0
+        self.air_assist = air_assist
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -364,7 +366,7 @@ class RuidaLaser:
         if self.movement_only:
             for mv in moves:
                 mv.power_pct = 0.0
-        payload = build_rd_job(moves, job_z_mm=job_z_mm)
+        payload = build_rd_job(moves, job_z_mm=job_z_mm, air_assist=self.air_assist)
         if self.save_rd_dir:
             self.save_rd_dir.mkdir(parents=True, exist_ok=True)
             self._rd_job_counter += 1

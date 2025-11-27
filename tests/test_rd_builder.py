@@ -46,3 +46,16 @@ def test_build_rd_job_contains_z_speed_and_power_blocks():
 
     # Trailer ends with D7 terminator.
     assert payload.endswith(b"\xD7")
+
+
+def test_build_rd_job_air_assist_toggle():
+    moves = [
+        RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False),
+        RDMove(10.0, 0.0, speed_mm_s=20.0, power_pct=50.0, is_cut=True),
+    ]
+
+    payload_on = build_rd_job(moves, air_assist=True)
+    payload_off = build_rd_job(moves, air_assist=False)
+
+    assert b"\xCA\x01\x13" in payload_on
+    assert b"\xCA\x01\x13" not in payload_off

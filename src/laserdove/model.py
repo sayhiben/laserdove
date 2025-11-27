@@ -49,6 +49,9 @@ class MachineParams:
     z_zero_tail_mm: float        # focus at top of tail board
     z_zero_pin_mm: float         # focus at mid-thickness of pin board
 
+    # Aux outputs
+    air_assist: bool = True
+
     # Optional soft limits for validation
     x_min_mm: float = 0.0
     y_min_mm: float = 0.0

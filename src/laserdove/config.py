@@ -79,6 +79,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Clamp laser power to 0 while still issuing motion to hardware",
     )
+    p.add_argument(
+        "--air-assist",
+        dest="air_assist",
+        action="store_true",
+        help="Enable air assist (default)",
+    )
+    p.add_argument(
+        "--no-air-assist",
+        dest="air_assist",
+        action="store_false",
+        help="Disable air assist in RD jobs",
+    )
+    p.set_defaults(air_assist=None)
 
     # Common overrides
     p.add_argument("--edge-length-mm", type=float)
@@ -198,6 +211,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         cut_power_tail_pct=_dict_get_nested(cfg_data, "machine.cut_power_tail_pct", 60.0),
         cut_power_pin_pct=_dict_get_nested(cfg_data, "machine.cut_power_pin_pct", 65.0),
         travel_power_pct=_dict_get_nested(cfg_data, "machine.travel_power_pct", 0.0),
+        air_assist=bool(_dict_get_nested(cfg_data, "machine.air_assist", True)),
         z_zero_tail_mm=_dict_get_nested(cfg_data, "machine.z_zero_tail_mm", 0.0),
         z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
     )
@@ -222,6 +236,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         joint_params.kerf_pin_mm = args.kerf_pin_mm
     if args.axis_offset_mm is not None:
         jig_params.axis_to_origin_mm = args.axis_offset_mm
+    if getattr(args, "air_assist", None) is not None:
+        machine_params.air_assist = bool(args.air_assist)
 
     backend_use_dummy, backend_host, backend_port, ruida_magic = load_backend_config(cfg_data)
     ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)

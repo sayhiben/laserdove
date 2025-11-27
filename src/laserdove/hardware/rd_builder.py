@@ -281,7 +281,7 @@ class _RDJobBuilder:
         )
         return data
 
-    def body(self, layers: Sequence[_Layer], *, job_z_mm: float | None = None) -> bytes:
+    def body(self, layers: Sequence[_Layer], *, job_z_mm: float | None = None, air_assist: bool = True) -> bytes:
         def relok(last: Tuple[float, float] | None, point: Tuple[float, float]) -> bool:
             maxrel = 8.191
             if last is None:
@@ -304,6 +304,13 @@ class _RDJobBuilder:
                 speed = [1000, speed]
             laserspeed = speed[1]
 
+            prolog_flags = """
+                        ca 01 30
+                        ca 01 10
+            """
+            if air_assist:
+                prolog_flags += "                        ca 01 13\n"
+
             data.extend(
                 self.enc(
                     "-b-",
@@ -312,11 +319,7 @@ class _RDJobBuilder:
                         ca 01 00
                         ca 02""",
                         lnum,
-                        """
-                        ca 01 30
-                        ca 01 10
-                        ca 01 13
-                        """,
+                        prolog_flags,
                     ],
                 )
             )
@@ -466,7 +469,13 @@ def _compute_odometer(moves: List[RDMove]) -> Tuple[float, float]:
     return (cut, travel)
 
 
-def build_rd_job(moves: List[RDMove], job_z_mm: float | None = None, *, filename: str = "LASERDOVE") -> bytes:
+def build_rd_job(
+    moves: List[RDMove],
+    job_z_mm: float | None = None,
+    *,
+    filename: str = "LASERDOVE",
+    air_assist: bool = True,
+) -> bytes:
     """
     Build an unswizzled RD payload for a sequence of moves.
     """
@@ -490,6 +499,6 @@ def build_rd_job(moves: List[RDMove], job_z_mm: float | None = None, *, filename
     cut_dist, travel_dist = _compute_odometer(moves)
 
     header = builder.header([layer], filename=filename)
-    body = builder.body([layer], job_z_mm=job_z_mm)
+    body = builder.body([layer], job_z_mm=job_z_mm, air_assist=air_assist)
     trailer = builder.trailer((cut_dist, travel_dist))
     return header + body + trailer
