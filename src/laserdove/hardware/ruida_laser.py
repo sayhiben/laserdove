@@ -124,6 +124,7 @@ class RuidaLaser:
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
+        self._z_origin_mm: Optional[float] = None
         self.power = 0.0
         self._last_speed_ums: Optional[int] = None
         self._movement_only_power_sent = False
@@ -276,8 +277,17 @@ class RuidaLaser:
         status_bits = self._decode_status_bits(status_payload)
         x_mm = self._decode_abscoord_mm(x_payload) if x_payload else None
         y_mm = self._decode_abscoord_mm(y_payload) if y_payload else None
-        z_mm = self._decode_abscoord_mm(z_payload) if z_payload else None
+        raw_z_mm = self._decode_abscoord_mm(z_payload) if z_payload else None
+        if raw_z_mm is not None and self._z_origin_mm is None:
+            self._z_origin_mm = raw_z_mm
+        z_mm = raw_z_mm - self._z_origin_mm if raw_z_mm is not None and self._z_origin_mm is not None else None
         return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)
+
+    def _hardware_z_from_logical(self, z_mm: float | None) -> float | None:
+        if z_mm is None:
+            return None
+        origin = self._z_origin_mm or 0.0
+        return origin + z_mm
 
     def _wait_for_ready(
         self,
@@ -529,9 +539,11 @@ class RuidaLaser:
                 dry_run=self.dry_run,
             )
         log.info(
-            "[RUIDA UDP] Jogging Z via panel: target=%.3f current=%.3f step=%.3f count=%d cmd=%s",
+            "[RUIDA UDP] Jogging Z via panel: target=%.3f (hw %.3f) current=%.3f (hw %.3f) step=%.3f count=%d cmd=%s",
             job_z_mm,
+            self._hardware_z_from_logical(job_z_mm) or 0.0,
             self.z,
+            self._hardware_z_from_logical(self.z) or 0.0,
             self.panel_z_step_mm,
             abs(steps),
             "Z_UP" if direction_up else "Z_DOWN",
@@ -616,6 +628,7 @@ class RuidaLaser:
         """
         if not moves:
             return
+        hardware_job_z = self._hardware_z_from_logical(job_z_mm)
         # Attempt Z move via panel port first, if configured.
         self._apply_job_z(job_z_mm)
         # Log current status before building/sending.
@@ -632,13 +645,13 @@ class RuidaLaser:
         if self.movement_only:
             for mv in moves:
                 mv.power_pct = 0.0
-        payload = build_rd_job(moves, job_z_mm=job_z_mm, air_assist=self.air_assist)
+        payload = build_rd_job(moves, job_z_mm=hardware_job_z, air_assist=self.air_assist)
         if self.save_rd_dir:
             self.save_rd_dir.mkdir(parents=True, exist_ok=True)
             self._rd_job_counter += 1
             filename = f"job_{self._rd_job_counter:03d}"
-            if job_z_mm is not None:
-                filename += f"_z{job_z_mm:.3f}"
+            if hardware_job_z is not None:
+                filename += f"_z{hardware_job_z:.3f}"
             path = self.save_rd_dir / f"{filename}.rd"
             swizzled = self._swizzle(payload, magic=self.magic)
             path.write_bytes(swizzled)

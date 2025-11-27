@@ -80,4 +80,4 @@ def test_wait_for_ready_polls_until_idle_and_updates_position():
     assert state.status_bits == 0
     assert pytest.approx(laser.x) == 11.0
     assert pytest.approx(laser.y) == 21.0
-    assert pytest.approx(laser.z) == 6.5
+    assert pytest.approx(laser.z) == pytest.approx(1.5)  # relative to first read (6.5 - 5.0)
