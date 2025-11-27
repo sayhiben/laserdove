@@ -482,10 +482,25 @@ def build_rd_job(
     if not moves:
         return b""
 
-    paths, bbox = _moves_to_paths(moves)
-    travel_speed = next((mv.speed_mm_s for mv in moves if not mv.is_cut), moves[0].speed_mm_s)
-    cut_speed = next((mv.speed_mm_s for mv in moves if mv.is_cut), travel_speed)
-    power = next((mv.power_pct for mv in moves if mv.is_cut), next((mv.power_pct for mv in moves), 0.0))
+    normalized_moves: List[RDMove] = []
+    for mv in moves:
+        # Treat zero-power cuts as travel to avoid controllers reusing default power.
+        is_cut = mv.is_cut and mv.power_pct > 0.0
+        power_pct = mv.power_pct if is_cut else 0.0
+        normalized_moves.append(
+            RDMove(
+                x_mm=mv.x_mm,
+                y_mm=mv.y_mm,
+                speed_mm_s=mv.speed_mm_s,
+                power_pct=power_pct,
+                is_cut=is_cut,
+            )
+        )
+
+    paths, bbox = _moves_to_paths(normalized_moves)
+    travel_speed = next((mv.speed_mm_s for mv in normalized_moves if not mv.is_cut), normalized_moves[0].speed_mm_s)
+    cut_speed = next((mv.speed_mm_s for mv in normalized_moves if mv.is_cut), travel_speed)
+    power = next((mv.power_pct for mv in normalized_moves if mv.is_cut), next((mv.power_pct for mv in normalized_moves), 0.0))
     power = max(0.0, power)
 
     layer = _Layer(
@@ -496,7 +511,7 @@ def build_rd_job(
     )
     builder = _RDJobBuilder()
     builder._globalbbox = bbox
-    cut_dist, travel_dist = _compute_odometer(moves)
+    cut_dist, travel_dist = _compute_odometer(normalized_moves)
 
     header = builder.header([layer], filename=filename)
     body = builder.body([layer], job_z_mm=job_z_mm, air_assist=air_assist)

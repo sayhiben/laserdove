@@ -59,3 +59,18 @@ def test_build_rd_job_air_assist_toggle():
 
     assert b"\xCA\x01\x13" in payload_on
     assert b"\xCA\x01\x13" not in payload_off
+
+
+def test_zero_power_cut_emits_move_not_cut():
+    moves = [
+        RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False),
+        RDMove(5.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=True),
+    ]
+    payload = build_rd_job(moves)
+
+    # No cut opcode (0xA8/A9/AA/AB) should be present; movement stays.
+    assert b"\xA8" not in payload
+    assert b"\xA9" not in payload
+    assert b"\xAA" not in payload
+    assert b"\xAB" not in payload
+    assert b"\x88" in payload  # move-to-abs present
