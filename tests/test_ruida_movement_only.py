@@ -8,7 +8,7 @@ class _CaptureRuida(RuidaLaser):
         super().__init__("127.0.0.1", dry_run=True, movement_only=movement_only)
         self.jobs = []
 
-    def send_rd_job(self, moves, job_z_mm=None):  # type: ignore[override]
+    def send_rd_job(self, moves, job_z_mm=None, **kwargs):  # type: ignore[override]
         self.jobs.append((list(moves), job_z_mm))
 
 

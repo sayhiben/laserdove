@@ -376,7 +376,7 @@ class RuidaLaser:
         self._send_packets(payload)
 
     # ---------------- RD job upload/run helpers ----------------
-    def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None) -> None:
+    def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None, *, require_busy_transition: bool = True) -> None:
         """
         Build a minimal RD job and send it over UDP 50200. Auto-runs on receipt.
         """
@@ -413,7 +413,7 @@ class RuidaLaser:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
         # Wait for completion; treat PART_END as done.
-        self._wait_for_ready(require_busy_transition=True)
+        self._wait_for_ready(require_busy_transition=require_busy_transition)
 
     def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False) -> None:
         """
@@ -506,7 +506,7 @@ class RuidaLaser:
             if not block_moves:
                 return
             job_z = block_z if block_z is not None else last_set_z
-            self.send_rd_job(block_moves, job_z_mm=job_z)
+            self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
 
         block: List[RDMove] = []
         block_z: float | None = None

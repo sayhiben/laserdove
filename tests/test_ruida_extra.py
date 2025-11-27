@@ -137,7 +137,7 @@ def test_run_sequence_movement_only_forces_zero_power(monkeypatch):
     laser = RuidaLaser("127.0.0.1", dry_run=True, movement_only=True)
     sent_blocks = []
 
-    def fake_send(moves, job_z_mm=None):
+    def fake_send(moves, job_z_mm=None, **kwargs):
         sent_blocks.append(moves)
 
     laser.send_rd_job = fake_send  # type: ignore
@@ -159,7 +159,7 @@ def test_run_sequence_movement_only_forces_zero_power(monkeypatch):
 def test_run_sequence_parks_before_rotary(monkeypatch):
     laser = RuidaLaser("127.0.0.1", dry_run=True)
     sends = []
-    laser.send_rd_job = lambda moves, job_z_mm=None: sends.append((moves, job_z_mm))  # type: ignore
+    laser.send_rd_job = lambda moves, job_z_mm=None, **kwargs: sends.append((moves, job_z_mm))  # type: ignore
     moves_called = []
     def track_move(x=None, y=None, z=None, speed=None):
         moves_called.append((x, y, z, speed))

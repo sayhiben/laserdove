@@ -116,7 +116,7 @@ def main() -> None:
     def move_x():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-x", move_x))
 
@@ -124,14 +124,14 @@ def main() -> None:
     def move_y():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-y", move_y))
 
     # Z move
     def move_z():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=args.z_move_mm)
+        laser.send_rd_job(mv, job_z_mm=args.z_move_mm, require_busy_transition=False)
 
     actions.append(("move-z", move_z))
 
@@ -139,7 +139,7 @@ def main() -> None:
     def air_on_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-on-job", air_on_job))
 
@@ -147,26 +147,26 @@ def main() -> None:
     def air_off_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-off-job", air_off_job))
 
     # Jog-style moves (single-axis jog commands via send_rd_job travel)
     def jog_x_positive():
         mv = [RDMove(args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_x_negative():
         mv = [RDMove(-args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_positive():
         mv = [RDMove(0.0, args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_negative():
         mv = [RDMove(0.0, -args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     # Small square travel-only path to see if motion-only sequences toggle bits.
     def square_travel():
@@ -178,7 +178,7 @@ def main() -> None:
             RDMove(0.0, d, speed_mm_s=80.0, power_pct=0.0, is_cut=False),
             RDMove(0.0, 0.0, speed_mm_s=80.0, power_pct=0.0, is_cut=False),
         ]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.extend(
         [
@@ -193,7 +193,7 @@ def main() -> None:
     # Home-like move back to origin (travel-only)
     def home_travel():
         mv = [RDMove(0.0, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=0.0)
+        laser.send_rd_job(mv, job_z_mm=0.0, require_busy_transition=False)
 
     actions.append(("home-travel", home_travel))
 
@@ -201,7 +201,7 @@ def main() -> None:
     # Since our send_rd_job auto-runs, we approximate "upload" as a tiny travel-only job.
     def upload_only():
         mv = [RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None)
+        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("upload-only-travel", upload_only))
 
