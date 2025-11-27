@@ -548,10 +548,67 @@ class RuidaLaser:
             abs(steps),
             "Z_UP" if direction_up else "Z_DOWN",
         )
+
+        # Calibrate step size on the first move to avoid large over-travel if the configured step is wrong.
+        if not self.dry_run and state and state.z_mm is not None:
+            try:
+                self._panel_iface.send_command(cmd)
+                time.sleep(0.05)
+                post_state = self._read_machine_state()
+            except Exception:
+                post_state = None
+
+            if post_state and post_state.z_mm is not None:
+                moved = post_state.z_mm - state.z_mm
+                if abs(moved) < 1e-6:
+                    log.warning("[RUIDA UDP] Panel Z jog produced no movement; aborting further Z jogs")
+                    self.z = post_state.z_mm
+                    return
+                if (moved > 0) != (delta > 0):
+                    log.warning(
+                        "[RUIDA UDP] Panel Z jog moved opposite direction (moved=%.3f delta=%.3f); aborting to avoid collision",
+                        moved,
+                        delta,
+                    )
+                    self.z = post_state.z_mm
+                    return
+                calibrated_step_mm = moved
+                remaining_delta = job_z_mm - post_state.z_mm
+                adjusted_steps = int(round(remaining_delta / calibrated_step_mm))
+                self.z = post_state.z_mm
+                if adjusted_steps == 0:
+                    log.info("[RUIDA UDP] Z jog completed after calibration step (no further steps needed)")
+                    return
+                direction_up = adjusted_steps > 0
+                if not self.z_positive_moves_bed_up:
+                    direction_up = not direction_up
+                cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
+                log.info(
+                    "[RUIDA UDP] Calibrated panel Z step %.3fmm; remaining delta %.3f -> steps=%d cmd=%s",
+                    calibrated_step_mm,
+                    remaining_delta,
+                    abs(adjusted_steps),
+                    "Z_UP" if direction_up else "Z_DOWN",
+                )
+                for _ in range(abs(adjusted_steps)):
+                    self._panel_iface.send_command(cmd)
+                    time.sleep(0.05)
+                self.z = job_z_mm
+                post_final = self._read_machine_state()
+                if post_final and post_final.z_mm is not None:
+                    self.z = post_final.z_mm
+                    log.info("[RUIDA UDP] Z after jog (polled): %.3f", self.z)
+                return
+
         for _ in range(abs(steps)):
             self._panel_iface.send_command(cmd)
             time.sleep(0.05)
         self.z = job_z_mm
+        if not self.dry_run:
+            post_final = self._read_machine_state()
+            if post_final and post_final.z_mm is not None:
+                self.z = post_final.z_mm
+                log.info("[RUIDA UDP] Z after jog (polled): %.3f", self.z)
 
     def _set_speed(self, speed_mm_s: float) -> None:
         speed_ums, changed = should_force_speed(self._last_speed_ums, speed_mm_s)
