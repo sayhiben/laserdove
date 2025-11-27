@@ -107,6 +107,7 @@ def main() -> None:
                 save_rd_dir=run_config.save_rd_dir,
                 air_assist=run_config.machine_params.air_assist,
                 z_positive_moves_bed_up=run_config.machine_params.z_positive_moves_bed_up,
+                z_speed_mm_s=run_config.machine_params.z_speed_mm_s,
             )
         else:
             raise ValueError(f"Unsupported laser backend {run_config.laser_backend}")
@@ -156,6 +157,8 @@ def main() -> None:
             sig = inspect.signature(laser.run_sequence_with_rotary)
             if "travel_only" in sig.parameters:
                 run_kwargs["travel_only"] = run_config.movement_only or run_config.reset_only
+            if "edge_length_mm" in sig.parameters:
+                run_kwargs["edge_length_mm"] = run_config.joint_params.edge_length_mm
             laser.run_sequence_with_rotary(all_commands, rotary, **run_kwargs)
         else:
             execute_commands(all_commands, laser, rotary)

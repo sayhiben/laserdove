@@ -104,6 +104,7 @@ class RuidaLaser:
         save_rd_dir: Path | None = None,
         air_assist: bool = True,
         z_positive_moves_bed_up: bool = True,
+        z_speed_mm_s: float = 5.0,
         socket_factory=socket.socket,
     ) -> None:
         self.host = host
@@ -126,6 +127,7 @@ class RuidaLaser:
         self._rd_job_counter = 0
         self.air_assist = air_assist
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
+        self.z_speed_mm_s = z_speed_mm_s
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -503,7 +505,7 @@ class RuidaLaser:
         # Wait for completion; treat PART_END as done.
         self._wait_for_ready(require_busy_transition=require_busy_transition)
 
-    def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False) -> None:
+    def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False, edge_length_mm: float | None = None) -> None:
         """
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
@@ -521,6 +523,7 @@ class RuidaLaser:
             )
         job_origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
         job_origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
+        y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
         travel_only = travel_only or self.movement_only
         current_power = 0.0
@@ -596,6 +599,11 @@ class RuidaLaser:
             if not block_moves:
                 return
             job_z = block_z if block_z is not None else last_set_z
+            if job_z is not None and not self.dry_run:
+                try:
+                    self.move(z=job_z, speed=self.z_speed_mm_s)
+                except Exception:
+                    log.debug("Pre-RD Z move failed; continuing to embed Z in RD", exc_info=True)
             self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
 
         block: List[RDMove] = []
@@ -621,7 +629,7 @@ class RuidaLaser:
 
             if cmd.type.name == "MOVE":
                 x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                y = cursor_y if cmd.y is None else job_origin_y + cmd.y
+                y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
                 if cmd.z is not None:
                     if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
                         flush_block(block, block_z)
@@ -644,7 +652,7 @@ class RuidaLaser:
 
             if cmd.type.name == "CUT_LINE":
                 x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                y = cursor_y if cmd.y is None else job_origin_y + cmd.y
+                y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
                 if cmd.z is not None:
                     if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
                         flush_block(block, block_z)
