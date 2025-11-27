@@ -51,6 +51,7 @@ class MachineParams:
 
     # Aux outputs
     air_assist: bool = True
+    z_positive_moves_bed_up: bool = True
 
     # Optional soft limits for validation
     x_min_mm: float = 0.0

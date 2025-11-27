@@ -107,6 +107,7 @@ travel_power_pct    = 0.0
 z_zero_tail_mm      = 0.0
 z_zero_pin_mm       = 0.0
 air_assist          = true
+z_positive_moves_bed_up = true  # set false if your controller treats Z+ as lowering the bed
 
 [backend]
 use_dummy  = true                  # legacy toggle: dummy for both unless overridden below
@@ -173,6 +174,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--reset`              | Skip planning; laser off, rotate to zero, move head to origin at pin Z0.                        | disabled                                   |
 | `--movement-only`      | Keep laser power at 0 and emit travel-only RD jobs (no cut commands) while still driving motion. | disabled                                   |
 | `--air-assist` / `--no-air-assist` | Toggle air assist in generated RD jobs.                                                 | `machine.air_assist` (true)                |
+| `--z-positive-bed-up` / `--z-positive-bed-down` | Define Z+ direction: bed up (closer to head) vs bed down.                            | `machine.z_positive_moves_bed_up` (true)   |
 | `--laser-backend {dummy,ruida}` | Override laser backend (dummy for logs, ruida for UDP+RD).                              | from config/`use_dummy`                    |
 | `--rotary-backend {dummy,real}` | Override rotary backend (dummy for logs, real for stepper GPIO).                         | from config/`use_dummy`                    |
 | `--edge-length-mm`     | Override `joint.edge_length_mm`.                                                                | unset (use config/built‑in)                |

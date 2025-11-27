@@ -92,6 +92,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Disable air assist in RD jobs",
     )
     p.set_defaults(air_assist=None)
+    p.add_argument(
+        "--z-positive-bed-up",
+        dest="z_positive_moves_bed_up",
+        action="store_true",
+        help="Interpret Z+ as moving the bed up (closer to the head; default)",
+    )
+    p.add_argument(
+        "--z-positive-bed-down",
+        dest="z_positive_moves_bed_up",
+        action="store_false",
+        help="Interpret Z+ as moving the bed down (away from the head)",
+    )
+    p.set_defaults(z_positive_moves_bed_up=None)
 
     # Common overrides
     p.add_argument("--edge-length-mm", type=float)
@@ -212,6 +225,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         cut_power_pin_pct=_dict_get_nested(cfg_data, "machine.cut_power_pin_pct", 65.0),
         travel_power_pct=_dict_get_nested(cfg_data, "machine.travel_power_pct", 0.0),
         air_assist=bool(_dict_get_nested(cfg_data, "machine.air_assist", True)),
+        z_positive_moves_bed_up=bool(_dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)),
         z_zero_tail_mm=_dict_get_nested(cfg_data, "machine.z_zero_tail_mm", 0.0),
         z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
     )
@@ -238,6 +252,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         jig_params.axis_to_origin_mm = args.axis_offset_mm
     if getattr(args, "air_assist", None) is not None:
         machine_params.air_assist = bool(args.air_assist)
+    if getattr(args, "z_positive_moves_bed_up", None) is not None:
+        machine_params.z_positive_moves_bed_up = bool(args.z_positive_moves_bed_up)
 
     backend_use_dummy, backend_host, backend_port, ruida_magic = load_backend_config(cfg_data)
     ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)

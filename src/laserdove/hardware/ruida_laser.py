@@ -103,6 +103,7 @@ class RuidaLaser:
         movement_only: bool = False,
         save_rd_dir: Path | None = None,
         air_assist: bool = True,
+        z_positive_moves_bed_up: bool = True,
         socket_factory=socket.socket,
     ) -> None:
         self.host = host
@@ -124,6 +125,7 @@ class RuidaLaser:
         self.save_rd_dir = Path(save_rd_dir) if save_rd_dir else None
         self._rd_job_counter = 0
         self.air_assist = air_assist
+        self.z_positive_moves_bed_up = z_positive_moves_bed_up
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -430,8 +432,9 @@ class RuidaLaser:
 
             # If we know the target Z and current Z, order moves to avoid collisions.
             if need_xy and need_z and current_z_for_order is not None and target_z is not None:
-                if current_z_for_order < target_z:
-                    # Raise first, then translate.
+                closer = target_z > current_z_for_order if self.z_positive_moves_bed_up else target_z < current_z_for_order
+                if closer:
+                    # Move closer (bed up) first, then translate.
                     self.move(z=target_z, speed=move_speed)
                     current_z = target_z
                     last_set_z = target_z
@@ -440,7 +443,7 @@ class RuidaLaser:
                     cursor_x, cursor_y = origin_x, origin_y
                     return
                 else:
-                    # Translate first, then lower.
+                    # Translate first, then move bed away.
                     self.move(x=origin_x, y=origin_y, speed=move_speed)
                     cursor_x, cursor_y = origin_x, origin_y
                     self.move(z=target_z, speed=move_speed)
