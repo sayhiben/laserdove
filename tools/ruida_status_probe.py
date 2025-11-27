@@ -68,6 +68,8 @@ def run_with_capture(laser: RuidaLaser, label: str, action: Callable[[], None], 
     t.start()
     try:
         action()
+    except Exception as exc:
+        print(f"[{label}] action raised: {exc}")
     finally:
         stop.set()
         t.join(timeout=interval * 2)
