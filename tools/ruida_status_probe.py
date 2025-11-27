@@ -87,6 +87,8 @@ def main() -> None:
     ap.add_argument("--interval", type=float, default=0.5, help="Seconds between status polls during actions")
     ap.add_argument("--move-dist-mm", type=float, default=10.0, help="Distance for X/Y moves (mm)")
     ap.add_argument("--z-move-mm", type=float, default=1.0, help="Z move magnitude (mm)")
+    ap.add_argument("--polls-after", type=int, default=5, help="Status polls after each action")
+    ap.add_argument("--baseline-polls", type=int, default=1, help="Status polls before running actions")
     ap.add_argument("--magic", type=lambda x: int(x, 0), default=0x88, help="Swizzle magic (default 0x88)")
     args = ap.parse_args()
 
@@ -102,7 +104,9 @@ def main() -> None:
     )
 
     # Baseline polling only
-    poll_status_once(laser, "baseline")
+    for i in range(args.baseline_polls):
+        poll_status_once(laser, f"baseline#{i+1}")
+        time.sleep(args.interval)
 
     actions: List[tuple[str, Callable[[], None]]] = []
 
@@ -200,7 +204,7 @@ def main() -> None:
     actions.append(("upload-only-travel", upload_only))
 
     for label, fn in actions:
-        run_with_capture(laser, label, fn, interval=args.interval)
+        run_with_capture(laser, label, fn, interval=args.interval, polls_after=args.polls_after)
 
     print("Done. Review logs above for status transitions.")
 
