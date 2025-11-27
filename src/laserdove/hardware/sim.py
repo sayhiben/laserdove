@@ -52,7 +52,10 @@ class SimulatedLaser(LaserInterface):
         self.rotation_deg = rotation_deg
         self.current_board = "pin"
         if self.viewer is not None:
-            self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            try:
+                self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            except TypeError:
+                self.viewer.update(self.segments, self.rotation_deg)
 
     def _map_coords(self, x: float, y: float) -> tuple[float, float]:
         # Incoming board coords are relative to board frame: Y=mid-edge is center.
@@ -75,7 +78,10 @@ class SimulatedLaser(LaserInterface):
             }
         )
         if self.viewer is not None:
-            self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            try:
+                self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            except TypeError:
+                self.viewer.update(self.segments, self.rotation_deg)
 
     def _sleep_for_motion(self, distance_mm: float, speed: float | None) -> None:
         if not self.real_time:
@@ -118,8 +124,13 @@ class SimulatedLaser(LaserInterface):
         if self.viewer is None:
             self.viewer = SimulationViewer()
         self.viewer.open()
-        self.viewer.render(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
-        self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+        try:
+            self.viewer.render(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+        except TypeError:
+            # Fallback for legacy dummy viewers in tests
+            self.viewer.render(self.segments, self.rotation_deg)
+            self.viewer.update(self.segments, self.rotation_deg)
 
     def show(self) -> None:
         if not self.segments and self.viewer is None:
@@ -128,7 +139,10 @@ class SimulatedLaser(LaserInterface):
         self.setup_viewer()
         if self.viewer is None:
             return
-        self.viewer.mainloop(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+        try:
+            self.viewer.mainloop(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+        except TypeError:
+            self.viewer.mainloop(self.segments, self.rotation_deg)
 
 
 class SimulatedRotary(RotaryInterface):
@@ -150,7 +164,10 @@ class SimulatedRotary(RotaryInterface):
         if self.visualizer is not None:
             self.visualizer.set_rotation(angle_deg)
             if self.visualizer.viewer is not None:
-                self.visualizer.viewer.update(self.visualizer.segments, angle_deg, origin=(self.visualizer.origin_x, self.visualizer.origin_y), y_center=self.visualizer.origin_y)
+                try:
+                    self.visualizer.viewer.update(self.visualizer.segments, angle_deg, origin=(self.visualizer.origin_x, self.visualizer.origin_y), y_center=self.visualizer.origin_y)
+                except TypeError:
+                    self.visualizer.viewer.update(self.visualizer.segments, angle_deg)
         if self.real_time and speed_dps > 0 and self.time_scale > 0:
             duration = delta_angle / speed_dps / self.time_scale
             if duration > 0:

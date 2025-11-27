@@ -88,15 +88,20 @@ def main() -> None:
     if run_config.simulate:
         from .hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
 
-        laser = SimulatedLaser(
-            real_time=True,
-            origin_x=0.0,
-            origin_y=0.0,
-            edge_length_mm=run_config.joint_params.edge_length_mm,
-            movement_only=run_config.movement_only or run_config.reset_only,
-            z_positive_moves_bed_up=run_config.machine_params.z_positive_moves_bed_up,
-            air_assist=run_config.machine_params.air_assist,
-        )
+        sim_kwargs = {"real_time": True}
+        sim_opts = {
+            "origin_x": 0.0,
+            "origin_y": 0.0,
+            "edge_length_mm": run_config.joint_params.edge_length_mm,
+            "movement_only": run_config.movement_only or run_config.reset_only,
+            "z_positive_moves_bed_up": run_config.machine_params.z_positive_moves_bed_up,
+            "air_assist": run_config.machine_params.air_assist,
+        }
+        for name, val in sim_opts.items():
+            if name in inspect.signature(SimulatedLaser).parameters:
+                sim_kwargs[name] = val
+
+        laser = SimulatedLaser(**sim_kwargs)
         rotary = SimulatedRotary(laser, real_time=True)
         laser.setup_viewer()  # Open the window before execution to show progress.
     else:

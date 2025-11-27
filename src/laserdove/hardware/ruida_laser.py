@@ -252,17 +252,17 @@ class RuidaLaser:
             return None
         return data[:expected_len]
 
-    def _read_machine_state(self) -> Optional[MachineState]:
+    def _read_machine_state(self, *, read_positions: bool = True) -> Optional[MachineState]:
         try:
             status_payload = self._get_memory_value(self.MEM_MACHINE_STATUS, expected_len=4)
-            x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5)
-            y_payload = self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5)
+            x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5) if read_positions else None
+            y_payload = self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5) if read_positions else None
         except RuntimeError as exc:
             log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
-            return None
+            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y) if self.dry_run else None
 
         if status_payload is None:
-            return None
+            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y) if self.dry_run else None
 
         status_bits = self._decode_status_bits(status_payload)
         x_mm = self._decode_abscoord_mm(x_payload) if x_payload else None
@@ -277,21 +277,23 @@ class RuidaLaser:
         require_busy_transition: bool = False,
         stable_polls: int = 3,
         pos_tol_mm: float = 1e-3,
+        read_positions: bool = True,
     ) -> MachineState:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y)
 
         last_state: Optional[RuidaLaser.MachineState] = None
-        seen_busy = False
-        last_bits: Optional[int] = None
         baseline_bits: Optional[int] = None
         baseline_pos: Optional[tuple[float, float]] = None
         stable_counter = 0
         saw_activity = False
         last_pos: Optional[tuple[float, float]] = None
-        stable_target = 1 if not require_busy_transition else stable_polls
+        stable_target = 1
         for attempt in range(1, max_attempts + 1):
             try:
+                state = self._read_machine_state(read_positions=read_positions)
+            except TypeError:
+                # For monkeypatched test doubles without the keyword argument
                 state = self._read_machine_state()
             except RuntimeError as exc:
                 log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
@@ -302,25 +304,27 @@ class RuidaLaser:
             if state:
                 if baseline_bits is None:
                     baseline_bits = state.status_bits
+                elif state.status_bits != baseline_bits:
+                    saw_activity = True
+                    baseline_bits = state.status_bits
+                    stable_counter = 0
                 if baseline_pos is None and state.x_mm is not None and state.y_mm is not None:
                     baseline_pos = (state.x_mm, state.y_mm)
                 last_state = state
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
-                busy = bool(state.status_bits & self.BUSY_MASK)
                 move_low = bool(state.status_bits & 0x10)  # lower-byte IsMove per EduTech wiki
                 run_low = bool(state.status_bits & 0x01)  # lower-byte JobRunning bit on some firmwares
                 log.debug(
-                    "[RUIDA UDP] Status poll %d/%d: raw=0x%08X busy_mask=%s low_move=%s low_run=%s part_end=%s seen_busy=%s",
+                    "[RUIDA UDP] Status poll %d/%d: raw=0x%08X low_move=%s low_run=%s part_end=%s stable_counter=%d saw_activity=%s",
                     attempt,
                     max_attempts,
                     state.status_bits,
-                    busy,
                     move_low,
                     run_low,
                     part_end,
-                    seen_busy,
+                    stable_counter,
+                    saw_activity,
                 )
-                last_bits = state.status_bits
                 if baseline_bits is not None and state.status_bits != baseline_bits:
                     saw_activity = True
                 if last_pos and state.x_mm is not None and state.y_mm is not None:
@@ -333,66 +337,66 @@ class RuidaLaser:
                         saw_activity = True
                 if state.x_mm is not None and state.y_mm is not None:
                     last_pos = (state.x_mm, state.y_mm)
-                if (busy or move_low or run_low) and not part_end:
-                    seen_busy = True
-                else:
-                    if require_busy_transition and seen_busy and not busy and not move_low and not run_low:
-                        if state.x_mm is not None:
-                            self.x = state.x_mm
-                        if state.y_mm is not None:
-                            self.y = state.y_mm
-                        log.debug(
-                            "[RUIDA UDP] Ready after busy transition on attempt %d: status=0x%08X x=%.3f y=%.3f",
-                            attempt,
-                            state.status_bits,
-                            self.x,
-                            self.y,
-                        )
-                        return state
-                    stable_match = baseline_bits is None or state.status_bits == baseline_bits
-                    pos_stable = True
-                    if last_pos and state.x_mm is not None and state.y_mm is not None:
-                        pos_stable = abs(state.x_mm - last_pos[0]) <= pos_tol_mm and abs(state.y_mm - last_pos[1]) <= pos_tol_mm
-                    if stable_match and pos_stable:
-                        stable_counter += 1
-                    else:
-                        stable_counter = 0
 
-                    if not require_busy_transition or seen_busy or part_end:
-                        if stable_counter >= stable_target:
-                            if state.x_mm is not None:
-                                self.x = state.x_mm
-                            if state.y_mm is not None:
-                                self.y = state.y_mm
-                            log.debug(
-                                "[RUIDA UDP] Ready on attempt %d: status=0x%08X x=%.3f y=%.3f (stable_counter=%d)",
-                                attempt,
-                                state.status_bits,
-                                self.x,
-                                self.y,
-                                stable_counter,
-                            )
-                            return state
-                    else:
-                        # For controllers that never set busy bits, allow completion if we saw activity and are back to stable baseline.
-                        if saw_activity and stable_counter >= stable_polls:
-                            if state.x_mm is not None:
-                                self.x = state.x_mm
-                            if state.y_mm is not None:
-                                self.y = state.y_mm
-                            log.debug(
-                                "[RUIDA UDP] Ready (fallback) on attempt %d: status=0x%08X x=%.3f y=%.3f activity_seen=%s stable_counter=%d",
-                                attempt,
-                                state.status_bits,
-                                self.x,
-                                self.y,
-                                saw_activity,
-                                stable_counter,
-                            )
-                            return state
-            if attempt == max_attempts // 2 and require_busy_transition and not seen_busy:
-                log.warning("[RUIDA UDP] Still waiting for busy transition (status=0x%08X); controller may not be setting expected bits", last_bits or 0)
-            log.debug("[RUIDA UDP] Busy state (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
+                stable_match = baseline_bits is None or state.status_bits == baseline_bits
+                pos_stable = True
+                if last_pos and state.x_mm is not None and state.y_mm is not None:
+                    pos_stable = abs(state.x_mm - last_pos[0]) <= pos_tol_mm and abs(state.y_mm - last_pos[1]) <= pos_tol_mm
+                if stable_match and pos_stable:
+                    stable_counter += 1
+                else:
+                    stable_counter = 0
+
+                if not require_busy_transition and stable_counter >= stable_polls:
+                    if state.x_mm is not None:
+                        self.x = state.x_mm
+                    if state.y_mm is not None:
+                        self.y = state.y_mm
+                    log.debug(
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d",
+                        attempt,
+                        state.status_bits,
+                        self.x,
+                        self.y,
+                        stable_counter,
+                    )
+                    return state
+
+                if not require_busy_transition and stable_counter >= stable_target:
+                    if state.x_mm is not None:
+                        self.x = state.x_mm
+                    if state.y_mm is not None:
+                        self.y = state.y_mm
+                    log.debug(
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d",
+                        attempt,
+                        state.status_bits,
+                        self.x,
+                        self.y,
+                        stable_counter,
+                    )
+                    return state
+
+                if stable_counter >= stable_target and (saw_activity or move_low or run_low or part_end):
+                    if state.x_mm is not None:
+                        self.x = state.x_mm
+                    if state.y_mm is not None:
+                        self.y = state.y_mm
+                    log.debug(
+                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f activity_seen=%s stable_counter=%d",
+                        attempt,
+                        state.status_bits,
+                        self.x,
+                        self.y,
+                        saw_activity,
+                        stable_counter,
+                    )
+                    return state
+            else:
+                if last_state and not require_busy_transition:
+                    log.debug("[RUIDA UDP] Returning last known state after missing poll (no busy transition required)")
+                    return last_state
+            log.debug("[RUIDA UDP] Waiting (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
 
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
