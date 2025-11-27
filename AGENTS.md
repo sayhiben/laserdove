@@ -24,6 +24,8 @@
 - Keep `geometry.py` pure and deterministic; avoid side effects so it stays easy to test.
 - Prefer type hints and dataclasses for shared params; log hardware actions rather than printing.
 - Leave hardware defaults on dummy backends unless you are actively integrating a controller; guard any real I/O behind flags/config.
+- Ruida specifics: RD jobs now anchor to the machine’s current origin (captured at run start) and still emit absolute coordinates; movement-only/reset strips cut commands (zero-power cuts become travel). Air assist is configurable and defaults on. Status readiness falls back to “activity then stable” using position/status polling when busy bits never assert.
+- Status probe helper: `tools/ruida_status_probe.py` defaults to dual-socket polling (action vs status sockets) to avoid reply mix-ups; use it to map status bits without panel interaction.
 
 ## Testing Guidelines
 - Add pytest cases for new geometry, planning branches, and validation edge cases; cover both happy path and common misconfigurations.

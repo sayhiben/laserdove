@@ -12,6 +12,8 @@ This repo focuses on:
 
 v1 defaults to dummy hardware; enable Ruida/real rotary via config or CLI when you are on hardware.
 
+- **Job origin awareness**: when running on Ruida, we capture the controller’s current X/Y at job start and treat that as the job origin. All generated moves are absolute and offset from that captured origin so the head stays where you set it on the panel. Movement-only/reset modes also strip cut commands (zero-power cuts become travel) to avoid unintended firing.
+
 ---
 
 ## Repository layout
@@ -197,6 +199,14 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--rotary-pin-numbering {bcm,board}` | Pin numbering scheme for rotary GPIO.                                                 | `board`                                    |
 | `--rotary-max-step-rate-hz` | Cap rotary step pulse rate (Hz); prevents over-speeding when using high pulses/rev.     | 500.0                                      |
 | `--log-level`          | Logging verbosity for `novadovetail`.                                                           | `INFO`                                     |
+
+### Ruida transport and status notes
+
+- **Origin anchoring**: The machine’s X/Y at job start become the job origin; all commands remain absolute (Ruida prefers periodic absolutes for precision) but offset from that captured origin so the head does not jump to controller 0,0 after you set origin on the panel.
+- **Movement-only/reset safety**: zero-power cuts are omitted from RD files; only travel moves remain to avoid controllers interpreting “unset power” as a default.
+- **Air assist**: default on via `machine.air_assist`; toggle with CLI `--air-assist/--no-air-assist`.
+- **Status wait heuristic**: when Ruida firmware doesn’t assert busy bits, the transport waits for a deviation then stable status/position before proceeding.
+- **Status probe tool**: `python tools/ruida_status_probe.py --host <ip> --baseline-polls 5 --polls-after 20` (dual-socket polling by default) to log status codes while running movement-only actions.
 
 ---
 
