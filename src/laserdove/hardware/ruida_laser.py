@@ -519,16 +519,18 @@ class RuidaLaser:
                 bool(initial_state.status_bits & 0x01),
                 bool(initial_state.status_bits & self.STATUS_BIT_PART_END),
             )
+        job_origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
+        job_origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
 
         travel_only = travel_only or self.movement_only
         current_power = 0.0
         current_speed: float | None = None
-        cursor_x = 0.0
-        cursor_y = 0.0
+        cursor_x = job_origin_x
+        cursor_y = job_origin_y
         current_z: float | None = None
         last_set_z: float | None = None
-        origin_x = cursor_x
-        origin_y = cursor_y
+        origin_x = job_origin_x
+        origin_y = job_origin_y
         origin_z: float | None = None
         origin_speed: float | None = None
 
@@ -618,8 +620,8 @@ class RuidaLaser:
                 continue
 
             if cmd.type.name == "MOVE":
-                x = cursor_x if cmd.x is None else cmd.x
-                y = cursor_y if cmd.y is None else cmd.y
+                x = cursor_x if cmd.x is None else job_origin_x + cmd.x
+                y = cursor_y if cmd.y is None else job_origin_y + cmd.y
                 if cmd.z is not None:
                     if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
                         flush_block(block, block_z)
@@ -641,8 +643,8 @@ class RuidaLaser:
                 continue
 
             if cmd.type.name == "CUT_LINE":
-                x = cursor_x if cmd.x is None else cmd.x
-                y = cursor_y if cmd.y is None else cmd.y
+                x = cursor_x if cmd.x is None else job_origin_x + cmd.x
+                y = cursor_y if cmd.y is None else job_origin_y + cmd.y
                 if cmd.z is not None:
                     if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
                         flush_block(block, block_z)
