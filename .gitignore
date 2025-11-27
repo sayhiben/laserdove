@@ -7,3 +7,5 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+rd_out/
+config.toml
