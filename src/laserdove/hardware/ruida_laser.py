@@ -435,32 +435,43 @@ class RuidaLaser:
             return
         delta = job_z_mm - self.z
         if abs(delta) < 1e-6:
+            log.debug("[RUIDA UDP] Z already at target %.3f; skipping panel jog", job_z_mm)
             return
-        if self.panel_z_step_mm and self.panel_z_step_mm > 0:
-            steps = int(round(delta / self.panel_z_step_mm))
-            if steps != 0:
-                # Panel jog direction: "up" raises the bed (reduces clearance) on most machines.
-                direction_up = steps > 0
-                if not self.z_positive_moves_bed_up:
-                    direction_up = not direction_up
-                cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
-                if self._panel_iface is None:
-                    self._panel_iface = RuidaPanelInterface(
-                        self.host,
-                        timeout_s=self.timeout_s,
-                        dry_run=self.dry_run,
-                    )
-                log.info(
-                    "[RUIDA UDP] Jogging Z via panel: target=%.3f current=%.3f step=%.3f count=%d cmd=%s",
-                    job_z_mm,
-                    self.z,
-                    self.panel_z_step_mm,
-                    abs(steps),
-                    "Z_UP" if direction_up else "Z_DOWN",
-                )
-                for _ in range(abs(steps)):
-                    self._panel_iface.send_command(cmd)
-                    time.sleep(0.05)
+        if not (self.panel_z_step_mm and self.panel_z_step_mm > 0):
+            log.debug("[RUIDA UDP] Panel Z jog disabled (panel_z_step_mm=%.3f); leaving Z unchanged", self.panel_z_step_mm)
+            self.z = job_z_mm
+            return
+        steps = int(round(delta / self.panel_z_step_mm))
+        if steps == 0:
+            log.debug(
+                "[RUIDA UDP] Z delta %.3f below step size %.3f; updating tracked Z only",
+                delta,
+                self.panel_z_step_mm,
+            )
+            self.z = job_z_mm
+            return
+        # Panel jog direction: "up" raises the bed (reduces clearance) on most machines.
+        direction_up = steps > 0
+        if not self.z_positive_moves_bed_up:
+            direction_up = not direction_up
+        cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
+        if self._panel_iface is None:
+            self._panel_iface = RuidaPanelInterface(
+                self.host,
+                timeout_s=self.timeout_s,
+                dry_run=self.dry_run,
+            )
+        log.info(
+            "[RUIDA UDP] Jogging Z via panel: target=%.3f current=%.3f step=%.3f count=%d cmd=%s",
+            job_z_mm,
+            self.z,
+            self.panel_z_step_mm,
+            abs(steps),
+            "Z_UP" if direction_up else "Z_DOWN",
+        )
+        for _ in range(abs(steps)):
+            self._panel_iface.send_command(cmd)
+            time.sleep(0.05)
         self.z = job_z_mm
 
     def _set_speed(self, speed_mm_s: float) -> None:
