@@ -51,9 +51,16 @@ def poll_status_once(laser: RuidaLaser, label: str) -> None:
         print(f"[{label}] status: timeout/none")
 
 
-def run_with_capture(laser: RuidaLaser, label: str, action: Callable[[], None], *, interval: float, polls_after: int = 5) -> None:
+def run_with_capture(
+    poll_laser: RuidaLaser,
+    label: str,
+    action: Callable[[], None],
+    *,
+    interval: float,
+    polls_after: int = 5,
+) -> None:
     print(f"=== {label} START ===")
-    poll_status_once(laser, f"{label}-before")
+    poll_status_once(poll_laser, f"{label}-before")
 
     stop = threading.Event()
 
@@ -61,7 +68,7 @@ def run_with_capture(laser: RuidaLaser, label: str, action: Callable[[], None], 
         idx = 0
         while not stop.is_set():
             idx += 1
-            poll_status_once(laser, f"{label}-during#{idx}")
+            poll_status_once(poll_laser, f"{label}-during#{idx}")
             time.sleep(interval)
 
     t = threading.Thread(target=capture, daemon=True)
@@ -75,7 +82,7 @@ def run_with_capture(laser: RuidaLaser, label: str, action: Callable[[], None], 
         t.join(timeout=interval * 2)
 
     for i in range(polls_after):
-        poll_status_once(laser, f"{label}-after#{i+1}")
+        poll_status_once(poll_laser, f"{label}-after#{i+1}")
         time.sleep(interval)
     print(f"=== {label} END ===")
 
@@ -85,6 +92,10 @@ def main() -> None:
     ap.add_argument("--host", required=True, help="Ruida controller host/IP")
     ap.add_argument("--port", type=int, default=50200, help="Ruida controller UDP port (default 50200)")
     ap.add_argument("--source-port", type=int, default=40200, help="Local UDP source port (default 40200)")
+    ap.add_argument("--status-source-port", type=int, help="Local UDP source port for status polling (default source-port+1 when dual-socket)")
+    ap.add_argument("--dual-socket", dest="dual_socket", action="store_true", help="Use a dedicated socket for status polling to avoid reply mix-ups (default: on)")
+    ap.add_argument("--single-socket", dest="dual_socket", action="store_false", help="Force reuse of a single socket for both actions and polling")
+    ap.set_defaults(dual_socket=True)
     ap.add_argument("--timeout-s", type=float, default=3.0, help="UDP timeout seconds")
     ap.add_argument("--interval", type=float, default=0.5, help="Seconds between status polls during actions")
     ap.add_argument("--move-dist-mm", type=float, default=10.0, help="Distance for X/Y moves (mm)")
@@ -94,7 +105,13 @@ def main() -> None:
     ap.add_argument("--magic", type=lambda x: int(x, 0), default=0x88, help="Swizzle magic (default 0x88)")
     args = ap.parse_args()
 
-    laser = RuidaLaser(
+    use_dual = args.dual_socket
+
+    status_source_port = args.status_source_port
+    if args.status_source_port is not None
+    else (args.source_port + 1 if use_dual else args.source_port)
+
+    action_laser = RuidaLaser(
         host=args.host,
         port=args.port,
         source_port=args.source_port,
@@ -105,9 +122,22 @@ def main() -> None:
         air_assist=True,
     )
 
+    poll_laser = action_laser
+    if use_dual:
+        poll_laser = RuidaLaser(
+            host=args.host,
+            port=args.port,
+            source_port=status_source_port,
+            timeout_s=args.timeout_s,
+            dry_run=False,
+            movement_only=True,
+            magic=args.magic,
+            air_assist=True,
+        )
+
     # Baseline polling only
     for i in range(args.baseline_polls):
-        poll_status_once(laser, f"baseline#{i+1}")
+        poll_status_once(poll_laser, f"baseline#{i+1}")
         time.sleep(args.interval)
 
     actions: List[tuple[str, Callable[[], None]]] = []
@@ -116,7 +146,7 @@ def main() -> None:
     def move_x():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-x", move_x))
 
@@ -124,14 +154,14 @@ def main() -> None:
     def move_y():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-y", move_y))
 
     # Z move
     def move_z():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=args.z_move_mm, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=args.z_move_mm, require_busy_transition=False)
 
     actions.append(("move-z", move_z))
 
@@ -139,7 +169,7 @@ def main() -> None:
     def air_on_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-on-job", air_on_job))
 
@@ -147,26 +177,26 @@ def main() -> None:
     def air_off_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-off-job", air_off_job))
 
     # Jog-style moves (single-axis jog commands via send_rd_job travel)
     def jog_x_positive():
         mv = [RDMove(args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_x_negative():
         mv = [RDMove(-args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_positive():
         mv = [RDMove(0.0, args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_negative():
         mv = [RDMove(0.0, -args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     # Small square travel-only path to see if motion-only sequences toggle bits.
     def square_travel():
@@ -178,7 +208,7 @@ def main() -> None:
             RDMove(0.0, d, speed_mm_s=80.0, power_pct=0.0, is_cut=False),
             RDMove(0.0, 0.0, speed_mm_s=80.0, power_pct=0.0, is_cut=False),
         ]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.extend(
         [
@@ -193,7 +223,7 @@ def main() -> None:
     # Home-like move back to origin (travel-only)
     def home_travel():
         mv = [RDMove(0.0, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=0.0, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=0.0, require_busy_transition=False)
 
     actions.append(("home-travel", home_travel))
 
@@ -201,12 +231,12 @@ def main() -> None:
     # Since our send_rd_job auto-runs, we approximate "upload" as a tiny travel-only job.
     def upload_only():
         mv = [RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False)]
-        laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
+        action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("upload-only-travel", upload_only))
 
     for label, fn in actions:
-        run_with_capture(laser, label, fn, interval=args.interval, polls_after=args.polls_after)
+        run_with_capture(poll_laser, label, fn, interval=args.interval, polls_after=args.polls_after)
 
     print("Done. Review logs above for status transitions.")
 
