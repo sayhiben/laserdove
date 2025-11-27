@@ -219,7 +219,13 @@ def test_send_rd_job_zeroes_power_when_movement_only():
     moves = [RDMove(x_mm=0, y_mm=0, speed_mm_s=10.0, power_pct=60.0, is_cut=True)]
     laser = RuidaLaser("127.0.0.1", movement_only=True, dry_run=True)
     sent = []
-    laser._send_packets = lambda payload=None: sent.append(payload)  # type: ignore
+
+    def fake_send(payload=None, expect_reply=False):
+        if expect_reply:
+            return None
+        sent.append(payload)
+
+    laser._send_packets = fake_send  # type: ignore
     laser.send_rd_job(moves, job_z_mm=None)
     assert moves[0].power_pct == 0.0
     assert sent  # payload attempted
@@ -312,7 +318,7 @@ def test_get_memory_value_unexpected_header_returns_none(monkeypatch):
 def test_send_rd_job_writes_file(tmp_path, monkeypatch):
     moves = [RDMove(x_mm=0, y_mm=0, speed_mm_s=10.0, power_pct=60.0, is_cut=True)]
     laser = RuidaLaser("127.0.0.1", dry_run=True, save_rd_dir=tmp_path)
-    monkeypatch.setattr(laser, "_send_packets", lambda payload=None: None)
+    monkeypatch.setattr(laser, "_send_packets", lambda payload=None, expect_reply=False: None)
     laser.send_rd_job(moves, job_z_mm=0.5)
     files = list(tmp_path.glob("job_*.rd"))
     assert files, "RD file should be written when save_rd_dir is set"

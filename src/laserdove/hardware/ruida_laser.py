@@ -382,6 +382,17 @@ class RuidaLaser:
         """
         if not moves:
             return
+        # Log current status before building/sending.
+        pre_state = self._read_machine_state()
+        if pre_state:
+            log.debug(
+                "[RUIDA UDP] Status before RD send: 0x%08X busy=%s low_move=%s low_run=%s part_end=%s",
+                pre_state.status_bits,
+                bool(pre_state.status_bits & self.BUSY_MASK),
+                bool(pre_state.status_bits & 0x10),
+                bool(pre_state.status_bits & 0x01),
+                bool(pre_state.status_bits & self.STATUS_BIT_PART_END),
+            )
         if self.movement_only:
             for mv in moves:
                 mv.power_pct = 0.0
@@ -409,6 +420,18 @@ class RuidaLaser:
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
         """
+        # Log initial status before any commands.
+        initial_state = self._read_machine_state()
+        if initial_state:
+            log.debug(
+                "[RUIDA UDP] Initial status: 0x%08X busy=%s low_move=%s low_run=%s part_end=%s",
+                initial_state.status_bits,
+                bool(initial_state.status_bits & self.BUSY_MASK),
+                bool(initial_state.status_bits & 0x10),
+                bool(initial_state.status_bits & 0x01),
+                bool(initial_state.status_bits & self.STATUS_BIT_PART_END),
+            )
+
         travel_only = travel_only or self.movement_only
         current_power = 0.0
         current_speed: float | None = None
