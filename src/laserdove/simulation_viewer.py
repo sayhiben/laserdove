@@ -222,7 +222,30 @@ class SimulationViewer:
             self._canvas.create_text(self.padding + 30, legend_y + 5, anchor="w", text=f"θ={rotation:.1f}°", font=("Arial", 9))
             legend_y += 18
 
-    def render(self, segments: List[Dict[str, float | bool]], rotation_deg: float) -> None:
+    def _draw_origin_overlay(
+        self,
+        viewport: Tuple[float, float, float, float],
+        extents: Optional[Tuple[float, float, float, float]],
+        origin: Optional[Tuple[float, float]],
+        y_center: Optional[float],
+        common_scale: float,
+    ) -> None:
+        if self._canvas is None or extents is None:
+            return
+        vx0, vy0, vx1, vy1 = viewport
+        if origin:
+            ox, oy = origin
+            oxp, oyp = self._to_canvas(ox, oy, common_scale, extents, viewport)
+            self._canvas.create_line(vx0, oyp, vx1, oyp, fill="#e0e0e0", dash=(3, 3))
+            self._canvas.create_line(oxp, vy0, oxp, vy1, fill="#e0e0e0", dash=(3, 3))
+            self._canvas.create_oval(oxp - 3, oyp - 3, oxp + 3, oyp + 3, fill="#ff7043", outline="#ff7043")
+            self._canvas.create_text(oxp + 8, oyp - 8, text="origin", font=("Arial", 9), anchor="w")
+        if y_center is not None and origin is not None:
+            cxp, cyp = self._to_canvas(origin[0], y_center, common_scale, extents, viewport)
+            self._canvas.create_line(vx0, cyp, vx1, cyp, fill="#c5e1a5", dash=(4, 2))
+            self._canvas.create_text(vx0 + 6, cyp - 6, text="Y mid", font=("Arial", 9), anchor="w")
+
+    def render(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
         if self._root is None or self._canvas is None:
             return
 
@@ -262,6 +285,8 @@ class SimulationViewer:
 
         self._draw_segments(tail_segments, tail_viewport, use_z_color=False, common_scale=common_scale, extents=tail_extents)
         self._draw_segments(pin_segments, pin_viewport, use_z_color=True, common_scale=common_scale, extents=pin_extents)
+        self._draw_origin_overlay(tail_viewport, tail_extents, origin, y_center, common_scale)
+        self._draw_origin_overlay(pin_viewport, pin_extents, origin, y_center, common_scale)
         rot_cx = pin_viewport[0] + (pin_viewport[2] - pin_viewport[0]) * 0.8
         rot_cy = pin_viewport[1] + (pin_viewport[3] - pin_viewport[1]) * 0.15
         rot_radius = min(pin_viewport[2] - pin_viewport[0], pin_viewport[3] - pin_viewport[1]) * 0.1
@@ -279,21 +304,21 @@ class SimulationViewer:
         self._draw_z_gauge(pin_segments, gauge_viewport, top_offset_px=gauge_top)
         self._draw_legends()
 
-    def update(self, segments: List[Dict[str, float | bool]], rotation_deg: float) -> None:
+    def update(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
         if self._root is None:
             return
-        self.render(segments, rotation_deg)
+        self.render(segments, rotation_deg, origin=origin, y_center=y_center)
         try:
             self._root.update_idletasks()
             self._root.update()
         except Exception:
             pass
 
-    def mainloop(self, segments: List[Dict[str, float | bool]], rotation_deg: float) -> None:
+    def mainloop(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
         if self._root is None:
             return
         try:
-            self.render(segments, rotation_deg)
+            self.render(segments, rotation_deg, origin=origin, y_center=y_center)
             self._root.mainloop()
         finally:
             self.close()

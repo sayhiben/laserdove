@@ -12,13 +12,13 @@ class DummyViewer:
     def open(self):
         self.opened = True
 
-    def render(self, segments, rotation_deg):
+    def render(self, segments, rotation_deg, **kwargs):
         self.updated = True
 
-    def update(self, segments, rotation_deg):
+    def update(self, segments, rotation_deg, **kwargs):
         self.updated = True
 
-    def mainloop(self, segments, rotation_deg):
+    def mainloop(self, segments, rotation_deg, **kwargs):
         self.mainloop_called = True
 
 
