@@ -41,6 +41,8 @@ def _ready_responses(laser: RuidaLaser):
         make_payload(RuidaLaser.MEM_CURRENT_X, laser._encode_abscoord_mm(laser.x)),
         ack,
         make_payload(RuidaLaser.MEM_CURRENT_Y, laser._encode_abscoord_mm(laser.y)),
+        ack,
+        make_payload(RuidaLaser.MEM_CURRENT_Z, laser._encode_abscoord_mm(laser.z)),
     ]
 
 

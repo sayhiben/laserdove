@@ -41,6 +41,7 @@ class RuidaLaser:
     MEM_MACHINE_STATUS = b"\x04\x00"
     MEM_CURRENT_X = b"\x04\x21"
     MEM_CURRENT_Y = b"\x04\x31"
+    MEM_CURRENT_Z = b"\x04\x41"
 
     STATUS_BIT_MOVING = 0x01000000
     STATUS_BIT_PART_END = 0x00000002
@@ -53,6 +54,7 @@ class RuidaLaser:
         status_bits: int
         x_mm: Optional[float]
         y_mm: Optional[float]
+        z_mm: Optional[float] = None
 
     @staticmethod
     def _swizzle_byte(b: int, magic: int = 0x88) -> int:
@@ -263,17 +265,19 @@ class RuidaLaser:
             status_payload = self._get_memory_value(self.MEM_MACHINE_STATUS, expected_len=4)
             x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5) if read_positions else None
             y_payload = self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5) if read_positions else None
+            z_payload = self._get_memory_value(self.MEM_CURRENT_Z, expected_len=5) if read_positions else None
         except RuntimeError as exc:
             log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
-            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y) if self.dry_run else None
+            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z) if self.dry_run else None
 
         if status_payload is None:
-            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y) if self.dry_run else None
+            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z) if self.dry_run else None
 
         status_bits = self._decode_status_bits(status_payload)
         x_mm = self._decode_abscoord_mm(x_payload) if x_payload else None
         y_mm = self._decode_abscoord_mm(y_payload) if y_payload else None
-        return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm)
+        z_mm = self._decode_abscoord_mm(z_payload) if z_payload else None
+        return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)
 
     def _wait_for_ready(
         self,
@@ -287,14 +291,14 @@ class RuidaLaser:
         min_stable_s: float = 0.0,
     ) -> MachineState:
         if self.dry_run:
-            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y)
+            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
 
         last_state: Optional[RuidaLaser.MachineState] = None
         baseline_bits: Optional[int] = None
-        baseline_pos: Optional[tuple[float, float]] = None
+        baseline_pos: dict[str, float] = {}
         stable_counter = 0
         saw_activity = False
-        last_pos: Optional[tuple[float, float]] = None
+        last_pos: dict[str, float] = {}
         stable_target = 1
         stable_start: Optional[float] = None
         for attempt in range(1, max_attempts + 1):
@@ -316,8 +320,6 @@ class RuidaLaser:
                     saw_activity = True
                     baseline_bits = state.status_bits
                     stable_counter = 0
-                if baseline_pos is None and state.x_mm is not None and state.y_mm is not None:
-                    baseline_pos = (state.x_mm, state.y_mm)
                 last_state = state
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
                 move_low = bool(state.status_bits & 0x10)  # lower-byte IsMove per EduTech wiki
@@ -333,23 +335,37 @@ class RuidaLaser:
                     stable_counter,
                     saw_activity,
                 )
-                if baseline_bits is not None and state.status_bits != baseline_bits:
-                    saw_activity = True
-                if last_pos and state.x_mm is not None and state.y_mm is not None:
-                    dx = abs(state.x_mm - last_pos[0])
-                    dy = abs(state.y_mm - last_pos[1])
-                    if dx > pos_tol_mm or dy > pos_tol_mm:
+                positions = {
+                    "x": state.x_mm,
+                    "y": state.y_mm,
+                    "z": state.z_mm,
+                }
+
+                for axis, value in positions.items():
+                    if value is not None and axis not in baseline_pos:
+                        baseline_pos[axis] = value
+
+                prev_pos = last_pos
+                last_pos = {axis: value for axis, value in positions.items() if value is not None}
+
+                for axis, value in last_pos.items():
+                    prev_val = prev_pos.get(axis)
+                    if prev_val is not None and abs(value - prev_val) > pos_tol_mm:
                         saw_activity = True
-                if baseline_pos and state.x_mm is not None and state.y_mm is not None:
-                    if abs(state.x_mm - baseline_pos[0]) > pos_tol_mm or abs(state.y_mm - baseline_pos[1]) > pos_tol_mm:
+                for axis, base_val in baseline_pos.items():
+                    value = last_pos.get(axis)
+                    if value is not None and abs(value - base_val) > pos_tol_mm:
                         saw_activity = True
-                if state.x_mm is not None and state.y_mm is not None:
-                    last_pos = (state.x_mm, state.y_mm)
 
                 stable_match = baseline_bits is None or state.status_bits == baseline_bits
                 pos_stable = True
-                if last_pos and state.x_mm is not None and state.y_mm is not None:
-                    pos_stable = abs(state.x_mm - last_pos[0]) <= pos_tol_mm and abs(state.y_mm - last_pos[1]) <= pos_tol_mm
+                for axis, prev_val in prev_pos.items():
+                    value = last_pos.get(axis)
+                    if value is None:
+                        continue
+                    if abs(value - prev_val) > pos_tol_mm:
+                        pos_stable = False
+                        break
                 if stable_match and pos_stable:
                     if stable_counter == 0:
                         stable_start = time.monotonic()
@@ -360,17 +376,44 @@ class RuidaLaser:
 
                 stable_elapsed = 0.0 if stable_start is None else time.monotonic() - stable_start
 
+                if (
+                    require_busy_transition
+                    and stable_counter >= stable_target
+                    and stable_elapsed >= min_stable_s
+                    and not (state.status_bits & self.BUSY_MASK)
+                ):
+                    if state.x_mm is not None:
+                        self.x = state.x_mm
+                    if state.y_mm is not None:
+                        self.y = state.y_mm
+                    if state.z_mm is not None:
+                        self.z = state.z_mm
+                    log.debug(
+                        "[RUIDA UDP] Ready via busy transition on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
+                        attempt,
+                        state.status_bits,
+                        self.x,
+                        self.y,
+                        self.z,
+                        stable_counter,
+                        stable_elapsed,
+                    )
+                    return state
+
                 if not require_busy_transition and stable_counter >= stable_polls and stable_elapsed >= min_stable_s:
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
+                    if state.z_mm is not None:
+                        self.z = state.z_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d stable_elapsed=%.2fs",
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
+                        self.z,
                         stable_counter,
                         stable_elapsed,
                     )
@@ -381,12 +424,15 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
+                    if state.z_mm is not None:
+                        self.z = state.z_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f stable_counter=%d stable_elapsed=%.2fs",
+                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
+                        self.z,
                         stable_counter,
                         stable_elapsed,
                     )
@@ -401,12 +447,15 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
+                    if state.z_mm is not None:
+                        self.z = state.z_mm
                     log.debug(
-                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f activity_seen=%s stable_counter=%d stable_elapsed=%.2fs",
+                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f activity_seen=%s stable_counter=%d stable_elapsed=%.2fs",
                         attempt,
                         state.status_bits,
                         self.x,
                         self.y,
+                        self.z,
                         saw_activity,
                         stable_counter,
                         stable_elapsed,
@@ -420,7 +469,22 @@ class RuidaLaser:
                     )
             else:
                 if last_state and not require_busy_transition:
+                    if last_state.x_mm is not None:
+                        self.x = last_state.x_mm
+                    if last_state.y_mm is not None:
+                        self.y = last_state.y_mm
+                    if last_state.z_mm is not None:
+                        self.z = last_state.z_mm
                     log.debug("[RUIDA UDP] Returning last known state after missing poll (no busy transition required)")
+                    return last_state
+                if last_state and require_busy_transition and not (last_state.status_bits & self.BUSY_MASK):
+                    if last_state.x_mm is not None:
+                        self.x = last_state.x_mm
+                    if last_state.y_mm is not None:
+                        self.y = last_state.y_mm
+                    if last_state.z_mm is not None:
+                        self.z = last_state.z_mm
+                    log.debug("[RUIDA UDP] Returning last known non-busy state after missing poll (busy transition required)")
                     return last_state
             log.debug("[RUIDA UDP] Waiting (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
@@ -433,6 +497,9 @@ class RuidaLaser:
         """
         if job_z_mm is None:
             return
+        state = self._read_machine_state()
+        if state and state.z_mm is not None:
+            self.z = state.z_mm
         delta = job_z_mm - self.z
         if abs(delta) < 1e-6:
             log.debug("[RUIDA UDP] Z already at target %.3f; skipping panel jog", job_z_mm)
@@ -605,6 +672,7 @@ class RuidaLaser:
             )
         job_origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
         job_origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
+        job_origin_z = initial_state.z_mm if initial_state and initial_state.z_mm is not None else None
         y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
         travel_only = travel_only or self.movement_only
@@ -612,11 +680,12 @@ class RuidaLaser:
         current_speed: float | None = None
         cursor_x = job_origin_x
         cursor_y = job_origin_y
-        current_z: float | None = None
+        current_z: float | None = job_origin_z
         last_set_z: float | None = None
         origin_x = job_origin_x
         origin_y = job_origin_y
-        origin_z: float | None = None
+        origin_z: float | None = job_origin_z
+        origin_z_from_command = False
         origin_speed: float | None = None
 
         def park_head_before_rotary() -> None:
@@ -717,8 +786,9 @@ class RuidaLaser:
                         flush_block(block, block_z)
                         block = []
                     current_z = cmd.z
-                    if origin_z is None:
+                    if not origin_z_from_command:
                         origin_z = current_z
+                        origin_z_from_command = True
                     last_set_z = current_z
                     block_z = current_z
                 if cmd.speed_mm_s is not None:
