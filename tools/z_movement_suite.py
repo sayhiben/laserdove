@@ -1,15 +1,13 @@
 """
 Z movement fidelity suite.
 
-This script probes Z movement through three paths:
+This script probes Z movement through multiple paths (panel jog optional/disabled by default):
   1) Direct UDP axis-Z command (0x80 0x01 + abscoord).
-  2) RD job with embedded job Z.
-  3) Panel/interface port jog commands (UDP 50207).
+  2) Alternate direct opcode 0x80 0x08 (observed in some stacks).
+  3) RD job with embedded job Z.
+  4) Optional panel/interface port jog (UDP 50207) for comparison.
 
-For each path we poll Ruida memory for the current Z before/after each
-operation so you can compare commanded vs. observed motion. This is meant to
-run against a real controller; keep movement-only or power=0 to avoid firing
-the laser while testing.
+Focus/Home opcodes are skipped by default because they proved unsafe on real hardware.
 """
 
 from __future__ import annotations
@@ -72,6 +70,15 @@ def direct_udp_axis_move(laser: RuidaLaser, logical_target_mm: float) -> None:
     _poll_z(laser, "direct-udp", count=5, delay=0.1)
 
 
+def direct_udp_axis_move_alt(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """Try alternate opcode 0x80 0x08 reported by some stacks."""
+    hw_target = _hardware_target(laser, logical_target_mm)
+    payload = b"\x80\x08" + encode_abscoord_mm(hw_target)
+    log.info("Direct UDP axis Z move (alt opcode 0x80 0x08): logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "direct-udp-alt", count=5, delay=0.1)
+
+
 def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
     hw_target = _hardware_target(laser, logical_target_mm)
     moves = [
@@ -87,13 +94,6 @@ def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
     log.info("RD job Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "rd-job", count=10, delay=0.2)
-
-
-def rd_focus_or_home(laser: RuidaLaser, opcode: bytes, label: str) -> None:
-    payload = opcode
-    log.info("RD opcode %s (may use controller-defined focus/home Z)", label)
-    laser._send_packets(payload)  # type: ignore[attr-defined]
-    _poll_z(laser, label, count=10, delay=0.2)
 
 
 def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) -> None:
@@ -125,7 +125,8 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
     parser.add_argument("--dry-run", action="store_true", help="Log packets without sending")
     parser.add_argument("--relative-delta-mm", type=float, default=0.0, help="Relative Z delta to test via read+absolute")
-    parser.add_argument("--skip-focus-home", action="store_true", help="Skip focus/home opcodes")
+    parser.add_argument("--skip-panel", action="store_true", help="Skip panel/interface jog test")
+    parser.add_argument("--skip-alt-opcode", action="store_true", help="Skip alternate 0x80 0x08 opcode test")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -141,15 +142,22 @@ def main() -> None:
 
     _poll_z(laser, "startup", count=3, delay=0.1)
 
-    try:
-        panel_jog(laser, args.target_z_mm, max_steps=args.panel_steps)
-    except Exception:
-        log.exception("Panel jog test failed")
+    if not args.skip_panel:
+        try:
+            panel_jog(laser, args.target_z_mm, max_steps=args.panel_steps)
+        except Exception:
+            log.exception("Panel jog test failed")
 
     try:
         direct_udp_axis_move(laser, args.target_z_mm)
     except Exception:
         log.exception("Direct UDP test failed")
+
+    if not args.skip_alt_opcode:
+        try:
+            direct_udp_axis_move_alt(laser, args.target_z_mm)
+        except Exception:
+            log.exception("Direct UDP alt opcode test failed")
 
     if args.relative_delta_mm:
         try:
@@ -163,17 +171,6 @@ def main() -> None:
         rd_job_move(laser, args.target_z_mm)
     except Exception:
         log.exception("RD job test failed")
-
-    if not args.skip_focus_home:
-        try:
-            # Focus/home opcodes from reference/meerk40t/rdjob.py
-            rd_focus_or_home(laser, b"\xD8\x2E", "focus-z")
-        except Exception:
-            log.exception("Focus opcode test failed")
-        try:
-            rd_focus_or_home(laser, b"\xD8\x2C", "home-z")
-        except Exception:
-            log.exception("Home opcode test failed")
 
 
 if __name__ == "__main__":
