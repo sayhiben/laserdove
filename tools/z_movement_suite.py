@@ -41,11 +41,13 @@ def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2) -
         raw_z = _poll_raw_z(laser)
         last_z = None if not state else state.z_mm
         log.info(
-            "[%s] poll %d: logical_z=%s raw_z=%s status=0x%08X",
+            "[%s] poll %d: logical_z=%s raw_z=%s x=%s y=%s status=0x%08X",
             label,
             i + 1,
             f"{last_z:.3f}" if last_z is not None else "None",
             f"{raw_z:.3f}" if raw_z is not None else "None",
+            f"{state.x_mm:.3f}" if state and state.x_mm is not None else "None",
+            f"{state.y_mm:.3f}" if state and state.y_mm is not None else "None",
             state.status_bits if state else -1,
         )
         if i + 1 < count:
@@ -94,6 +96,35 @@ def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
     log.info("RD job Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "rd-job", count=10, delay=0.2)
+
+
+def rd_job_move_alt_opcode(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """
+    RD job with Z using alternate opcode 0x80 0x08 instead of 0x80 0x01.
+    """
+    hw_target = _hardware_target(laser, logical_target_mm)
+    moves = [
+        RDMove(
+            x_mm=laser.x,
+            y_mm=laser.y,
+            speed_mm_s=laser.z_speed_mm_s,
+            power_pct=0.0,
+            is_cut=False,
+        )
+    ]
+    builder = _RDJobBuilder()
+    paths, bbox = rd_builder._moves_to_paths(moves)
+    layer = rd_builder._Layer(paths=paths, bbox=bbox, speed=[laser.z_speed_mm_s, laser.z_speed_mm_s], power=[0.0, 0.0])
+    builder._globalbbox = bbox
+    header = builder.header([layer], filename="ALTZ")
+    body = builder.body([layer], job_z_mm=None, air_assist=laser.air_assist)
+    # inject alt opcode: 0x80 0x08 + encoded Z
+    body = body + bytes([0x80, 0x08]) + builder.encode_number(hw_target)
+    trailer = builder.trailer((0.0, 0.0))
+    payload = header + body + trailer
+    log.info("RD job Z move (alt 0x80 0x08): logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "rd-job-alt", count=10, delay=0.2)
 
 
 def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) -> None:
