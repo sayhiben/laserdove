@@ -34,4 +34,5 @@ def test_apply_job_z_uses_hardware_state(monkeypatch):
 
     assert laser.MEM_CURRENT_Z in addresses
     assert sent_commands  # command(s) were issued because hardware Z differed
-    assert laser.z == 2.0
+    # After calibration we should have updated z to the polled value and stopped.
+    assert laser.z == 0.0

@@ -110,6 +110,7 @@ class RuidaLaser:
         z_speed_mm_s: float = 5.0,
         socket_factory=socket.socket,
         panel_z_step_mm: float = 0.05,
+        panel_z_max_step_mm: float = 0.5,
         min_stable_s: float = 0.0,
     ) -> None:
         self.host = host
@@ -136,6 +137,7 @@ class RuidaLaser:
         self.z_speed_mm_s = z_speed_mm_s
         self.min_stable_s = min_stable_s
         self.panel_z_step_mm = panel_z_step_mm
+        self.panel_z_max_step_mm = panel_z_max_step_mm
         self._panel_iface: RuidaPanelInterface | None = None
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
@@ -564,6 +566,14 @@ class RuidaLaser:
                     log.warning("[RUIDA UDP] Panel Z jog produced no movement; aborting further Z jogs")
                     self.z = post_state.z_mm
                     return
+                if abs(moved) > self.panel_z_max_step_mm:
+                    log.warning(
+                        "[RUIDA UDP] Panel Z jog step %.3f exceeds max %.3f; aborting panel jog and relying on RD Z only",
+                        moved,
+                        self.panel_z_max_step_mm,
+                    )
+                    self.z = post_state.z_mm
+                    return
                 if (moved > 0) != (delta > 0):
                     log.warning(
                         "[RUIDA UDP] Panel Z jog moved opposite direction (moved=%.3f delta=%.3f); aborting to avoid collision",
@@ -593,7 +603,14 @@ class RuidaLaser:
                 for _ in range(abs(adjusted_steps)):
                     self._panel_iface.send_command(cmd)
                     time.sleep(0.05)
-                self.z = job_z_mm
+                    poll = self._read_machine_state()
+                    if poll and poll.z_mm is not None:
+                        self.z = poll.z_mm
+                        log.debug("[RUIDA UDP] Panel Z poll during jog: %.3f", self.z)
+                        remaining_delta = job_z_mm - self.z
+                        if abs(remaining_delta) < self.panel_z_step_mm:
+                            log.info("[RUIDA UDP] Z jog reached target within step tolerance; stopping early")
+                            break
                 post_final = self._read_machine_state()
                 if post_final and post_final.z_mm is not None:
                     self.z = post_final.z_mm
@@ -603,7 +620,14 @@ class RuidaLaser:
         for _ in range(abs(steps)):
             self._panel_iface.send_command(cmd)
             time.sleep(0.05)
-        self.z = job_z_mm
+            poll = self._read_machine_state()
+            if poll and poll.z_mm is not None:
+                self.z = poll.z_mm
+                log.debug("[RUIDA UDP] Panel Z poll during jog: %.3f", self.z)
+                remaining_delta = job_z_mm - self.z
+                if abs(remaining_delta) < self.panel_z_step_mm:
+                    log.info("[RUIDA UDP] Z jog reached target within step tolerance; stopping early")
+                    break
         if not self.dry_run:
             post_final = self._read_machine_state()
             if post_final and post_final.z_mm is not None:

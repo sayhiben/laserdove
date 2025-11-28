@@ -1,0 +1,180 @@
+"""
+Z movement fidelity suite.
+
+This script probes Z movement through three paths:
+  1) Direct UDP axis-Z command (0x80 0x01 + abscoord).
+  2) RD job with embedded job Z.
+  3) Panel/interface port jog commands (UDP 50207).
+
+For each path we poll Ruida memory for the current Z before/after each
+operation so you can compare commanded vs. observed motion. This is meant to
+run against a real controller; keep movement-only or power=0 to avoid firing
+the laser while testing.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import time
+from typing import Optional
+
+from laserdove.hardware.rd_builder import RDMove, build_rd_job
+from laserdove.hardware.ruida_laser import RuidaLaser
+from laserdove.hardware.ruida_panel import RuidaPanelInterface
+from laserdove.hardware.ruida_common import encode_abscoord_mm, decode_abscoord_mm
+
+log = logging.getLogger("z_movement_suite")
+
+
+def _poll_raw_z(laser: RuidaLaser) -> Optional[float]:
+    """Return absolute hardware Z (mm) by reading controller memory."""
+    payload = laser._get_memory_value(laser.MEM_CURRENT_Z, expected_len=5)  # type: ignore[attr-defined]
+    if payload is None:
+        return None
+    return decode_abscoord_mm(payload)
+
+
+def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2) -> Optional[float]:
+    """Poll and log Z a few times; return last logical Z."""
+    last_z = None
+    for i in range(count):
+        state = laser._read_machine_state()
+        raw_z = _poll_raw_z(laser)
+        last_z = None if not state else state.z_mm
+        log.info(
+            "[%s] poll %d: logical_z=%s raw_z=%s status=0x%08X",
+            label,
+            i + 1,
+            f"{last_z:.3f}" if last_z is not None else "None",
+            f"{raw_z:.3f}" if raw_z is not None else "None",
+            state.status_bits if state else -1,
+        )
+        if i + 1 < count:
+            time.sleep(delay)
+    return last_z
+
+
+def _hardware_target(laser: RuidaLaser, logical_z_mm: float) -> float:
+    if laser._z_origin_mm is None:
+        # Force origin capture via poll.
+        _poll_raw_z(laser)
+        if laser._z_origin_mm is None:
+            laser._z_origin_mm = 0.0
+    return laser._z_origin_mm + logical_z_mm
+
+
+def direct_udp_axis_move(laser: RuidaLaser, logical_target_mm: float) -> None:
+    hw_target = _hardware_target(laser, logical_target_mm)
+    payload = b"\x80\x01" + encode_abscoord_mm(hw_target)
+    log.info("Direct UDP axis Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "direct-udp", count=5, delay=0.1)
+
+
+def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
+    hw_target = _hardware_target(laser, logical_target_mm)
+    moves = [
+        RDMove(
+            x_mm=laser.x,
+            y_mm=laser.y,
+            speed_mm_s=laser.z_speed_mm_s,
+            power_pct=0.0,
+            is_cut=False,
+        )
+    ]
+    payload = build_rd_job(moves, job_z_mm=hw_target, air_assist=laser.air_assist)
+    log.info("RD job Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "rd-job", count=10, delay=0.2)
+
+
+def rd_focus_or_home(laser: RuidaLaser, opcode: bytes, label: str) -> None:
+    payload = opcode
+    log.info("RD opcode %s (may use controller-defined focus/home Z)", label)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, label, count=10, delay=0.2)
+
+
+def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) -> None:
+    if logical_delta_mm == 0:
+        log.info("Panel jog skipped (delta 0)")
+        return
+    iface = RuidaPanelInterface(laser.host, timeout_s=laser.timeout_s, dry_run=laser.dry_run)
+    direction_up = logical_delta_mm > 0
+    if not laser.z_positive_moves_bed_up:
+        direction_up = not direction_up
+    cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
+    log.info("Panel jog: delta=%.3f cmd=%s steps=%d", logical_delta_mm, "Z_UP" if direction_up else "Z_DOWN", max_steps)
+    _poll_z(laser, "panel-jog-before", count=3, delay=0.1)
+    for idx in range(max_steps):
+        iface.send_command(cmd)
+        time.sleep(0.05)
+        _poll_z(laser, f"panel-jog-step{idx+1}", count=2, delay=0.05)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Probe Ruida Z movement fidelity via multiple paths.")
+    parser.add_argument("--host", required=True, help="Ruida controller host/IP")
+    parser.add_argument("--target-z-mm", type=float, default=0.0, help="Logical Z target relative to startup (mm)")
+    parser.add_argument("--panel-steps", type=int, default=3, help="Max panel jog steps to issue")
+    parser.add_argument("--movement-only", action="store_true", default=True, help="Force power=0 in RD jobs (default)")
+    parser.add_argument("--no-movement-only", dest="movement_only", action="store_false")
+    parser.add_argument("--panel-step-mm", type=float, default=0.05, help="Expected panel step size (mm)")
+    parser.add_argument("--panel-max-step-mm", type=float, default=0.5, help="Abort panel jog if measured step exceeds this (mm)")
+    parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
+    parser.add_argument("--dry-run", action="store_true", help="Log packets without sending")
+    parser.add_argument("--relative-delta-mm", type=float, default=0.0, help="Relative Z delta to test via read+absolute")
+    parser.add_argument("--skip-focus-home", action="store_true", help="Skip focus/home opcodes")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    laser = RuidaLaser(
+        args.host,
+        timeout_s=args.timeout,
+        dry_run=args.dry_run,
+        movement_only=args.movement_only,
+        panel_z_step_mm=args.panel_step_mm,
+        panel_z_max_step_mm=args.panel_max_step_mm,
+    )
+
+    _poll_z(laser, "startup", count=3, delay=0.1)
+
+    try:
+        panel_jog(laser, args.target_z_mm, max_steps=args.panel_steps)
+    except Exception:
+        log.exception("Panel jog test failed")
+
+    try:
+        direct_udp_axis_move(laser, args.target_z_mm)
+    except Exception:
+        log.exception("Direct UDP test failed")
+
+    if args.relative_delta_mm:
+        try:
+            state = laser._read_machine_state()
+            logical_now = state.z_mm if state and state.z_mm is not None else 0.0
+            direct_udp_axis_move(laser, logical_now + args.relative_delta_mm)
+        except Exception:
+            log.exception("Relative delta test failed")
+
+    try:
+        rd_job_move(laser, args.target_z_mm)
+    except Exception:
+        log.exception("RD job test failed")
+
+    if not args.skip_focus_home:
+        try:
+            # Focus/home opcodes from reference/meerk40t/rdjob.py
+            rd_focus_or_home(laser, b"\xD8\x2E", "focus-z")
+        except Exception:
+            log.exception("Focus opcode test failed")
+        try:
+            rd_focus_or_home(laser, b"\xD8\x2C", "home-z")
+        except Exception:
+            log.exception("Home opcode test failed")
+
+
+if __name__ == "__main__":
+    main()
