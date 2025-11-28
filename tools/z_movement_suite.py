@@ -17,6 +17,7 @@ import logging
 import time
 from typing import Optional
 
+from laserdove.hardware import rd_builder
 from laserdove.hardware.rd_builder import RDMove, build_rd_job, _RDJobBuilder
 from laserdove.hardware.ruida_laser import RuidaLaser
 from laserdove.hardware.ruida_panel import RuidaPanelInterface
