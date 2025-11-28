@@ -125,9 +125,16 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
     parser.add_argument("--dry-run", action="store_true", help="Log packets without sending")
     parser.add_argument("--relative-delta-mm", type=float, default=0.0, help="Relative Z delta to test via read+absolute")
-    parser.add_argument("--skip-panel", action="store_true", help="Skip panel/interface jog test")
-    parser.add_argument("--skip-alt-opcode", action="store_true", help="Skip alternate 0x80 0x08 opcode test")
+    parser.add_argument("--skip-panel", action="store_true", default=True, help="Skip panel/interface jog test (default: skip)")
+    parser.add_argument("--skip-direct", action="store_true", default=True, help="Skip direct UDP axis-Z tests (default: skip)")
+    parser.add_argument("--skip-alt-opcode", action="store_true", default=True, help="Skip alternate 0x80 0x08 opcode test (default: skip)")
+    parser.add_argument("--rd-only", action="store_true", default=True, help="Run only RD Z (default: on; forces skip panel/direct/alt)")
     args = parser.parse_args()
+
+    if args.rd_only:
+        args.skip_panel = True
+        args.skip_direct = True
+        args.skip_alt_opcode = True
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -148,12 +155,13 @@ def main() -> None:
         except Exception:
             log.exception("Panel jog test failed")
 
-    try:
-        direct_udp_axis_move(laser, args.target_z_mm)
-    except Exception:
-        log.exception("Direct UDP test failed")
+    if not args.skip_direct:
+        try:
+            direct_udp_axis_move(laser, args.target_z_mm)
+        except Exception:
+            log.exception("Direct UDP test failed")
 
-    if not args.skip_alt_opcode:
+    if not args.skip_alt_opcode and not args.skip_direct:
         try:
             direct_udp_axis_move_alt(laser, args.target_z_mm)
         except Exception:
