@@ -158,14 +158,16 @@ def main() -> None:
     parser.add_argument("--relative-delta-mm", type=float, default=0.0, help="Relative Z delta to test via read+absolute")
     parser.add_argument("--skip-panel", action="store_true", default=True, help="Skip panel/interface jog test (default: skip)")
     parser.add_argument("--skip-direct", action="store_true", default=True, help="Skip direct UDP axis-Z tests (default: skip)")
-    parser.add_argument("--skip-alt-opcode", action="store_true", default=True, help="Skip alternate 0x80 0x08 opcode test (default: skip)")
-    parser.add_argument("--rd-only", action="store_true", default=True, help="Run only RD Z (default: on; forces skip panel/direct/alt)")
+    parser.add_argument("--include-alt-opcode", action="store_true", help="Include alternate 0x80 0x08 opcode test")
+    parser.add_argument("--only-alt-opcode", action="store_true", help="Run only the alternate 0x80 0x08 RD test (skip standard RD)")
+    parser.add_argument("--rd-only", action="store_true", default=True, help="Run only RD Z (default: on; forces skip panel/direct)")
     args = parser.parse_args()
 
     if args.rd_only:
         args.skip_panel = True
         args.skip_direct = True
-        args.skip_alt_opcode = True
+    if args.only_alt_opcode:
+        args.include_alt_opcode = True
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -192,7 +194,7 @@ def main() -> None:
         except Exception:
             log.exception("Direct UDP test failed")
 
-    if not args.skip_alt_opcode and not args.skip_direct:
+    if not args.skip_direct and args.include_alt_opcode:
         try:
             direct_udp_axis_move_alt(laser, args.target_z_mm)
         except Exception:
@@ -206,10 +208,16 @@ def main() -> None:
         except Exception:
             log.exception("Relative delta test failed")
 
-    try:
-        rd_job_move(laser, args.target_z_mm)
-    except Exception:
-        log.exception("RD job test failed")
+    if not args.only_alt_opcode:
+        try:
+            rd_job_move(laser, args.target_z_mm)
+        except Exception:
+            log.exception("RD job test failed")
+    if args.include_alt_opcode or args.only_alt_opcode:
+        try:
+            rd_job_move_alt_opcode(laser, args.target_z_mm)
+        except Exception:
+            log.exception("RD job alt opcode test failed")
 
 
 if __name__ == "__main__":
