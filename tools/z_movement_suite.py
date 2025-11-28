@@ -34,11 +34,13 @@ def _poll_raw_z(laser: RuidaLaser) -> Optional[float]:
     return decode_abscoord_mm(payload)
 
 
-def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2) -> Optional[float]:
-    """Poll and log Z a few times; return last logical Z."""
+def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2, *, update_xy: bool = False) -> Optional[float]:
+    """Poll and log Z a few times; return last logical Z. Optionally seed XY from the last poll."""
     last_z = None
+    last_state = None
     for i in range(count):
         state = laser._read_machine_state()
+        last_state = state or last_state
         raw_z = _poll_raw_z(laser)
         last_z = None if not state else state.z_mm
         log.info(
@@ -53,6 +55,12 @@ def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2) -
         )
         if i + 1 < count:
             time.sleep(delay)
+    if update_xy and last_state:
+        if last_state.x_mm is not None:
+            laser.x = last_state.x_mm
+        if last_state.y_mm is not None:
+            laser.y = last_state.y_mm
+        log.info("Seeded XY from polls: x=%.3f y=%.3f", laser.x, laser.y)
     return last_z
 
 
@@ -148,6 +156,12 @@ def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) ->
 def main() -> None:
     parser = argparse.ArgumentParser(description="Probe Ruida Z movement fidelity via multiple paths.")
     parser.add_argument("--host", required=True, help="Ruida controller host/IP")
+    parser.add_argument(
+        "--mode",
+        choices=["rd", "rd-alt", "udp", "udp-alt", "panel"],
+        default="rd",
+        help="Single test to run: rd=standard RD Z, rd-alt=RD with 0x80 0x08, udp=direct 0x80 0x01, udp-alt=direct 0x80 0x08, panel=panel jog",
+    )
     parser.add_argument("--target-z-mm", type=float, default=0.0, help="Logical Z target relative to startup (mm)")
     parser.add_argument("--panel-steps", type=int, default=3, help="Max panel jog steps to issue")
     parser.add_argument("--movement-only", action="store_true", default=True, help="Force power=0 in RD jobs (default)")
@@ -156,21 +170,9 @@ def main() -> None:
     parser.add_argument("--panel-max-step-mm", type=float, default=0.5, help="Abort panel jog if measured step exceeds this (mm)")
     parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
     parser.add_argument("--dry-run", action="store_true", help="Log packets without sending")
-    parser.add_argument("--relative-delta-mm", type=float, default=0.0, help="Relative Z delta to test via read+absolute")
-    parser.add_argument("--skip-panel", action="store_true", default=True, help="Skip panel/interface jog test (default: skip)")
-    parser.add_argument("--skip-direct", action="store_true", default=True, help="Skip direct UDP axis-Z tests (default: skip)")
-    parser.add_argument("--skip-rd", action="store_true", help="Skip RD job tests")
-    parser.add_argument("--include-alt-opcode", action="store_true", help="Include alternate 0x80 0x08 opcode test")
-    parser.add_argument("--only-alt-opcode", action="store_true", help="Run only the alternate 0x80 0x08 RD test (skip standard RD)")
-    parser.add_argument("--rd-only", action="store_true", default=True, help="Run only RD Z (default: on; forces skip panel/direct)")
+    parser.add_argument("--relative-delta-mm", type=float, help="Relative Z delta to test via read+absolute (clamped)")
+    parser.add_argument("--max-travel-mm", type=float, default=50.0, help="Clamp absolute/relative target to +/- this travel (mm)")
     args = parser.parse_args()
-
-    if args.rd_only:
-        args.skip_panel = True
-        args.skip_direct = True
-    if args.only_alt_opcode:
-        args.include_alt_opcode = True
-        args.skip_direct = True
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -183,44 +185,42 @@ def main() -> None:
         panel_z_max_step_mm=args.panel_max_step_mm,
     )
 
-    _poll_z(laser, "startup", count=3, delay=0.1)
+    _poll_z(laser, "startup", count=3, delay=0.1, update_xy=True)
 
-    if not args.skip_panel:
-        try:
-            panel_jog(laser, args.target_z_mm, max_steps=args.panel_steps)
-        except Exception:
-            log.exception("Panel jog test failed")
+    target = args.target_z_mm
+    target_source = "target argument"
+    if args.relative_delta_mm is not None:
+        state = laser._read_machine_state()
+        logical_now = state.z_mm if state and state.z_mm is not None else 0.0
+        target = logical_now + args.relative_delta_mm
+        target_source = "relative delta"
 
-    if not args.skip_direct:
-        try:
-            direct_udp_axis_move(laser, args.target_z_mm)
-        except Exception:
-            log.exception("Direct UDP test failed")
+    max_travel = max(args.max_travel_mm, 0.0)
+    unclamped = target
+    target = max(-max_travel, min(max_travel, target))
+    if target != unclamped:
+        log.warning("Clamped %s from %.3f to %.3f (max travel +/-%.1f mm)", target_source, unclamped, target, max_travel)
+    else:
+        log.info("Using %s: %.3f mm (max travel +/-%.1f mm)", target_source, target, max_travel)
 
-    if not args.skip_direct and args.include_alt_opcode:
-        try:
-            direct_udp_axis_move_alt(laser, args.target_z_mm)
-        except Exception:
-            log.exception("Direct UDP alt opcode test failed")
-
-    if args.relative_delta_mm:
-        try:
+    try:
+        if args.mode == "rd":
+            rd_job_move(laser, target)
+        elif args.mode == "rd-alt":
+            rd_job_move_alt_opcode(laser, target)
+        elif args.mode == "udp":
+            direct_udp_axis_move(laser, target)
+        elif args.mode == "udp-alt":
+            direct_udp_axis_move_alt(laser, target)
+        elif args.mode == "panel":
             state = laser._read_machine_state()
             logical_now = state.z_mm if state and state.z_mm is not None else 0.0
-            direct_udp_axis_move(laser, logical_now + args.relative_delta_mm)
-        except Exception:
-            log.exception("Relative delta test failed")
-
-    if not args.skip_rd and not args.only_alt_opcode:
-        try:
-            rd_job_move(laser, args.target_z_mm)
-        except Exception:
-            log.exception("RD job test failed")
-    if not args.skip_rd and (args.include_alt_opcode or args.only_alt_opcode):
-        try:
-            rd_job_move_alt_opcode(laser, args.target_z_mm)
-        except Exception:
-            log.exception("RD job alt opcode test failed")
+            delta = target - logical_now
+            panel_jog(laser, delta, max_steps=args.panel_steps)
+        else:
+            raise ValueError(f"Unknown mode {args.mode}")
+    except Exception:
+        log.exception("Z test (%s) failed", args.mode)
 
 
 if __name__ == "__main__":
