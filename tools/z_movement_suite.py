@@ -17,7 +17,7 @@ import logging
 import time
 from typing import Optional
 
-from laserdove.hardware.rd_builder import RDMove, build_rd_job
+from laserdove.hardware.rd_builder import RDMove, build_rd_job, _RDJobBuilder
 from laserdove.hardware.ruida_laser import RuidaLaser
 from laserdove.hardware.ruida_panel import RuidaPanelInterface
 from laserdove.hardware.ruida_common import encode_abscoord_mm, decode_abscoord_mm
@@ -168,6 +168,7 @@ def main() -> None:
         args.skip_direct = True
     if args.only_alt_opcode:
         args.include_alt_opcode = True
+        args.skip_direct = True
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
