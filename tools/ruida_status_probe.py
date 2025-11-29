@@ -107,9 +107,11 @@ def main() -> None:
 
     use_dual = args.dual_socket
 
-    status_source_port = args.status_source_port
-    if args.status_source_port is not None
-    else (args.source_port + 1 if use_dual else args.source_port)
+    status_source_port = (
+        args.status_source_port
+        if args.status_source_port is not None
+        else (args.source_port + 1 if use_dual else args.source_port)
+    )
 
     action_laser = RuidaLaser(
         host=args.host,

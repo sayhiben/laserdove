@@ -30,6 +30,9 @@ class RuidaLaser:
     UDP-based Ruida transport (port 50200) using swizzle magic 0x88.
     Uses the shared RuidaUDPClient for send/ACK handling.
     """
+    # Reuse transport ACK/NACK tables so legacy send wrapper keeps working.
+    ACK_VALUES = RuidaUDPClient.ACK_VALUES
+    NACK_VALUES = RuidaUDPClient.NACK_VALUES
 
     MEM_MACHINE_STATUS = b"\x04\x00"
     MEM_CURRENT_X = b"\x04\x21"
