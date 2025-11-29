@@ -15,6 +15,7 @@ from .ruida_common import (
     decode_abscoord_mm,
     decode_status_bits,
     encode_abscoord_mm,
+    encode_abscoord_mm_signed,
     encode_power_pct,
     swizzle,
     unswizzle,
@@ -650,7 +651,12 @@ class RuidaLaser:
         if y is not None:
             self.y = y
         if z is not None:
-            self.z = z
+            delta_z = z - self.z
+            if abs(delta_z) > 1e-6:
+                payload = b"\x80\x03" + encode_abscoord_mm_signed(delta_z)
+                log.info("[RUIDA UDP] MOVE_Z via 0x80 0x03: delta=%.3f target=%.3f", delta_z, z)
+                self._send_packets(payload)
+                self.z = z
         if self.power != 0.0:
             self.set_laser_power(0.0)
         if speed is not None:

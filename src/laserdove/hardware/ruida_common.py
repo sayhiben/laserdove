@@ -42,6 +42,22 @@ def encode_abscoord_mm(value_mm: float) -> bytes:
     return bytes(res)
 
 
+def encode_abscoord_mm_signed(value_mm: float) -> bytes:
+    """
+    Encode a signed coordinate (mm) into Ruida's 5x7-bit field (two's complement).
+    Useful for 0x80 0x03 Z offsets observed in LightBurn RD files.
+    """
+    microns = int(round(value_mm * 1000.0))
+    if microns < 0:
+        microns &= 0xFFFFFFFF
+    res = []
+    for _ in range(5):
+        res.append(microns & 0x7F)
+        microns >>= 7
+    res.reverse()
+    return bytes(res)
+
+
 def encode_power_pct(power_pct: float) -> bytes:
     clamped = max(0.0, min(100.0, power_pct))
     raw = int(round(clamped * (0x3FFF / 100.0)))
