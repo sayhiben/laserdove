@@ -40,6 +40,8 @@
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
 - Use `--movement-only`/`--reset` to force travel-only RD jobs with power 0; `--save-rd-dir` is helpful for inspecting what would be sent.
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
+- RD File Inspection
+  - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
 
 ## Reference Materials (do not import)
 - `reference/` holds vendor and research docs only; never import them into code, use for background.

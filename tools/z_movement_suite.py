@@ -166,6 +166,56 @@ def rd_job_move_z_only(laser: RuidaLaser, logical_target_mm: float, *, rapid_opt
     _poll_z(laser, "rd-job-zonly", count=10, delay=0.2)
 
 
+def encode_abscoord_mm_signed(value_mm: float) -> bytes:
+    """
+    Encode a signed absolute coordinate (mm) into the 5x7-bit field used by Ruida.
+    This mirrors LightBurn's 0x80 03 usage and supports negative values via two's complement.
+    """
+    microns = int(round(value_mm * 1000.0))
+    if microns < 0:
+        microns &= 0xFFFFFFFF  # two's complement
+    res = []
+    for _ in range(5):
+        res.append(microns & 0x7F)
+        microns >>= 7
+    res.reverse()
+    return bytes(res)
+
+
+def direct_udp_axis_move_8003(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """
+    Send 0x80 0x03 with signed absolute coordinate (LightBurn-style Z offset).
+    """
+    hw_target = _hardware_target(laser, logical_target_mm)
+    payload = b"\x80\x03" + encode_abscoord_mm_signed(hw_target)
+    log.info("Direct UDP 0x80 0x03 Z (signed): logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "direct-udp-8003", count=5, delay=0.1)
+
+
+def rd_job_move_8003(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """
+    RD job containing only 0x80 0x03 signed absolute Z (LightBurn-style), no XY paths.
+    """
+    hw_target = _hardware_target(laser, logical_target_mm)
+    layer = rd_builder._Layer(
+        paths=[],
+        bbox=[[laser.x, laser.y], [laser.x, laser.y]],
+        speed=[laser.z_speed_mm_s, laser.z_speed_mm_s],
+        power=[0.0, 0.0],
+    )
+    builder = _RDJobBuilder()
+    builder._globalbbox = layer.bbox
+    header = builder.header([layer], filename="Z8003")
+    body = builder.body([layer], job_z_mm=None, air_assist=laser.air_assist)
+    body = body + b"\x80\x03" + encode_abscoord_mm_signed(hw_target)
+    trailer = builder.trailer((0.0, 0.0))
+    payload = header + body + trailer
+    log.info("RD job 0x80 0x03 Z-only: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    laser._send_packets(payload)  # type: ignore[attr-defined]
+    _poll_z(laser, "rd-job-8003", count=10, delay=0.2)
+
+
 def direct_udp_rapid_z(laser: RuidaLaser, logical_target_mm: float, *, options: int = 0x00) -> None:
     """
     Rapid/default Z opcode observed in other stacks: D9 02 <options> <abscoord>.
@@ -227,9 +277,20 @@ def main() -> None:
     parser.add_argument("--host", required=True, help="Ruida controller host/IP")
     parser.add_argument(
         "--mode",
-        choices=["rd", "rd-alt", "rd-zonly", "udp", "udp-alt", "udp-rapid", "panel", "panel-main"],
+        choices=[
+            "rd",
+            "rd-alt",
+            "rd-zonly",
+            "rd-8003",
+            "udp",
+            "udp-alt",
+            "udp-rapid",
+            "udp-8003",
+            "panel",
+            "panel-main",
+        ],
         default="rd",
-        help="Single test to run: rd=standard RD Z, rd-alt=RD with 0x80 0x08, rd-zonly=RD with only rapid D9 02 Z and no XY, udp=direct 0x80 0x01, udp-alt=direct 0x80 0x08, udp-rapid=D9 02 rapid Z, panel=interface jog, panel-main=keydown/keyup on control port",
+        help="Single test to run: rd=standard RD Z, rd-alt=RD with 0x80 0x08, rd-zonly=RD with only rapid D9 02 Z and no XY, rd-8003=RD with only 0x80 0x03 signed Z and no XY, udp=direct 0x80 0x01, udp-alt=direct 0x80 0x08, udp-rapid=D9 02 rapid Z, udp-8003=direct 0x80 0x03 signed Z, panel=interface jog, panel-main=keydown/keyup on control port",
     )
     parser.add_argument("--target-z-mm", type=float, default=0.0, help="Logical Z target relative to startup (mm)")
     parser.add_argument("--panel-steps", type=int, default=3, help="Max panel jog steps to issue")
@@ -287,12 +348,16 @@ def main() -> None:
             rd_job_move_alt_opcode(laser, target)
         elif args.mode == "rd-zonly":
             rd_job_move_z_only(laser, target, rapid_options=args.rapid_options)
+        elif args.mode == "rd-8003":
+            rd_job_move_8003(laser, target)
         elif args.mode == "udp":
             direct_udp_axis_move(laser, target)
         elif args.mode == "udp-alt":
             direct_udp_axis_move_alt(laser, target)
         elif args.mode == "udp-rapid":
             direct_udp_rapid_z(laser, target, options=args.rapid_options)
+        elif args.mode == "udp-8003":
+            direct_udp_axis_move_8003(laser, target)
         elif args.mode == "panel":
             state = laser._read_machine_state()
             logical_now = state.z_mm if state and state.z_mm is not None else 0.0
