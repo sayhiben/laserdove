@@ -168,8 +168,8 @@ def rd_job_move_z_only(laser: RuidaLaser, logical_target_mm: float, *, rapid_opt
 
 def encode_abscoord_mm_signed(value_mm: float) -> bytes:
     """
-    Encode a signed absolute coordinate (mm) into the 5x7-bit field used by Ruida.
-    This mirrors LightBurn's 0x80 03 usage and supports negative values via two's complement.
+    Encode a signed coordinate (mm) into the 5x7-bit field used by Ruida.
+    LightBurn writes 0x80 03 as a signed offset in microns, no origin bias.
     """
     microns = int(round(value_mm * 1000.0))
     if microns < 0:
@@ -186,9 +186,9 @@ def direct_udp_axis_move_8003(laser: RuidaLaser, logical_target_mm: float) -> No
     """
     Send 0x80 0x03 with signed absolute coordinate (LightBurn-style Z offset).
     """
-    hw_target = _hardware_target(laser, logical_target_mm)
-    payload = b"\x80\x03" + encode_abscoord_mm_signed(hw_target)
-    log.info("Direct UDP 0x80 0x03 Z (signed): logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    # Send as signed offset only (no origin bias) to mirror LightBurn behavior.
+    payload = b"\x80\x03" + encode_abscoord_mm_signed(logical_target_mm)
+    log.info("Direct UDP 0x80 0x03 Z (signed offset): logical=%.3f", logical_target_mm)
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "direct-udp-8003", count=5, delay=0.1)
 
@@ -197,7 +197,6 @@ def rd_job_move_8003(laser: RuidaLaser, logical_target_mm: float) -> None:
     """
     RD job containing only 0x80 0x03 signed absolute Z (LightBurn-style), no XY paths.
     """
-    hw_target = _hardware_target(laser, logical_target_mm)
     layer = rd_builder._Layer(
         paths=[],
         bbox=[[laser.x, laser.y], [laser.x, laser.y]],
@@ -208,10 +207,11 @@ def rd_job_move_8003(laser: RuidaLaser, logical_target_mm: float) -> None:
     builder._globalbbox = layer.bbox
     header = builder.header([layer], filename="Z8003")
     body = builder.body([layer], job_z_mm=None, air_assist=laser.air_assist)
-    body = body + b"\x80\x03" + encode_abscoord_mm_signed(hw_target)
+    # Send as signed offset only (no origin bias) to mirror LightBurn behavior.
+    body = body + b"\x80\x03" + encode_abscoord_mm_signed(logical_target_mm)
     trailer = builder.trailer((0.0, 0.0))
     payload = header + body + trailer
-    log.info("RD job 0x80 0x03 Z-only: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    log.info("RD job 0x80 0x03 Z-only (signed offset): logical=%.3f", logical_target_mm)
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "rd-job-8003", count=10, delay=0.2)
 
