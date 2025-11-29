@@ -21,11 +21,17 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import logging
 import threading
 import time
 from typing import Callable, List
 
-from laserdove.hardware.ruida_laser import RuidaLaser, RDMove
+from laserdove.hardware.rd_builder import RDMove, build_rd_job
+from laserdove.hardware.ruida_laser import RuidaLaser
+from laserdove.logging_utils import setup_logging
+from tools.rd_parser import RuidaParser
+
+LOG = logging.getLogger("ruida_status_probe")
 
 
 def decode_bits(raw: int) -> str:
@@ -46,9 +52,9 @@ def decode_bits(raw: int) -> str:
 def poll_status_once(laser: RuidaLaser, label: str) -> None:
     state = laser._read_machine_state()
     if state:
-        print(f"[{label}] status {decode_bits(state.status_bits)} x={state.x_mm} y={state.y_mm}")
+        LOG.info("[%s] status %s x=%.3f y=%.3f", label, decode_bits(state.status_bits), state.x_mm, state.y_mm)
     else:
-        print(f"[{label}] status: timeout/none")
+        LOG.info("[%s] status: timeout/none", label)
 
 
 def run_with_capture(
@@ -59,7 +65,7 @@ def run_with_capture(
     interval: float,
     polls_after: int = 5,
 ) -> None:
-    print(f"=== {label} START ===")
+    LOG.info("=== %s START ===", label)
     poll_status_once(poll_laser, f"{label}-before")
 
     stop = threading.Event()
@@ -76,7 +82,7 @@ def run_with_capture(
     try:
         action()
     except Exception as exc:
-        print(f"[{label}] action raised: {exc}")
+        LOG.error("[%s] action raised: %s", label, exc)
     finally:
         stop.set()
         t.join(timeout=interval * 2)
@@ -84,7 +90,34 @@ def run_with_capture(
     for i in range(polls_after):
         poll_status_once(poll_laser, f"{label}-after#{i+1}")
         time.sleep(interval)
-    print(f"=== {label} END ===")
+    LOG.info("=== %s END ===", label)
+
+
+def log_rd_summary(tag: str, moves: List[RDMove], job_z_mm: float | None) -> None:
+    if not moves:
+        LOG.info("[%s] empty RD job", tag)
+        return
+
+    payload = build_rd_job(moves, job_z_mm=job_z_mm, filename=f"probe-{tag}", air_assist=True)
+    parser = RuidaParser(buf=payload)
+    # Populate parser internals without dumping tokens.
+    parser.decode(debug=False)
+
+    bbox = parser._bbox  # quick summary only; tooling-level script
+    width = bbox[2] - bbox[0] if bbox[2] > -10e8 else 0.0
+    height = bbox[3] - bbox[1] if bbox[3] > -10e8 else 0.0
+    LOG.info(
+        "[%s] RD job moves=%d bbox=[%.3f, %.3f]–[%.3f, %.3f] size=%.3fx%.3fmm z=%s",
+        tag,
+        len(moves),
+        bbox[0],
+        bbox[1],
+        bbox[2],
+        bbox[3],
+        width,
+        height,
+        f"{job_z_mm:.3f}" if job_z_mm is not None else "n/a",
+    )
 
 
 def main() -> None:
@@ -96,6 +129,12 @@ def main() -> None:
     ap.add_argument("--dual-socket", dest="dual_socket", action="store_true", help="Use a dedicated socket for status polling to avoid reply mix-ups (default: on)")
     ap.add_argument("--single-socket", dest="dual_socket", action="store_false", help="Force reuse of a single socket for both actions and polling")
     ap.set_defaults(dual_socket=True)
+    ap.add_argument(
+        "--run-actions",
+        action="store_true",
+        help="Run the movement-only actions (travel at power=0). Omit to poll status only.",
+    )
+    ap.add_argument("--log-level", default="INFO", help="Log level (default INFO)")
     ap.add_argument("--timeout-s", type=float, default=3.0, help="UDP timeout seconds")
     ap.add_argument("--interval", type=float, default=0.5, help="Seconds between status polls during actions")
     ap.add_argument("--move-dist-mm", type=float, default=10.0, help="Distance for X/Y moves (mm)")
@@ -105,6 +144,7 @@ def main() -> None:
     ap.add_argument("--magic", type=lambda x: int(x, 0), default=0x88, help="Swizzle magic (default 0x88)")
     args = ap.parse_args()
 
+    setup_logging(args.log_level)
     use_dual = args.dual_socket
 
     status_source_port = (
@@ -142,12 +182,17 @@ def main() -> None:
         poll_status_once(poll_laser, f"baseline#{i+1}")
         time.sleep(args.interval)
 
+    if not args.run_actions:
+        LOG.info("Actions skipped (pass --run-actions to enable movement-only probes).")
+        return
+
     actions: List[tuple[str, Callable[[], None]]] = []
 
     # X move
     def move_x():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
+        log_rd_summary("move-x", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-x", move_x))
@@ -156,6 +201,7 @@ def main() -> None:
     def move_y():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
               RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
+        log_rd_summary("move-y", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("move-y", move_y))
@@ -163,6 +209,7 @@ def main() -> None:
     # Z move
     def move_z():
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
+        log_rd_summary("move-z", mv, args.z_move_mm)
         action_laser.send_rd_job(mv, job_z_mm=args.z_move_mm, require_busy_transition=False)
 
     actions.append(("move-z", move_z))
@@ -171,6 +218,7 @@ def main() -> None:
     def air_on_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
+        log_rd_summary("air-assist-on-job", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-on-job", air_on_job))
@@ -179,6 +227,7 @@ def main() -> None:
     def air_off_job():
         mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
               RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
+        log_rd_summary("air-assist-off-job", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     actions.append(("air-assist-off-job", air_off_job))
