@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import logging
 import math
-import socket
 import time
 from pathlib import Path
 from typing import Iterable, List, NamedTuple, Optional
 
 from .rd_builder import build_rd_job, RDMove
+from .ruida_transport import RuidaUDPClient
 from .ruida_panel import RuidaPanelInterface
 from .ruida_common import (
-    checksum,
     clamp_power,
     decode_abscoord_mm,
     decode_status_bits,
@@ -29,16 +28,9 @@ log = logging.getLogger(__name__)
 class RuidaLaser:
     """
     UDP-based Ruida transport (port 50200) using swizzle magic 0x88.
-    Sends swizzled payloads with 16-bit checksum and waits for ACK (0xC6)
-    per packet. Packets are chunked to <= MTU.
+    Uses the shared RuidaUDPClient for send/ACK handling.
     """
 
-    # Some references report ACK/NACK as 0xCC/0xCF; others as 0xC6/0x46.
-    ACK = 0xC6
-    NACK = 0x46
-    ACK_VALUES = {ACK, 0xCC}
-    NACK_VALUES = {NACK, 0xCF}
-    MTU = 1470
     MEM_MACHINE_STATUS = b"\x04\x00"
     MEM_CURRENT_X = b"\x04\x21"
     MEM_CURRENT_Y = b"\x04\x31"
@@ -87,6 +79,8 @@ class RuidaLaser:
         return encode_power_pct(power_pct)
 
     def _checksum(self, data: bytes) -> bytes:
+        from .ruida_common import checksum
+
         return checksum(data)
 
     def _decode_abscoord_mm(self, payload: bytes) -> float:
@@ -109,7 +103,7 @@ class RuidaLaser:
         air_assist: bool = True,
         z_positive_moves_bed_up: bool = True,
         z_speed_mm_s: float = 5.0,
-        socket_factory=socket.socket,
+        socket_factory=None,
         panel_z_step_mm: float = 0.05,
         panel_z_max_step_mm: float = 0.5,
         min_stable_s: float = 0.0,
@@ -121,8 +115,19 @@ class RuidaLaser:
         self.dry_run = dry_run
         self.magic = magic
         self.movement_only = movement_only
-        self.sock: Optional[socket.socket] = None
-        self._socket_factory = socket_factory
+        socket_factory = socket_factory or __import__("socket").socket
+        self._udp = RuidaUDPClient(
+            host,
+            port=port,
+            source_port=source_port,
+            timeout_s=timeout_s,
+            magic=magic,
+            dry_run=dry_run,
+            socket_factory=socket_factory,
+        )
+        self._udp.MTU = 1470
+        # Legacy socket handle for tests/backward compatibility.
+        self.sock: Optional[object] = None
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
@@ -148,44 +153,17 @@ class RuidaLaser:
             movement_only,
         )
 
-    def _ensure_socket(self) -> None:
-        if self.dry_run:
-            return
-        if self.sock is not None:
-            return
-        if self._socket_factory is socket.socket:
-            sock = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            sock = self._socket_factory()
-        if sock is None:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock = sock
-        if hasattr(self.sock, "settimeout"):
-            try:
-                self.sock.settimeout(self.timeout_s)
-            except Exception:
-                pass
-        try:
-            self.sock.bind(("", self.source_port))
-        except Exception:
-            log.warning("Falling back to ephemeral source port for Ruida UDP (bind failed)")
-            try:
-                self.sock.bind(("", 0))
-            except Exception:
-                log.error("Unable to bind UDP socket; switching to dry_run for safety")
-                self.dry_run = True
-                self.sock = None
-
     def _send_packets(self, payload: bytes, *, expect_reply: bool = False) -> Optional[bytes]:
         """
-        Swizzle, chunk, prepend checksum, and send with ACK wait. Optionally collect a follow-on reply packet
-        (e.g., GET_SETTING responses) and return its unswizzled payload.
+        Legacy send wrapper (uses RuidaUDPClient socket but retains ACK/NACK behavior for tests).
         """
         swizzled = self._swizzle(payload, magic=self.magic)
         if self.dry_run:
             log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
             return None
-        self._ensure_socket()
+        self._udp.dry_run = self.dry_run
+        self._udp._ensure_socket()
+        self.sock = self._udp.sock
         if self.sock is None:
             log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
             return None
@@ -193,8 +171,9 @@ class RuidaLaser:
         # Chunk
         chunks: List[bytes] = []
         start = 0
+        mtu = getattr(self._udp, "MTU", 1470)
         while start < len(swizzled):
-            end = min(start + self.MTU, len(swizzled))
+            end = min(start + mtu, len(swizzled))
             chunk = swizzled[start:end]
             chunk = self._checksum(chunk) + chunk
             chunks.append(chunk)
@@ -206,7 +185,7 @@ class RuidaLaser:
                 self.sock.sendto(chunk, (self.host, self.port))
                 try:
                     data, _ = self.sock.recvfrom(8)
-                except socket.timeout:
+                except Exception:
                     retry += 1
                     if retry > 3:
                         raise RuntimeError("UDP ACK timeout")
@@ -229,8 +208,8 @@ class RuidaLaser:
             return None
 
         try:
-            reply, _ = self.sock.recvfrom(self.MTU)
-        except socket.timeout:
+            reply, _ = self.sock.recvfrom(mtu)
+        except Exception:
             raise RuntimeError("UDP reply timeout")
 
         payload_only = reply
@@ -930,9 +909,16 @@ class RuidaLaser:
 
     def cleanup(self) -> None:
         """Release UDP socket if open."""
-        if self.sock is not None:
+        if getattr(self._udp, "sock", None) is not None:
             try:
-                self.sock.close()
+                self._udp.sock.close()
             except Exception:
                 log.debug("Failed to close Ruida socket", exc_info=True)
+            self._udp.sock = None
             self.sock = None
+
+    # Legacy helpers for tests/backward compatibility.
+    def _ensure_socket(self) -> None:
+        self._udp.dry_run = self.dry_run
+        self._udp._ensure_socket()
+        self.sock = self._udp.sock
