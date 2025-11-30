@@ -697,6 +697,8 @@ class RuidaLaser:
         """
         if not moves:
             return
+        job_has_power = any(mv.is_cut and mv.power_pct > 0.0 for mv in moves)
+        require_busy_transition = require_busy_transition and job_has_power
         job_z_offset_mm = job_z_mm
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
@@ -739,6 +741,8 @@ class RuidaLaser:
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
         """
+        park_angle = getattr(rotary, "angle", 0.0)
+        park_speed: float | None = None
         # Log initial status before any commands.
         initial_state = self._read_machine_state()
         if initial_state:
@@ -840,73 +844,85 @@ class RuidaLaser:
         block: List[RDMove] = []
         block_z: float | None = None
 
-        for cmd in commands:
-            if cmd.type.name == "ROTATE":
-                flush_block(block, block_z)
-                block = []
-                block_z = None
-                park_head_before_rotary()
-                # After parking, cursor/last_set_z reflect parked position.
-                current_z = last_set_z
-                rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
-                continue
-
-            if cmd.type.name == "SET_LASER_POWER":
-                if travel_only:
-                    current_power = 0.0
-                elif cmd.power_pct is not None:
-                    current_power = cmd.power_pct
-                continue
-
-            if cmd.type.name == "MOVE":
-                x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                if cmd.z is not None:
-                    if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                        flush_block(block, block_z)
-                        block = []
-                    current_z = cmd.z
-                    if not origin_z_from_command:
-                        origin_z = current_z
-                        origin_z_from_command = True
-                    last_set_z = current_z
-                    block_z = current_z
-                if cmd.speed_mm_s is not None:
-                    current_speed = cmd.speed_mm_s
-                    if origin_speed is None:
-                        origin_speed = current_speed
-                if current_speed is None:
+        try:
+            for cmd in commands:
+                if cmd.type.name == "ROTATE":
+                    if park_speed is None and cmd.speed_mm_s is not None:
+                        park_speed = cmd.speed_mm_s
+                    flush_block(block, block_z)
+                    block = []
+                    block_z = None
+                    park_head_before_rotary()
+                    # After parking, cursor/last_set_z reflect parked position.
+                    current_z = last_set_z
+                    rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
                     continue
-                block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
-                                    power_pct=current_power, is_cut=False))
-                cursor_x, cursor_y = x, y
-                continue
 
-            if cmd.type.name == "CUT_LINE":
-                x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                if cmd.z is not None:
-                    if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                        flush_block(block, block_z)
-                        block = []
-                    current_z = cmd.z
-                    last_set_z = current_z
-                    block_z = current_z
-                if cmd.speed_mm_s is not None:
-                    current_speed = cmd.speed_mm_s
-                if current_speed is None:
+                if cmd.type.name == "SET_LASER_POWER":
+                    if travel_only:
+                        current_power = 0.0
+                    elif cmd.power_pct is not None:
+                        current_power = cmd.power_pct
                     continue
-                block.append(RDMove(
-                    x_mm=x,
-                    y_mm=y,
-                    speed_mm_s=current_speed,
-                    power_pct=current_power,
-                    is_cut=not travel_only,
-                ))
-                cursor_x, cursor_y = x, y
-                continue
 
-        flush_block(block, block_z)
+                if cmd.type.name == "MOVE":
+                    x = cursor_x if cmd.x is None else job_origin_x + cmd.x
+                    y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
+                    if cmd.z is not None:
+                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                            flush_block(block, block_z)
+                            block = []
+                        current_z = cmd.z
+                        if not origin_z_from_command:
+                            origin_z = current_z
+                            origin_z_from_command = True
+                        last_set_z = current_z
+                        block_z = current_z
+                    if cmd.speed_mm_s is not None:
+                        current_speed = cmd.speed_mm_s
+                        if origin_speed is None:
+                            origin_speed = current_speed
+                    if current_speed is None:
+                        continue
+                    block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
+                                        power_pct=current_power, is_cut=False))
+                    cursor_x, cursor_y = x, y
+                    continue
+
+                if cmd.type.name == "CUT_LINE":
+                    x = cursor_x if cmd.x is None else job_origin_x + cmd.x
+                    y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
+                    if cmd.z is not None:
+                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                            flush_block(block, block_z)
+                            block = []
+                        current_z = cmd.z
+                        last_set_z = current_z
+                        block_z = current_z
+                    if cmd.speed_mm_s is not None:
+                        current_speed = cmd.speed_mm_s
+                    if current_speed is None:
+                        continue
+                    block.append(RDMove(
+                        x_mm=x,
+                        y_mm=y,
+                        speed_mm_s=current_speed,
+                        power_pct=current_power,
+                        is_cut=not travel_only,
+                    ))
+                    cursor_x, cursor_y = x, y
+                    continue
+
+            flush_block(block, block_z)
+        finally:
+            try:
+                if park_angle is not None and hasattr(rotary, "rotate_to"):
+                    target_speed = park_speed if park_speed is not None else 30.0
+                    current_angle = getattr(rotary, "angle", park_angle)
+                    if not math.isclose(current_angle, park_angle, abs_tol=1e-6):
+                        rotary.rotate_to(park_angle, target_speed)
+            except Exception:
+                log.debug("Rotary park failed", exc_info=True)
 
     def cleanup(self) -> None:
         """Release UDP socket if open."""
