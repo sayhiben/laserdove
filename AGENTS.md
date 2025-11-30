@@ -7,6 +7,7 @@
 - Config parsing and CLI overrides are in `config.py`; reference config lives in `example-config.toml`. Per-setup config should be `config.toml` (git-ignored).
 - Tests live under `tests/` (currently `tests/test_geometry.py`); add new suites alongside the module under test.
 - Source code lives under `src/laserdove/`; run with `python -m laserdove.novadovetail`.
+- RD opcode table is centralized in `src/laserdove/hardware/rd_commands.py` (shared by runtime and parser); avoid defining command labels elsewhere.
 
 ## Build, Test, and Development Commands
 - Use Python 3.11+; create a venv (`python3 -m venv .venv && source .venv/bin/activate`) and install dev deps (`pip install pytest`; `tomli` for <3.11).

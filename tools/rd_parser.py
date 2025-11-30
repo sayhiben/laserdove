@@ -2,6 +2,11 @@
 """
 RD parser utility (CLI) for inspecting exported .rd files.
 
+Notes:
+- CA 41 likely encodes layer mode; flag 0x00 vs 0x02 correlates with LightBurn fill/image layers (line layers mostly 0x00, fill/image/LPI/exported-as-fill often 0x02; layer IDs differ from the LB UI).
+- C6 11 is labeled “Time” in EduTech; we print raw + decoded (~10000 in calibration.rd).
+- E5 05 payload bytes[1:] decode to a float that looks like spacing/DPI (e.g., 0.6419mm).
+
 Adapted from the reference/ruidaparser.py decoder so we can quickly inspect
 layer settings, Z offsets (e.g., 0x80 0x03), and motion commands locally.
 """
@@ -14,7 +19,8 @@ import math
 import struct
 from typing import Dict, List, Tuple
 
-from laserdove.hardware.ruida_common import RD_KNOWN_COMMANDS, unswizzle
+from laserdove.hardware.rd_commands import RD_COMMANDS
+from laserdove.hardware.ruida_common import unswizzle
 
 
 class RuidaParser:
@@ -196,42 +202,61 @@ class RuidaParser:
         l["color"] = "#%06x" % c
         return off, f"t_layer_color({l['n']}, {l['color']})"
 
+    def _laser_from_desc(self, desc, default=1) -> int:
+        if isinstance(desc, (list, tuple)):
+            for item in desc:
+                if isinstance(item, int):
+                    return item
+        if isinstance(desc, int):
+            return desc
+        return default
+
     def t_laser_min_pow(self, n: int, desc=None):
-        las = self.get_laser(desc[0])
+        laser_id = self._laser_from_desc(desc, default=1)
+        las = self.get_laser(laser_id)
         off, v = self.arg_perc()
-        las[f"pmin{desc[0]}"] = v
+        las[f"pmin{laser_id}"] = v
         return off, f"t_laser_min_pow({las['n']}, {v}%)"
 
     def t_laser_max_pow(self, n: int, desc=None):
-        las = self.get_laser(desc[0])
+        laser_id = self._laser_from_desc(desc, default=1)
+        las = self.get_laser(laser_id)
         off, v = self.arg_perc()
-        las[f"pmax{desc[0]}"] = v
+        las[f"pmax{laser_id}"] = v
         return off, f"t_laser_max_pow({las['n']}, {v}%)"
 
     def t_laser_min_pow_lay(self, n: int, desc=None):
-        las = self.get_laser(desc[0], desc[1])
+        laser_id = self._laser_from_desc(desc, default=1)
+        layer_id = self._buf[0] if self._buf else None
+        las = self.get_laser(laser_id, layer_id)
         off, v = self.arg_perc(1)
-        las[f"pmin{desc[0]}"] = v
-        return off, f"t_laser_min_pow_lay({las['n']}, {desc[1]}, {v}%)"
+        las[f"pmin{laser_id}"] = v
+        return off, f"t_laser_min_pow_lay({las['n']}, {layer_id}, {v}%)"
 
     def t_laser_max_pow_lay(self, n: int, desc=None):
-        las = self.get_laser(desc[0], desc[1])
+        laser_id = self._laser_from_desc(desc, default=1)
+        layer_id = self._buf[0] if self._buf else None
+        las = self.get_laser(laser_id, layer_id)
         off, v = self.arg_perc(1)
-        las[f"pmax{desc[0]}"] = v
-        return off, f"t_laser_max_pow_lay({las['n']}, {desc[1]}, {v}%)"
+        las[f"pmax{laser_id}"] = v
+        return off, f"t_laser_max_pow_lay({las['n']}, {layer_id}, {v}%)"
 
     def t_cut_through_pow(self, n: int, desc=None):
         off, v = self.arg_perc()
         return off, f"t_cut_through_pow({desc[0]}, {v}%)"
 
     def t_layer_speed(self, n: int, desc=None):
+        layer_id = self._buf[0] if self._buf else None
         off, s = self.arg_abs(1)
-        l = self.get_layer(desc[0])
+        l = self.get_layer(layer_id if layer_id is not None else 0)
         l["speed"] = s
         return off, f"t_layer_speed({l['n']}, {s}mm)"
 
     def t_laser_freq(self, n: int, desc=None):
-        las = self.get_laser(desc[0])
+        laser_id = self._laser_from_desc(desc, default=1)
+        if self._buf:
+            laser_id = self._buf[0]
+        las = self.get_laser(laser_id)
         off, freq = self.arg_abs(2)
         las["freq"] = freq
         return off, f"t_laser_freq({las['n']}, {freq}kHz)"
@@ -253,9 +278,31 @@ class RuidaParser:
         las["offset"][1] = y
         return off, f"t_laser_offset({las['n']}, {x:.8g}mm, {y:.8g}mm)"
 
+    def t_layer_flag_ca41(self, n: int, desc=None):
+        """
+        CA 41 appears to be a per-layer mode/flag byte. Values seen: 0x00, 0x02.
+        LightBurn layers (line vs fill) suggest 0x00=line? / 0x02=fill/raster? (uncertain, layer IDs differ from LB UI).
+        """
+        layer = self._buf[0]
+        flag = self._buf[1]
+        lay = self.get_layer(layer)
+        lay["mode_flag"] = flag
+        guess = "line?" if flag == 0x00 else "fill/raster?" if flag == 0x02 else "unknown"
+        return 2, f"layer={layer} flag=0x{flag:02X} ({guess})"
+
+    def t_c6_11_unknown(self, n: int, desc=None):
+        """
+        C6 11 payload is 5 bytes; EduTech wiki lists 0xC6 0x11 as 'Time.'.
+        Observed as ~10000.0 in calibration.rd; keep as unknown/time? and show raw+decoded.
+        """
+        raw = self._buf[:5]
+        _, val = self.arg_abs()
+        return 5, f"Time_C6_11? raw={raw.hex(' ')} decoded≈{val:.3f}"
+
     def t_work_spacing(self, n: int, desc=None):
         """
         E5 05 payload observed as 5 bytes; bytes[1:] look like a float mm spacing.
+        Seen once near trailer (after Finish/Stop/Work_Interval) in calibration.rd.
         """
         raw = self._buf[:5]
         spacing_mm = None
@@ -414,7 +461,7 @@ class RuidaParser:
         return off, f"t_rapid_move_{axis}(mode=0x{mode:02X}, coord={coord:.3f}mm)"
 
     # ---------------- Decoder table ----------------
-    rd_decoder_table = {
+    rd_decoder_table = RD_COMMANDS | {  # base labels from shared table; handlers attached below
         0x80: {
             0x01: ["Axis_X_Move (80 01)", t_skip_bytes, 5],  # observed as X on 6442
             0x03: ["Axis_Z_Offset (80 03)", t_z_offset_8003, 0, [0]],  # signed abscoord
@@ -442,7 +489,7 @@ class RuidaParser:
             0x07: ["Laser_4_Min_Pow_C6_07", t_laser_min_pow, 2, ":power", 4],
             0x08: ["Laser_4_Max_Pow_C6_08", t_laser_max_pow, 2, ":power", 4],
             0x10: ["Dot_time_C6_10", t_skip_bytes, 5, ":sec", arg_abs],
-            0x11: ["Unknown_C6_11", t_skip_bytes, 5, ":abs", arg_abs],
+            0x11: ["Time_C6_11?", t_c6_11_unknown, 5],
             0x12: ["Cut_Open_delay_12", t_skip_bytes, 5, ":ms", arg_abs],
             0x13: ["Cut_Close_delay_13", t_skip_bytes, 5, ":ms", arg_abs],
             0x15: ["Cut_Open_delay_15", t_skip_bytes, 5, ":ms", arg_abs],
@@ -495,7 +542,7 @@ class RuidaParser:
             0x12: ["Blow_off", t_skip_bytes, 0],
             0x13: ["Blow_on", t_skip_bytes, 0],
             0x22: ["Layer_Count", t_skip_bytes, 1],
-            0x41: ["Layer_CA_41", t_skip_bytes, 2, ":layer, -1"],
+            0x41: ["Layer_Mode_CA_41?", t_layer_flag_ca41, 2, ":layer, flag"],
         },
         0xCC: ["Ack_CC", t_skip_bytes, 0],
         0xD7: ["EOF"],

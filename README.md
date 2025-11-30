@@ -165,6 +165,36 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 - `--save-rd-dir /path/to/out` writes swizzled `.rd` jobs to disk for inspection; works with real or dry-run Ruida modes.
 - Decode RD files in text (bbox, Z offsets, speeds): `PYTHONPATH=src:. .venv/bin/python tools/rd_parser.py rd_out/job_001.rd`
 - Visualize RD files directly in the Tk viewer: `PYTHONPATH=src:. .venv/bin/python tools/rd_visualize.py rd_out/job_001.rd --edge-length-mm 100 --rotation-deg 0 --board tail`
+- RD opcode table lives in `src/laserdove/hardware/rd_commands.py` (shared by runtime/parser).
+- Calibration RD notes:
+  - `CA 41` appears to encode layer mode flags. In the LightBurn calibration RD, `0x00` covers line layers and CROSS1–6 (bidirectional fill at 50.8 LPI), and `0x02` covers fills/images/LPI/gradient/offset/engrave layers. CA 41 is not a pure line/fill bit.
+  - `C6 11` (listed as “Time” in EduTech) stays unknown; calibration RD shows raw `00 04 62 2d 00` decoded ≈ 10000.0.
+  - `E5 05` decodes to ~0.6419 mm spacing and appears once near the trailer after Finish/Stop/Work_Interval; likely a summary/spacing/DPI-related field rather than per-layer LPI.
+  - Layer mapping (color → LB layer/mode/power/speed/CA41 flag):
+    - 00 `#00e000` line 200/100 flag 0x00 → TEST1
+    - 01 `#d0d000` line 150/100 flag 0x00 → TEST2
+    - 02 `#ff8000` line 100/100 flag 0x00 → TEST3
+    - 03 `#00e0e0` line 80/100 flag 0x00 → TEST4
+    - 04 `#ff00ff` line 60/100 flag 0x00 → TEST5
+    - 05 `#b4b4b4` line 30/100 flag 0x00 → TEST6
+    - 06 `#0000a0` line 20/100 flag 0x00 → TEST7
+    - 07 `#a00000` line 10/100 flag 0x00 → TEST8
+    - 08 `#00a000` fill 500/100 flag 0x02 → TEST9
+    - 09 `#a0a000` fill 400/100 flag 0x02 → TEST10
+    - 10 `#c08000` fill 300/100 flag 0x02 → TEST11
+    - 11 `#00a0ff` fill 200/100 flag 0x02 → TEST12
+    - 12 `#a000a0` speed 200/12.5 flag 0x00 → CROSS1 (42°) bidirectional fill 50.8 LPI
+    - 13 `#808080` speed 200/12.5 flag 0x00 → CROSS2 (25°)
+    - 14 `#7d87b9` speed 200/12.5 flag 0x00 → CROSS3 (8°)
+    - 15 `#bb7784` speed 200/12.5 flag 0x00 → CROSS4 (-8°)
+    - 16 `#4a6fe3` speed 200/12.5 flag 0x00 → CROSS5 (-25°)
+    - 17 `#d33f6a` speed 200/12.5 flag 0x00 → CROSS6 (-42°)
+    - 18–25 `#8cd78c,#f0b98d,#f6c4e1,#fa9ed4,#500a78,#b45a00,#004754,#86fa88` fill 200/12.5 flag 0x02 → LPI1–LPI8
+    - 26 `#ffdb66` line 500/30 flag 0x02 → OFFSET
+    - 27 `#000000` line 80/30 flag 0x00 → SCORE
+    - 28 `#000000` image/fill 200/12.5 flag 0x02 → GRADIENT
+    - 29 `#0000ff` fill 200/12.5 flag 0x02 → ENGRAVE
+    - 30 `#ff0000` line 20/45 flag 0x00 → CUT
 
 #### Options
 
