@@ -8,7 +8,6 @@ from typing import Iterable, List, NamedTuple, Optional
 
 from .rd_builder import build_rd_job, RDMove
 from .ruida_transport import RuidaUDPClient
-from .ruida_panel import RuidaPanelInterface
 from .ruida_common import (
     clamp_power,
     decode_abscoord_mm,
@@ -17,10 +16,8 @@ from .ruida_common import (
     encode_abscoord_mm_signed,
     encode_power_pct,
     swizzle,
-    unswizzle,
     should_force_speed,
 )
-from ..model import CommandType
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +27,6 @@ class RuidaLaser:
     UDP-based Ruida transport (port 50200) using swizzle magic 0x88.
     Uses the shared RuidaUDPClient for send/ACK handling.
     """
-    # Reuse transport ACK/NACK tables so legacy send wrapper keeps working.
-    ACK_VALUES = RuidaUDPClient.ACK_VALUES
-    NACK_VALUES = RuidaUDPClient.NACK_VALUES
 
     MEM_MACHINE_STATUS = b"\x04\x00"
     MEM_CURRENT_X = b"\x04\x21"
@@ -52,46 +46,6 @@ class RuidaLaser:
         y_mm: Optional[float]
         z_mm: Optional[float] = None
 
-    @staticmethod
-    def _swizzle_byte(b: int, magic: int = 0x88) -> int:
-        # Thin wrappers kept for backward compatibility in tests.
-        from .ruida_common import swizzle_byte
-
-        return swizzle_byte(b, magic)
-
-    @staticmethod
-    def _swizzle(payload: bytes, magic: int = 0x88) -> bytes:
-        return swizzle(payload, magic=magic)
-
-    @staticmethod
-    def _unswizzle_byte(b: int, magic: int = 0x88) -> int:
-        from .ruida_common import unswizzle_byte
-
-        return unswizzle_byte(b, magic)
-
-    @staticmethod
-    def _unswizzle(payload: bytes, magic: int = 0x88) -> bytes:
-        return unswizzle(payload, magic=magic)
-
-    @staticmethod
-    def _encode_abscoord_mm(value_mm: float) -> bytes:
-        return encode_abscoord_mm(value_mm)
-
-    @staticmethod
-    def _encode_power_pct(power_pct: float) -> bytes:
-        return encode_power_pct(power_pct)
-
-    def _checksum(self, data: bytes) -> bytes:
-        from .ruida_common import checksum
-
-        return checksum(data)
-
-    def _decode_abscoord_mm(self, payload: bytes) -> float:
-        return decode_abscoord_mm(payload)
-
-    def _decode_status_bits(self, payload: bytes) -> int:
-        return decode_status_bits(payload)
-
     def __init__(
         self,
         host: str,
@@ -107,8 +61,6 @@ class RuidaLaser:
         z_positive_moves_bed_up: bool = True,
         z_speed_mm_s: float = 5.0,
         socket_factory=None,
-        panel_z_step_mm: float = 0.05,
-        panel_z_max_step_mm: float = 0.5,
         min_stable_s: float = 0.0,
     ) -> None:
         self.host = host
@@ -129,8 +81,6 @@ class RuidaLaser:
             socket_factory=socket_factory,
         )
         self._udp.MTU = 1470
-        # Legacy socket handle for tests/backward compatibility.
-        self.sock: Optional[object] = None
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
@@ -138,16 +88,12 @@ class RuidaLaser:
         self.power = 0.0
         self._last_speed_ums: Optional[int] = None
         self._movement_only_power_sent = False
-        self._last_requested_power = 0.0
         self.save_rd_dir = Path(save_rd_dir) if save_rd_dir else None
         self._rd_job_counter = 0
         self.air_assist = air_assist
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
         self.z_speed_mm_s = z_speed_mm_s
         self.min_stable_s = min_stable_s
-        self.panel_z_step_mm = panel_z_step_mm
-        self.panel_z_max_step_mm = panel_z_max_step_mm
-        self._panel_iface: RuidaPanelInterface | None = None
         log.info(
             "RuidaLaser initialized for UDP host=%s port=%d dry_run=%s movement_only=%s",
             host,
@@ -156,80 +102,9 @@ class RuidaLaser:
             movement_only,
         )
 
-    def _send_packets(self, payload: bytes, *, expect_reply: bool = False) -> Optional[bytes]:
-        """
-        Legacy send wrapper (uses RuidaUDPClient socket but retains ACK/NACK behavior for tests).
-        """
-        swizzled = self._swizzle(payload, magic=self.magic)
-        if self.dry_run:
-            log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
-            return None
-        self._udp.dry_run = self.dry_run
-        self._udp._ensure_socket()
-        self.sock = self._udp.sock
-        if self.sock is None:
-            log.info("[RUIDA UDP DRY] %s", swizzled.hex(" "))
-            return None
-
-        # Chunk
-        chunks: List[bytes] = []
-        start = 0
-        mtu = getattr(self._udp, "MTU", 1470)
-        while start < len(swizzled):
-            end = min(start + mtu, len(swizzled))
-            chunk = swizzled[start:end]
-            chunk = self._checksum(chunk) + chunk
-            chunks.append(chunk)
-            start = end
-
-        for idx, chunk in enumerate(chunks):
-            retry = 0
-            while True:
-                self.sock.sendto(chunk, (self.host, self.port))
-                try:
-                    data, _ = self.sock.recvfrom(8)
-                except Exception:
-                    retry += 1
-                    if retry > 3:
-                        raise RuntimeError("UDP ACK timeout")
-                    continue
-                if not data:
-                    retry += 1
-                    if retry > 3:
-                        raise RuntimeError("UDP empty response")
-                    continue
-                if data[0] in self.ACK_VALUES:
-                    break
-                if data[0] in self.NACK_VALUES and idx == 0:
-                    retry += 1
-                    if retry > 3:
-                        raise RuntimeError("UDP NACK on first packet")
-                    continue
-                raise RuntimeError(f"UDP unexpected response {data.hex()}")
-
-        if not expect_reply:
-            return None
-
-        try:
-            reply, _ = self.sock.recvfrom(mtu)
-        except Exception:
-            raise RuntimeError("UDP reply timeout")
-
-        payload_only = reply
-        if len(reply) > 2:
-            maybe_checksum = reply[:2]
-            maybe_payload = reply[2:]
-            if maybe_checksum == self._checksum(maybe_payload):
-                payload_only = maybe_payload
-
-        unswizzled = self._unswizzle(payload_only, magic=self.magic)
-        if not unswizzled and reply:
-            unswizzled = reply
-        return unswizzled
-
     def _get_memory_value(self, address: bytes, *, expected_len: int) -> Optional[bytes]:
         payload = bytes([0xDA, 0x00]) + address
-        reply = self._send_packets(payload, expect_reply=True)
+        reply = self._udp.send_packets(payload, expect_reply=True)
         if reply is None:
             return None
 
@@ -259,10 +134,10 @@ class RuidaLaser:
         if status_payload is None:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z) if self.dry_run else None
 
-        status_bits = self._decode_status_bits(status_payload)
-        x_mm = self._decode_abscoord_mm(x_payload) if x_payload else None
-        y_mm = self._decode_abscoord_mm(y_payload) if y_payload else None
-        raw_z_mm = self._decode_abscoord_mm(z_payload) if z_payload else None
+        status_bits = decode_status_bits(status_payload)
+        x_mm = decode_abscoord_mm(x_payload) if x_payload else None
+        y_mm = decode_abscoord_mm(y_payload) if y_payload else None
+        raw_z_mm = decode_abscoord_mm(z_payload) if z_payload else None
         if raw_z_mm is not None and self._z_origin_mm is None:
             self._z_origin_mm = raw_z_mm
         z_rel = raw_z_mm - self._z_origin_mm if raw_z_mm is not None and self._z_origin_mm is not None else None
@@ -270,13 +145,6 @@ class RuidaLaser:
             z_rel = -z_rel
         z_mm = z_rel
         return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)
-
-    def _hardware_z_from_logical(self, z_mm: float | None) -> float | None:
-        if z_mm is None:
-            return None
-        origin = self._z_origin_mm or 0.0
-        logical = z_mm if self.z_positive_moves_bed_up else -z_mm
-        return origin + logical
 
     def _wait_for_ready(
         self,
@@ -292,350 +160,105 @@ class RuidaLaser:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
 
-        effective_min_stable_s = min_stable_s
-        if self.movement_only:
-            effective_min_stable_s = min(min_stable_s, 1.0)
+        effective_min_stable_s = min(min_stable_s, 1.0) if self.movement_only else min_stable_s
 
         last_state: Optional[RuidaLaser.MachineState] = None
-        baseline_bits: Optional[int] = None
-        baseline_pos: dict[str, float] = {}
-        stable_counter = 0
-        saw_activity = False
+        last_bits: Optional[int] = None
         last_pos: dict[str, float] = {}
-        stable_target = 1
+        stable_counter = 0
         stable_start: Optional[float] = None
+        saw_busy_or_motion = False
+
         for attempt in range(1, max_attempts + 1):
             try:
                 state = self._read_machine_state(read_positions=read_positions)
-            except TypeError:
-                # For monkeypatched test doubles without the keyword argument
-                state = self._read_machine_state()
             except RuntimeError as exc:
                 log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
-                if last_state and not require_busy_transition:
-                    log.debug("[RUIDA UDP] Returning last known state after poll failure (no busy transition required)")
-                    return last_state
                 state = None
-            if state:
-                if baseline_bits is None:
-                    baseline_bits = state.status_bits
-                elif state.status_bits != baseline_bits:
-                    saw_activity = True
-                    baseline_bits = state.status_bits
-                    stable_counter = 0
-                last_state = state
-                part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
-                move_low = bool(state.status_bits & 0x10)  # lower-byte IsMove per EduTech wiki
-                run_low = bool(state.status_bits & 0x01)  # lower-byte JobRunning bit on some firmwares
+
+            if state is None:
                 if attempt <= 2 or attempt % 10 == 1:
-                    log.debug(
-                        "[RUIDA UDP] Status poll %d/%d: raw=0x%08X low_move=%s low_run=%s part_end=%s stable_counter=%d saw_activity=%s",
-                        attempt,
-                        max_attempts,
-                        state.status_bits,
-                        move_low,
-                        run_low,
-                        part_end,
-                        stable_counter,
-                        saw_activity,
-                    )
-                positions = {
-                    "x": state.x_mm,
-                    "y": state.y_mm,
-                    "z": state.z_mm,
-                }
+                    log.debug("[RUIDA UDP] Poll returned no state (attempt %d/%d)", attempt, max_attempts)
+                time.sleep(delay_s)
+                continue
 
-                for axis, value in positions.items():
-                    if value is not None and axis not in baseline_pos:
-                        baseline_pos[axis] = value
+            busy = bool(state.status_bits & self.BUSY_MASK)
+            part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
+            if busy or part_end:
+                saw_busy_or_motion = True
 
-                prev_pos = last_pos
-                last_pos = {axis: value for axis, value in positions.items() if value is not None}
+            positions = {"x": state.x_mm, "y": state.y_mm, "z": state.z_mm}
+            movement = False
+            for axis, value in positions.items():
+                prev_val = last_pos.get(axis)
+                if value is not None and prev_val is not None and abs(value - prev_val) > pos_tol_mm:
+                    movement = True
+                    saw_busy_or_motion = True
+            status_changed = last_bits is not None and state.status_bits != last_bits
+            if status_changed:
+                saw_busy_or_motion = True
 
-                for axis, value in last_pos.items():
-                    prev_val = prev_pos.get(axis)
-                    if prev_val is not None and abs(value - prev_val) > pos_tol_mm:
-                        saw_activity = True
-                for axis, base_val in baseline_pos.items():
-                    value = last_pos.get(axis)
-                    if value is not None and abs(value - base_val) > pos_tol_mm:
-                        saw_activity = True
-
-                stable_match = baseline_bits is None or state.status_bits == baseline_bits
-                pos_stable = True
-                for axis, prev_val in prev_pos.items():
-                    value = last_pos.get(axis)
-                    if value is None:
-                        continue
-                    if abs(value - prev_val) > pos_tol_mm:
-                        pos_stable = False
-                        break
-                if stable_match and pos_stable:
-                    if stable_counter == 0:
-                        stable_start = time.monotonic()
-                    stable_counter += 1
-                else:
-                    stable_counter = 0
-                    stable_start = None
-
-                stable_elapsed = 0.0 if stable_start is None else time.monotonic() - stable_start
-
-                if (
-                    require_busy_transition
-                    and stable_counter >= stable_target
-                    and stable_elapsed >= effective_min_stable_s
-                    and not (state.status_bits & self.BUSY_MASK)
-                ):
-                    if state.x_mm is not None:
-                        self.x = state.x_mm
-                    if state.y_mm is not None:
-                        self.y = state.y_mm
-                    if state.z_mm is not None and not self.movement_only:
-                        self.z = state.z_mm
-                    log.debug(
-                        "[RUIDA UDP] Ready via busy transition on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
-                        attempt,
-                        state.status_bits,
-                        self.x,
-                        self.y,
-                        self.z,
-                        stable_counter,
-                        stable_elapsed,
-                    )
-                    return state
-
-                if not require_busy_transition and stable_counter >= stable_polls and stable_elapsed >= effective_min_stable_s:
-                    if state.x_mm is not None:
-                        self.x = state.x_mm
-                    if state.y_mm is not None:
-                        self.y = state.y_mm
-                    if state.z_mm is not None and not self.movement_only:
-                        self.z = state.z_mm
-                    log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
-                        attempt,
-                        state.status_bits,
-                        self.x,
-                        self.y,
-                        self.z,
-                        stable_counter,
-                        stable_elapsed,
-                    )
-                    return state
-
-                if not require_busy_transition and stable_counter >= stable_target and stable_elapsed >= effective_min_stable_s:
-                    if state.x_mm is not None:
-                        self.x = state.x_mm
-                    if state.y_mm is not None:
-                        self.y = state.y_mm
-                    if state.z_mm is not None and not self.movement_only:
-                        self.z = state.z_mm
-                    log.debug(
-                        "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
-                        attempt,
-                        state.status_bits,
-                        self.x,
-                        self.y,
-                        self.z,
-                        stable_counter,
-                        stable_elapsed,
-                    )
-                    return state
-
-                if (
-                    stable_counter >= stable_target
-                    and (saw_activity or move_low or run_low or part_end)
-                    and stable_elapsed >= effective_min_stable_s
-                ):
-                    if state.x_mm is not None:
-                        self.x = state.x_mm
-                    if state.y_mm is not None:
-                        self.y = state.y_mm
-                    if state.z_mm is not None:
-                        self.z = state.z_mm
-                    log.debug(
-                        "[RUIDA UDP] Ready via stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f activity_seen=%s stable_counter=%d stable_elapsed=%.2fs",
-                        attempt,
-                        state.status_bits,
-                        self.x,
-                        self.y,
-                        self.z,
-                        saw_activity,
-                        stable_counter,
-                        stable_elapsed,
-                    )
-                    return state
-                if stable_counter >= stable_target and stable_elapsed < effective_min_stable_s:
-                    if attempt <= 2 or attempt % 10 == 1:
-                        log.debug(
-                            "[RUIDA UDP] Stable but waiting for %.2fs (elapsed %.2fs)",
-                            effective_min_stable_s,
-                            stable_elapsed,
-                        )
+            if movement or status_changed:
+                stable_counter = 0
+                stable_start = None
             else:
-                if last_state and not require_busy_transition:
-                    if last_state.x_mm is not None:
-                        self.x = last_state.x_mm
-                    if last_state.y_mm is not None:
-                        self.y = last_state.y_mm
-                    if last_state.z_mm is not None:
-                        self.z = last_state.z_mm
-                    log.debug("[RUIDA UDP] Returning last known state after missing poll (no busy transition required)")
-                    return last_state
-                if last_state and require_busy_transition and not (last_state.status_bits & self.BUSY_MASK):
-                    if last_state.x_mm is not None:
-                        self.x = last_state.x_mm
-                    if last_state.y_mm is not None:
-                        self.y = last_state.y_mm
-                    if last_state.z_mm is not None:
-                        self.z = last_state.z_mm
-                    log.debug("[RUIDA UDP] Returning last known non-busy state after missing poll (busy transition required)")
-                    return last_state
+                if stable_counter == 0:
+                    stable_start = time.monotonic()
+                stable_counter += 1
+
+            stable_elapsed = 0.0 if stable_start is None else time.monotonic() - stable_start
+
+            last_state = state
+            last_bits = state.status_bits
+            last_pos = {axis: value for axis, value in positions.items() if value is not None}
+
+            idle = not busy
+            stable_enough = stable_counter >= stable_polls and stable_elapsed >= effective_min_stable_s
+            ready = idle and stable_enough and (not require_busy_transition or saw_busy_or_motion or part_end)
+
+            if ready:
+                if state.x_mm is not None:
+                    self.x = state.x_mm
+                if state.y_mm is not None:
+                    self.y = state.y_mm
+                if state.z_mm is not None and not self.movement_only:
+                    self.z = state.z_mm
+                log.debug(
+                    "[RUIDA UDP] Ready after %d polls: status=0x%08X busy=%s part_end=%s stable_counter=%d stable_elapsed=%.2fs saw_activity=%s",
+                    attempt,
+                    state.status_bits,
+                    busy,
+                    part_end,
+                    stable_counter,
+                    stable_elapsed,
+                    saw_busy_or_motion,
+                )
+                return state
+
             if attempt <= 2 or attempt % 10 == 1:
-                log.debug("[RUIDA UDP] Waiting (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
+                log.debug(
+                    "[RUIDA UDP] Waiting: attempt %d/%d status=0x%08X busy=%s part_end=%s stable_counter=%d stable_elapsed=%.2fs saw_activity=%s",
+                    attempt,
+                    max_attempts,
+                    state.status_bits,
+                    busy,
+                    part_end,
+                    stable_counter,
+                    stable_elapsed,
+                    saw_busy_or_motion,
+                )
             time.sleep(delay_s)
 
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
-
-    def _apply_job_z(self, job_z_mm: float | None) -> None:
-        """
-        Optionally move Z via the panel/jog port before running an RD job.
-        """
-        if job_z_mm is None:
-            return
-        state = self._read_machine_state()
-        if state and state.z_mm is not None:
-            self.z = state.z_mm
-        delta = job_z_mm - self.z
-        if abs(delta) < 1e-6:
-            log.debug("[RUIDA UDP] Z already at target %.3f; skipping panel jog", job_z_mm)
-            return
-        if not (self.panel_z_step_mm and self.panel_z_step_mm > 0):
-            log.debug("[RUIDA UDP] Panel Z jog disabled (panel_z_step_mm=%.3f); leaving Z unchanged", self.panel_z_step_mm)
-            self.z = job_z_mm
-            return
-        steps = int(round(delta / self.panel_z_step_mm))
-        if steps == 0:
-            log.debug(
-                "[RUIDA UDP] Z delta %.3f below step size %.3f; updating tracked Z only",
-                delta,
-                self.panel_z_step_mm,
-            )
-            self.z = job_z_mm
-            return
-        # Panel jog direction: "up" raises the bed (reduces clearance) on most machines.
-        direction_up = steps > 0
-        if not self.z_positive_moves_bed_up:
-            direction_up = not direction_up
-        cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
-        if self._panel_iface is None:
-            self._panel_iface = RuidaPanelInterface(
-                self.host,
-                timeout_s=self.timeout_s,
-                dry_run=self.dry_run,
-            )
-        log.info(
-            "[RUIDA UDP] Jogging Z via panel: target=%.3f (hw %.3f) current=%.3f (hw %.3f) step=%.3f count=%d cmd=%s",
-            job_z_mm,
-            self._hardware_z_from_logical(job_z_mm) or 0.0,
-            self.z,
-            self._hardware_z_from_logical(self.z) or 0.0,
-            self.panel_z_step_mm,
-            abs(steps),
-            "Z_UP" if direction_up else "Z_DOWN",
-        )
-
-        # Calibrate step size on the first move to avoid large over-travel if the configured step is wrong.
-        if not self.dry_run and state and state.z_mm is not None:
-            try:
-                self._panel_iface.send_command(cmd)
-                time.sleep(0.05)
-                post_state = self._read_machine_state()
-            except Exception:
-                post_state = None
-
-            if post_state and post_state.z_mm is not None:
-                moved = post_state.z_mm - state.z_mm
-                if abs(moved) < 1e-6:
-                    log.warning("[RUIDA UDP] Panel Z jog produced no movement; aborting further Z jogs")
-                    self.z = post_state.z_mm
-                    return
-                if abs(moved) > self.panel_z_max_step_mm:
-                    log.warning(
-                        "[RUIDA UDP] Panel Z jog step %.3f exceeds max %.3f; aborting panel jog and relying on RD Z only",
-                        moved,
-                        self.panel_z_max_step_mm,
-                    )
-                    self.z = post_state.z_mm
-                    return
-                if (moved > 0) != (delta > 0):
-                    log.warning(
-                        "[RUIDA UDP] Panel Z jog moved opposite direction (moved=%.3f delta=%.3f); aborting to avoid collision",
-                        moved,
-                        delta,
-                    )
-                    self.z = post_state.z_mm
-                    return
-                calibrated_step_mm = moved
-                remaining_delta = job_z_mm - post_state.z_mm
-                adjusted_steps = int(round(remaining_delta / calibrated_step_mm))
-                self.z = post_state.z_mm
-                if adjusted_steps == 0:
-                    log.info("[RUIDA UDP] Z jog completed after calibration step (no further steps needed)")
-                    return
-                direction_up = adjusted_steps > 0
-                if not self.z_positive_moves_bed_up:
-                    direction_up = not direction_up
-                cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
-                log.info(
-                    "[RUIDA UDP] Calibrated panel Z step %.3fmm; remaining delta %.3f -> steps=%d cmd=%s",
-                    calibrated_step_mm,
-                    remaining_delta,
-                    abs(adjusted_steps),
-                    "Z_UP" if direction_up else "Z_DOWN",
-                )
-                for _ in range(abs(adjusted_steps)):
-                    self._panel_iface.send_command(cmd)
-                    time.sleep(0.05)
-                    poll = self._read_machine_state()
-                    if poll and poll.z_mm is not None:
-                        self.z = poll.z_mm
-                        log.debug("[RUIDA UDP] Panel Z poll during jog: %.3f", self.z)
-                        remaining_delta = job_z_mm - self.z
-                        if abs(remaining_delta) < self.panel_z_step_mm:
-                            log.info("[RUIDA UDP] Z jog reached target within step tolerance; stopping early")
-                            break
-                post_final = self._read_machine_state()
-                if post_final and post_final.z_mm is not None:
-                    self.z = post_final.z_mm
-                    log.info("[RUIDA UDP] Z after jog (polled): %.3f", self.z)
-                return
-
-        for _ in range(abs(steps)):
-            self._panel_iface.send_command(cmd)
-            time.sleep(0.05)
-            poll = self._read_machine_state()
-            if poll and poll.z_mm is not None:
-                self.z = poll.z_mm
-                log.debug("[RUIDA UDP] Panel Z poll during jog: %.3f", self.z)
-                remaining_delta = job_z_mm - self.z
-                if abs(remaining_delta) < self.panel_z_step_mm:
-                    log.info("[RUIDA UDP] Z jog reached target within step tolerance; stopping early")
-                    break
-        if not self.dry_run:
-            post_final = self._read_machine_state()
-            if post_final and post_final.z_mm is not None:
-                self.z = post_final.z_mm
-                log.info("[RUIDA UDP] Z after jog (polled): %.3f", self.z)
 
     def _set_speed(self, speed_mm_s: float) -> None:
         speed_ums, changed = should_force_speed(self._last_speed_ums, speed_mm_s)
         if not changed:
             return
         self._last_speed_ums = speed_ums
-        payload = bytes([0xC9, 0x02]) + self._encode_abscoord_mm(speed_mm_s)
+        payload = bytes([0xC9, 0x02]) + encode_abscoord_mm(speed_mm_s)
         log.info("[RUIDA UDP] SET_SPEED %.3f mm/s", speed_mm_s)
-        self._send_packets(payload)
+        self._udp.send_packets(payload)
 
     def move(self, x=None, y=None, z=None, speed=None) -> None:
         self._wait_for_ready()
@@ -654,7 +277,7 @@ class RuidaLaser:
                     delta_z,
                     hardware_delta,
                 )
-                self._send_packets(payload)
+                self._udp.send_packets(payload)
                 self.z = z
         if self.power != 0.0:
             self.set_laser_power(0.0)
@@ -664,9 +287,9 @@ class RuidaLaser:
             return
         x_mm = self.x if x is None else x
         y_mm = self.y if y is None else y
-        payload = bytes([0x88]) + self._encode_abscoord_mm(x_mm) + self._encode_abscoord_mm(y_mm)
+        payload = bytes([0x88]) + encode_abscoord_mm(x_mm) + encode_abscoord_mm(y_mm)
         log.info("[RUIDA UDP] MOVE x=%.3f y=%.3f z=%.3f speed=%s", self.x, self.y, self.z, speed)
-        self._send_packets(payload)
+        self._udp.send_packets(payload)
 
     def cut_line(self, x, y, speed) -> None:
         self._wait_for_ready()
@@ -674,15 +297,14 @@ class RuidaLaser:
         self.y = y
         if speed is not None:
             self._set_speed(speed)
-        payload = bytes([0xA8]) + self._encode_abscoord_mm(x) + self._encode_abscoord_mm(y)
+        payload = bytes([0xA8]) + encode_abscoord_mm(x) + encode_abscoord_mm(y)
         log.info("[RUIDA UDP] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%",
                  x, y, speed, self.power)
-        self._send_packets(payload)
+        self._udp.send_packets(payload)
 
     def set_laser_power(self, power_pct) -> None:
         self._wait_for_ready()
         requested_power, should_update = clamp_power(power_pct, self.power)
-        self._last_requested_power = requested_power
 
         if self.movement_only:
             log.info(
@@ -695,17 +317,17 @@ class RuidaLaser:
             log.info("[RUIDA UDP] movement-only: sending single laser-off command")
             self.power = 0.0
             self._movement_only_power_sent = True
-            payload = bytes([0xC7]) + self._encode_power_pct(0.0)
-            self._send_packets(payload)
+            payload = bytes([0xC7]) + encode_power_pct(0.0)
+            self._udp.send_packets(payload)
             return
 
         if not should_update:
             return
 
         self.power = requested_power
-        payload = bytes([0xC7]) + self._encode_power_pct(requested_power)
+        payload = bytes([0xC7]) + encode_power_pct(requested_power)
         log.info("[RUIDA UDP] SET_LASER_POWER %.1f%%", requested_power)
-        self._send_packets(payload)
+        self._udp.send_packets(payload)
 
     # ---------------- RD job upload/run helpers ----------------
     def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None, *, require_busy_transition: bool = True) -> None:
@@ -741,14 +363,14 @@ class RuidaLaser:
             if job_z_offset_mm is not None:
                 filename += f"_z{job_z_offset_mm:+.3f}"
             path = self.save_rd_dir / f"{filename}.rd"
-            swizzled = self._swizzle(payload, magic=self.magic)
+            swizzled = swizzle(payload, magic=self.magic)
             path.write_bytes(swizzled)
             log.info("[RUIDA UDP] Saved RD job to %s", path)
         log.info("[RUIDA UDP] Uploading RD job with %d moves%s",
                  len(moves), f" z={job_z_offset_mm:.3f}" if job_z_offset_mm is not None else "")
         if self.dry_run:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
-        self._send_packets(payload)
+        self._udp.send_packets(payload)
         # Wait for completion; treat PART_END as done.
         self._wait_for_ready(
             require_busy_transition=require_busy_transition,
@@ -983,10 +605,3 @@ class RuidaLaser:
             except Exception:
                 log.debug("Failed to close Ruida socket", exc_info=True)
             self._udp.sock = None
-            self.sock = None
-
-    # Legacy helpers for tests/backward compatibility.
-    def _ensure_socket(self) -> None:
-        self._udp.dry_run = self.dry_run
-        self._udp._ensure_socket()
-        self.sock = self._udp.sock

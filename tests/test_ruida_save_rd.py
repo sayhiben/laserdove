@@ -1,5 +1,6 @@
 from laserdove.hardware.rd_builder import RDMove, build_rd_job
 from laserdove.hardware.ruida import RuidaLaser
+from laserdove.hardware.ruida_common import swizzle
 
 
 def test_ruida_saves_rd_file(tmp_path):
@@ -20,5 +21,5 @@ def test_ruida_saves_rd_file(tmp_path):
     assert len(rd_files) == 1
 
     saved = rd_files[0].read_bytes()
-    expected_swizzled = laser._swizzle(build_rd_job(moves, job_z_mm=1.0))
+    expected_swizzled = swizzle(build_rd_job(moves, job_z_mm=1.0))
     assert saved == expected_swizzled

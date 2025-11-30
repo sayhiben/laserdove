@@ -1,13 +1,6 @@
 from laserdove.hardware.ruida import RuidaLaser
 
 
-def test_ruida_swizzle_magic_override():
-    # Known swizzle for byte 0x00 with magic 0x88 vs 0x11 should differ.
-    default_swizzled = RuidaLaser._swizzle_byte(0x00, magic=0x88)
-    alt_swizzled = RuidaLaser._swizzle_byte(0x00, magic=0x11)
-    assert default_swizzled != alt_swizzled
-
-
 def test_ruida_dry_run_sends_without_socket(monkeypatch):
     laser = RuidaLaser(host="127.0.0.1", port=50200, dry_run=True)
     # Exercise power/speed/move/cut paths; should not raise when dry_run.

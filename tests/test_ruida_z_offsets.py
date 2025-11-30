@@ -31,7 +31,7 @@ def test_ruida_move_emits_signed_offset_only():
         return None
 
     laser = RuidaLaser("dummy-host", dry_run=False)
-    laser._send_packets = fake_send  # type: ignore[attr-defined]
+    laser._udp.send_packets = fake_send  # type: ignore[assignment]
     laser._wait_for_ready = types.MethodType(lambda self: None, laser)  # type: ignore[attr-defined]
     # Start at z=10.0 logical
     laser.z = 10.0

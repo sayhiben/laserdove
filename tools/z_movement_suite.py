@@ -296,8 +296,6 @@ def main() -> None:
     parser.add_argument("--panel-steps", type=int, default=3, help="Max panel jog steps to issue")
     parser.add_argument("--movement-only", action="store_true", default=True, help="Force power=0 in RD jobs (default)")
     parser.add_argument("--no-movement-only", dest="movement_only", action="store_false")
-    parser.add_argument("--panel-step-mm", type=float, default=0.05, help="Expected panel step size (mm)")
-    parser.add_argument("--panel-max-step-mm", type=float, default=0.5, help="Abort panel jog if measured step exceeds this (mm)")
     parser.add_argument("--panel-main-hold-s", type=float, default=0.3, help="Hold time for panel-main keydown before keyup (s)")
     parser.add_argument("--rapid-options", type=lambda x: int(x, 0), default=0x02, help="Options byte for rapid Z (D9 02) command")
     parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
@@ -319,8 +317,6 @@ def main() -> None:
         timeout_s=args.timeout,
         dry_run=args.dry_run,
         movement_only=args.movement_only,
-        panel_z_step_mm=args.panel_step_mm,
-        panel_z_max_step_mm=args.panel_max_step_mm,
     )
 
     _poll_z(laser, "startup", count=3, delay=0.1, update_xy=True)
