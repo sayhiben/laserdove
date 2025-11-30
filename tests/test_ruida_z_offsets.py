@@ -36,7 +36,7 @@ def test_ruida_move_emits_signed_offset_only():
     # Start at z=10.0 logical
     laser.z = 10.0
 
-    # Move Z down by 2 (relative): expect 0x80 0x03 + signed delta (-2.0 mm)
+    # Move Z down to 8.0 (relative -2.0): expect 0x80 0x03 + signed delta (-2.0 mm)
     laser.move(z=8.0)
     assert laser.z == 8.0
     assert sent_packets[0].startswith(b"\x80\x03")

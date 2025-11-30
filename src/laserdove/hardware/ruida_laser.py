@@ -383,7 +383,7 @@ class RuidaLaser:
                 if (
                     require_busy_transition
                     and stable_counter >= stable_target
-                    and stable_elapsed >= min_stable_s
+                    and stable_elapsed >= effective_min_stable_s
                     and not (state.status_bits & self.BUSY_MASK)
                 ):
                     if state.x_mm is not None:
@@ -491,7 +491,8 @@ class RuidaLaser:
                         self.z = last_state.z_mm
                     log.debug("[RUIDA UDP] Returning last known non-busy state after missing poll (busy transition required)")
                     return last_state
-            log.debug("[RUIDA UDP] Waiting (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
+            if attempt <= 2 or attempt % 10 == 1:
+                log.debug("[RUIDA UDP] Waiting (attempt %d/%d); sleeping %.2fs", attempt, max_attempts, delay_s)
             time.sleep(delay_s)
 
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
@@ -644,7 +645,7 @@ class RuidaLaser:
             self.y = y
         if z is not None:
             delta_z = z - self.z
-            if abs(delta_z) > 1e-6:
+            if not math.isclose(delta_z, 0.0, abs_tol=1e-6):
                 hardware_delta = delta_z if self.z_positive_moves_bed_up else -delta_z
                 payload = b"\x80\x03" + encode_abscoord_mm_signed(hardware_delta)
                 log.info(
@@ -715,9 +716,11 @@ class RuidaLaser:
             return
         job_has_power = any(mv.is_cut and mv.power_pct > 0.0 for mv in moves)
         require_busy_transition = require_busy_transition and job_has_power
-        job_z_offset_mm = job_z_mm
-        if job_z_offset_mm is not None and not self.z_positive_moves_bed_up:
-            job_z_offset_mm = -job_z_offset_mm
+        job_z_offset_mm = None
+        if job_z_mm is not None:
+            delta = job_z_mm - self.z
+            if abs(delta) > 1e-6:
+                job_z_offset_mm = delta if self.z_positive_moves_bed_up else -delta
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
