@@ -759,13 +759,20 @@ class RuidaLaser:
         if job_z_mm is not None:
             self.z = job_z_mm
 
-    def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False, edge_length_mm: float | None = None) -> None:
+    def run_sequence_with_rotary(
+        self,
+        commands: Iterable,
+        rotary,
+        *,
+        movement_only: bool | None = None,
+        travel_only: bool | None = None,
+        edge_length_mm: float | None = None,
+    ) -> None:
         """
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
         """
         park_angle = getattr(rotary, "angle", 0.0)
-        park_z: float | None = job_origin_z if 'job_origin_z' in locals() else None
         park_speed: float | None = None
         # Log initial status before any commands.
         initial_state = self._read_machine_state()
@@ -787,7 +794,8 @@ class RuidaLaser:
             job_origin_z = 0.0  # treat as logical zero if origin captured but no absolute read
         y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
-        travel_only = travel_only or self.movement_only
+        # movement_only is the preferred name; travel_only is accepted for backward compatibility.
+        movement_only_mode = any(flag for flag in (movement_only, travel_only, self.movement_only))
         current_power = 0.0
         current_speed: float | None = None
         cursor_x = job_origin_x
@@ -801,85 +809,27 @@ class RuidaLaser:
         origin_speed: float | None = None
 
         def park_head_before_rotary() -> None:
-            if travel_only:
+            if movement_only_mode:
                 return
-            nonlocal cursor_x, cursor_y, current_z, last_set_z, block_z
-            target_z = origin_z if origin_z is not None else last_set_z
+            nonlocal cursor_x, cursor_y
             move_speed = origin_speed or current_speed
             need_xy = not math.isclose(cursor_x, origin_x, abs_tol=1e-9) or not math.isclose(cursor_y, origin_y, abs_tol=1e-9)
-            need_z = target_z is not None and (last_set_z is None or not math.isclose(last_set_z or 0.0, target_z, abs_tol=1e-6))
 
-            if not need_xy and not need_z:
+            if not need_xy:
                 return
-
-            current_z_for_order = current_z if current_z is not None else last_set_z
-
-            # If we know the target Z and current Z, order moves to avoid collisions.
-            if not travel_only and need_xy and need_z and current_z_for_order is not None and target_z is not None:
-                closer = target_z > current_z_for_order if self.z_positive_moves_bed_up else target_z < current_z_for_order
-                if closer:
-                    # Move closer (bed up) first, then translate.
-                    self.move(z=target_z, speed=move_speed)
-                    current_z = target_z
-                    last_set_z = target_z
-                    block_z = target_z
-                    self.move(x=origin_x, y=origin_y, speed=move_speed)
-                    cursor_x, cursor_y = origin_x, origin_y
-                    return
-                else:
-                    # Translate first, then move bed away.
-                    self.move(x=origin_x, y=origin_y, speed=move_speed)
-                    cursor_x, cursor_y = origin_x, origin_y
-                    self.move(z=target_z, speed=move_speed)
-                    current_z = target_z
-                    last_set_z = target_z
-                    block_z = target_z
-                    return
-
-            # If we have a target Z but no current Z (e.g., never set), do a combined move.
-            if not travel_only and need_z and target_z is not None:
-                self.move(x=origin_x if need_xy else None, y=origin_y if need_xy else None, z=target_z, speed=move_speed)
-                if need_xy:
-                    cursor_x, cursor_y = origin_x, origin_y
-                current_z = target_z
-                last_set_z = target_z
-                block_z = target_z
-                return
-
-            # Only XY to park; include Z if known to keep at origin height.
-            if need_xy and not travel_only:
-                self.move(
-                    x=origin_x,
-                    y=origin_y,
-                    z=target_z if target_z is not None else None,
-                    speed=move_speed,
-                )
+            # Keep head at origin in XY; Z adjustments are emitted via RD job payloads.
+            if need_xy:
+                self.move(x=origin_x, y=origin_y, speed=move_speed)
                 cursor_x, cursor_y = origin_x, origin_y
-                if target_z is not None:
-                    current_z = target_z
-                    last_set_z = target_z
-                    block_z = target_z
 
-        def set_z_if_needed(target_z: float | None, *, update_origin: bool = False) -> None:
-            """Always apply commanded Z moves, even in travel-only runs."""
-            if target_z is None:
-                return
-            nonlocal current_z, last_set_z, origin_z, origin_z_from_command
-            if current_z is None or not math.isclose(target_z, current_z, abs_tol=1e-6):
-                self.move(z=target_z, speed=self.z_speed_mm_s)
-            current_z = target_z
-            last_set_z = current_z
-            if update_origin and not origin_z_from_command:
-                origin_z = current_z
-                origin_z_from_command = True
-
-        def flush_block(block_moves: List[RDMove], _block_z: float | None) -> None:
+        def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
             if not block_moves:
                 return
-            self.send_rd_job(block_moves, job_z_mm=None, require_busy_transition=True)
+            job_z = block_z if block_z is not None else last_set_z
+            self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
 
         block: List[RDMove] = []
-        block_z: float | None = None  # kept for signature; unused
+        block_z: float | None = None
 
         try:
             for cmd in commands:
@@ -896,7 +846,7 @@ class RuidaLaser:
                     continue
 
                 if cmd.type.name == "SET_LASER_POWER":
-                    if travel_only:
+                    if movement_only_mode:
                         current_power = 0.0
                     elif cmd.power_pct is not None:
                         current_power = cmd.power_pct
@@ -905,7 +855,16 @@ class RuidaLaser:
                 if cmd.type.name == "MOVE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    set_z_if_needed(cmd.z, update_origin=True)
+                    if cmd.z is not None:
+                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                            flush_block(block, block_z)
+                            block = []
+                        current_z = cmd.z
+                        if not origin_z_from_command:
+                            origin_z = current_z
+                            origin_z_from_command = True
+                        last_set_z = current_z
+                        block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                         if origin_speed is None:
@@ -913,14 +872,20 @@ class RuidaLaser:
                     if current_speed is None:
                         continue
                     block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
-                                        power_pct=current_power, is_cut=False))
+                        power_pct=current_power, is_cut=False))
                     cursor_x, cursor_y = x, y
                     continue
 
                 if cmd.type.name == "CUT_LINE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    set_z_if_needed(cmd.z)
+                    if cmd.z is not None:
+                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
+                            flush_block(block, block_z)
+                            block = []
+                        current_z = cmd.z
+                        last_set_z = current_z
+                        block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                     if current_speed is None:
@@ -930,19 +895,13 @@ class RuidaLaser:
                         y_mm=y,
                         speed_mm_s=current_speed,
                         power_pct=current_power,
-                        is_cut=not travel_only,
+                        is_cut=not movement_only_mode,
                     ))
                     cursor_x, cursor_y = x, y
                     continue
 
             flush_block(block, block_z)
         finally:
-            if park_z is not None:
-                try:
-                    if current_z is None or not math.isclose(current_z, park_z, abs_tol=1e-6):
-                        self.move(z=park_z, speed=self.z_speed_mm_s)
-                except Exception:
-                    log.debug("Z park failed", exc_info=True)
             try:
                 if park_angle is not None and hasattr(rotary, "rotate_to"):
                     target_speed = park_speed if park_speed is not None else 30.0

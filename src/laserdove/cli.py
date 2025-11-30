@@ -169,8 +169,11 @@ def main() -> None:
         if isinstance(laser, RuidaLaser):
             run_kwargs = {}
             sig = inspect.signature(laser.run_sequence_with_rotary)
-            if "travel_only" in sig.parameters:
-                run_kwargs["travel_only"] = run_config.movement_only or run_config.reset_only
+            movement_only_flag = run_config.movement_only or run_config.reset_only
+            if "movement_only" in sig.parameters:
+                run_kwargs["movement_only"] = movement_only_flag
+            elif "travel_only" in sig.parameters:
+                run_kwargs["travel_only"] = movement_only_flag
             if "edge_length_mm" in sig.parameters:
                 run_kwargs["edge_length_mm"] = run_config.joint_params.edge_length_mm
             laser.run_sequence_with_rotary(all_commands, rotary, **run_kwargs)
