@@ -64,6 +64,7 @@ class SimulatedLaser(LaserInterface):
     def _record_segment(self, new_x: float, new_y: float, is_cut: bool) -> None:
         if new_x == self.x and new_y == self.y:
             return
+        logical_z = self.z
         self.segments.append(
             {
                 "x0": self.x,
@@ -72,7 +73,8 @@ class SimulatedLaser(LaserInterface):
                 "y1": new_y,
                 "is_cut": is_cut,
                 "rotation_deg": self.rotation_deg,
-                "z": -self.z if self.z_positive_moves_bed_up else self.z,
+                "z": logical_z,
+                "logical_z": logical_z,
                 "board": self.current_board,
                 "air_assist": self.air_assist,
             }

@@ -182,22 +182,27 @@ class SimulationViewer:
         use_z_color: bool,
         common_scale: float,
         extents: Optional[Tuple[float, float, float, float]],
+        annotate_z: bool = False,
     ) -> None:
         if self._canvas is None or not segments or extents is None:
             return
-        z_values = [seg["z"] for seg in segments if seg["is_cut"]]
+        z_values = [seg.get("logical_z", seg["z"]) for seg in segments if seg["is_cut"]]
         z_min, z_max = (min(z_values), max(z_values)) if z_values else (0.0, 0.0)
 
         for seg in segments:
+            z_val = seg.get("logical_z", seg["z"])
             x0, y0 = self._to_canvas(seg["x0"], seg["y0"], common_scale, extents, viewport)
             x1, y1 = self._to_canvas(seg["x1"], seg["y1"], common_scale, extents, viewport)
             if seg["is_cut"]:
-                color = self._color_for_z(seg["z"], z_min, z_max) if use_z_color else "#1e88e5"
+                color = self._color_for_z(z_val, z_min, z_max) if use_z_color else "#1e88e5"
                 width_px = 2
             else:
                 color = "#90a4ae"
                 width_px = 1
             self._canvas.create_line(x0, y0, x1, y1, fill=color, width=width_px)
+            if annotate_z and seg["is_cut"]:
+                mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                self._canvas.create_text(mx, my - 6, text=f"{z_val:.2f}", fill=color, font=("Arial", 8), anchor="s")
 
     def _draw_rotary_indicator(self, viewport: Tuple[float, float, float, float], rotation_deg: float) -> None:
         if self._canvas is None:
@@ -284,7 +289,7 @@ class SimulationViewer:
         )
 
         self._draw_segments(tail_segments, tail_viewport, use_z_color=False, common_scale=common_scale, extents=tail_extents)
-        self._draw_segments(pin_segments, pin_viewport, use_z_color=True, common_scale=common_scale, extents=pin_extents)
+        self._draw_segments(pin_segments, pin_viewport, use_z_color=True, common_scale=common_scale, extents=pin_extents, annotate_z=True)
         self._draw_origin_overlay(tail_viewport, tail_extents, origin, y_center, common_scale)
         self._draw_origin_overlay(pin_viewport, pin_extents, origin, y_center, common_scale)
         rot_cx = pin_viewport[0] + (pin_viewport[2] - pin_viewport[0]) * 0.8
