@@ -21,7 +21,7 @@ from .ruida_common import encode_abscoord_mm_signed
 
 @dataclass
 class RDMove:
-    """Single move/cut with optional inline Z offset."""
+    """Single move/cut with optional target Z (absolute logical position, mm)."""
     x_mm: float
     y_mm: float
     speed_mm_s: float
@@ -622,6 +622,7 @@ def _compute_odometer(moves: List[RDMove]) -> Tuple[float, float]:
 def build_rd_job(
     moves: List[RDMove],
     job_z_mm: float | None = None,
+    initial_z_mm: float | None = None,
     *,
     filename: str = "LASERDOVE",
     air_assist: bool = True,
@@ -634,6 +635,7 @@ def build_rd_job(
     Args:
         moves: Sequence of RDMove entries.
         job_z_mm: Optional job-level Z offset in mm.
+        initial_z_mm: Logical Z at job start; used to turn absolute targets into relative offsets.
         filename: Filename tag for the RD job.
         air_assist: Whether to enable air-assist flags.
 
@@ -658,6 +660,19 @@ def build_rd_job(
                 z_mm=mv.z_mm,
             )
         )
+
+    # Convert absolute Z targets into relative 0x80 03 offsets.
+    current_z = 0.0 if initial_z_mm is None else initial_z_mm
+    if job_z_mm is not None:
+        current_z += job_z_mm
+    z_relative_moves: List[RDMove] = []
+    for mv in normalized_moves:
+        mv_copy = copy.copy(mv)
+        if mv_copy.z_mm is not None:
+            target_z = mv_copy.z_mm
+            mv_copy.z_mm = target_z - current_z
+            current_z = target_z
+        z_relative_moves.append(mv_copy)
 
     paths, bbox = _moves_to_paths(normalized_moves)
     travel_speed = next((mv.speed_mm_s for mv in normalized_moves if not mv.is_cut), normalized_moves[0].speed_mm_s)
@@ -740,7 +755,7 @@ def build_rd_job(
         data.extend(builder.encode_z_offset(job_z_mm))
 
     last_speed = None
-    for mv in normalized_moves:
+    for mv in z_relative_moves:
         if mv.z_mm is not None:
             data.extend(bytes([0x80, 0x03]))
             data.extend(builder.encode_z_offset(mv.z_mm))

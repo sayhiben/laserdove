@@ -414,7 +414,14 @@ class RuidaLaser:
         self._udp.send_packets(payload)
 
     # ---------------- RD job upload/run helpers ----------------
-    def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None, *, require_busy_transition: bool = True) -> None:
+    def send_rd_job(
+        self,
+        moves: List[RDMove],
+        job_z_mm: float | None = None,
+        *,
+        require_busy_transition: bool = True,
+        start_z_mm: float | None = None,
+    ) -> None:
         """
         Build a minimal RD job and send it over UDP 50200. Auto-runs on receipt.
 
@@ -422,6 +429,7 @@ class RuidaLaser:
             moves: Sequence of RDMove objects describing travel/cuts.
             job_z_mm: Optional logical Z offset for the job header.
             require_busy_transition: If True, wait for busy->idle before returning.
+            start_z_mm: Logical Z at job start; used to compute relative 0x80 03 offsets.
         """
         if not moves:
             return
@@ -430,6 +438,7 @@ class RuidaLaser:
         job_z_offset_mm = None
         if job_z_mm is not None:
             job_z_offset_mm = job_z_mm if self.z_positive_moves_bed_up else -job_z_mm
+        start_z = start_z_mm if start_z_mm is not None else self.z
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
@@ -444,7 +453,12 @@ class RuidaLaser:
         if self.movement_only:
             for mv in moves:
                 mv.power_pct = 0.0
-        payload = build_rd_job(moves, job_z_mm=job_z_offset_mm, air_assist=self.air_assist)
+        payload = build_rd_job(
+            moves,
+            job_z_mm=job_z_offset_mm,
+            initial_z_mm=start_z,
+            air_assist=self.air_assist,
+        )
         if self.save_rd_dir:
             self.save_rd_dir.mkdir(parents=True, exist_ok=True)
             self._rd_job_counter += 1
@@ -465,8 +479,12 @@ class RuidaLaser:
             require_busy_transition=require_busy_transition,
             min_stable_s=self.min_stable_s,
         )
-        if job_z_mm is not None:
-            self.z = job_z_mm
+        # Update logical Z to reflect the last commanded target.
+        final_z = start_z + (job_z_offset_mm or 0.0)
+        for mv in moves:
+            if mv.z_mm is not None:
+                final_z = mv.z_mm
+        self.z = final_z
 
     def run_sequence_with_rotary(
         self,
@@ -565,23 +583,30 @@ class RuidaLaser:
             self.move(x=origin_x, y=origin_y, speed=move_speed)
             cursor_x, cursor_y = origin_x, origin_y
 
-        def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
+        def flush_block(block_moves: List[RDMove]) -> None:
             if not block_moves:
                 return
+            nonlocal block_start_z
             _ensure_at_job_origin()
-            self.send_rd_job(block_moves, job_z_mm=None, require_busy_transition=True)
+            self.send_rd_job(
+                block_moves,
+                job_z_mm=None,
+                require_busy_transition=True,
+                start_z_mm=block_start_z,
+            )
+            block_start_z = current_z
 
         block: List[RDMove] = []
-        block_z: float | None = None
+        block_start_z: float | None = current_z
 
         try:
             for cmd in commands:
                 if cmd.type.name == "ROTATE":
                     if park_speed is None and cmd.speed_mm_s is not None:
                         park_speed = cmd.speed_mm_s
-                    flush_block(block, block_z)
+                    flush_block(block)
                     block = []
-                    block_z = None
+                    block_start_z = current_z
                     park_head_before_rotary()
                     # After parking, cursor/last_set_z reflect parked position.
                     current_z = last_set_z
@@ -605,7 +630,6 @@ class RuidaLaser:
                             origin_z_from_command = True
                         last_set_z = current_z
                         self.z = current_z
-                        block_z = current_z
                         block.append(RDMove(
                             x_mm=x,
                             y_mm=y,
@@ -632,7 +656,6 @@ class RuidaLaser:
                         current_z = cmd.z
                         last_set_z = current_z
                         self.z = current_z
-                        block_z = current_z
                         block.append(RDMove(
                             x_mm=x,
                             y_mm=y,
@@ -655,7 +678,7 @@ class RuidaLaser:
                     cursor_x, cursor_y = x, y
                     continue
 
-            flush_block(block, block_z)
+            flush_block(block)
         finally:
             if park_z is not None:
                 try:
@@ -671,7 +694,12 @@ class RuidaLaser:
                                 z_mm=park_z,
                             )
                         ]
-                        self.send_rd_job(park_moves, job_z_mm=None, require_busy_transition=True)
+                        self.send_rd_job(
+                            park_moves,
+                            job_z_mm=None,
+                            require_busy_transition=True,
+                            start_z_mm=current_z,
+                        )
                         last_set_z = park_z
                         current_z = park_z
                 except Exception:

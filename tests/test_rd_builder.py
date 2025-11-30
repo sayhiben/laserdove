@@ -27,5 +27,5 @@ def test_build_rd_job_preserves_negative_coords_and_z_offsets() -> None:
 
     assert parser._bbox == pytest.approx([0.0, -10.0, 5.0, 10.0], abs=1e-3)
     z_values = [round(val, 3) for _, val, _, _ in parser._z_offsets]
-    assert 2.5 in z_values
-    assert -1.0 in z_values
+    assert 2.5 in z_values  # first move from 0 -> +2.5 mm
+    assert -3.5 in z_values  # second move from +2.5 -> -1.0 mm

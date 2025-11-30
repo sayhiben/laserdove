@@ -36,7 +36,14 @@ class CapturingRuida(RuidaLaser):
         self.sent_jobs: List[List[RDMove]] = []
         self._state_poll_count = 0
 
-    def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None, *, require_busy_transition: bool = True) -> None:
+    def send_rd_job(
+        self,
+        moves: List[RDMove],
+        job_z_mm: float | None = None,
+        *,
+        require_busy_transition: bool = True,
+        start_z_mm: float | None = None,
+    ) -> None:
         self.sent_jobs.append(moves)
         # Simulate controller auto-returning to some other coordinate.
         self.x, self.y = self._sim_return
