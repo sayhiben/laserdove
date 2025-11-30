@@ -892,7 +892,7 @@ class RuidaLaser:
                 if cmd.type.name == "MOVE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None and not travel_only:
+                    if cmd.z is not None:
                         if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
                             self.move(z=cmd.z, speed=self.z_speed_mm_s)
                         current_z = cmd.z
@@ -914,7 +914,7 @@ class RuidaLaser:
                 if cmd.type.name == "CUT_LINE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None and not travel_only:
+                    if cmd.z is not None:
                         if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
                             self.move(z=cmd.z, speed=self.z_speed_mm_s)
                         current_z = cmd.z
