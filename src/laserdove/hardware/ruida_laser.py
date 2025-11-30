@@ -754,6 +754,7 @@ class RuidaLaser:
         run rotary moves via provided rotary interface in between.
         """
         park_angle = getattr(rotary, "angle", 0.0)
+        park_z: float | None = job_origin_z if 'job_origin_z' in locals() else None
         park_speed: float | None = None
         # Log initial status before any commands.
         initial_state = self._read_machine_state()
@@ -768,7 +769,11 @@ class RuidaLaser:
             )
         job_origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
         job_origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
-        job_origin_z = initial_state.z_mm if initial_state and initial_state.z_mm is not None else None
+        job_origin_z: float | None = None
+        if initial_state and initial_state.z_mm is not None:
+            job_origin_z = initial_state.z_mm
+        elif self._z_origin_mm is not None:
+            job_origin_z = 0.0  # treat as logical zero if origin captured but no absolute read
         y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
         travel_only = travel_only or self.movement_only
@@ -927,6 +932,12 @@ class RuidaLaser:
 
             flush_block(block, block_z)
         finally:
+            if park_z is not None:
+                try:
+                    if current_z is None or not math.isclose(current_z, park_z, abs_tol=1e-6):
+                        self.move(z=park_z, speed=self.z_speed_mm_s)
+                except Exception:
+                    log.debug("Z park failed", exc_info=True)
             try:
                 if park_angle is not None and hasattr(rotary, "rotate_to"):
                     target_speed = park_speed if park_speed is not None else 30.0
