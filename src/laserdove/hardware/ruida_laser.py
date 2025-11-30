@@ -63,6 +63,24 @@ class RuidaLaser:
         socket_factory=None,
         min_stable_s: float = 0.0,
     ) -> None:
+        """
+        Create a Ruida UDP transport wrapper.
+
+        Args:
+            host: Controller hostname or IP.
+            port: UDP port for RD uploads (default 50200).
+            source_port: Local UDP source port to bind.
+            timeout_s: Socket timeout for ACK/reply waits.
+            dry_run: If True, log packets without sending.
+            magic: Swizzle magic key (0x88 for 644xG).
+            movement_only: Suppress power in generated jobs.
+            save_rd_dir: Optional path to persist swizzled RD jobs.
+            air_assist: Whether to enable air assist in RD jobs.
+            z_positive_moves_bed_up: Interpret Z+ as bed-up (default).
+            z_speed_mm_s: Speed to use for Z moves emitted in RD jobs.
+            socket_factory: Optional socket factory for tests.
+            min_stable_s: Minimum idle time before declaring ready.
+        """
         self.host = host
         self.port = port
         self.source_port = source_port
@@ -103,6 +121,16 @@ class RuidaLaser:
         )
 
     def _get_memory_value(self, address: bytes, *, expected_len: int) -> Optional[bytes]:
+        """
+        Read a memory address via Ruida UDP GET_SETTING (0xDA 0x00).
+
+        Args:
+            address: Two-byte memory address.
+            expected_len: Minimum number of data bytes expected.
+
+        Returns:
+            Raw data bytes, or None on failure/truncation/dry-run.
+        """
         payload = bytes([0xDA, 0x00]) + address
         reply = self._udp.send_packets(payload, expect_reply=True)
         if reply is None:
@@ -122,6 +150,15 @@ class RuidaLaser:
         return data[:expected_len]
 
     def _read_machine_state(self, *, read_positions: bool = True) -> Optional[MachineState]:
+        """
+        Poll status and optionally axes from controller memory.
+
+        Args:
+            read_positions: If True, also request X/Y/Z addresses.
+
+        Returns:
+            MachineState with decoded bits and coordinates, or None on failure.
+        """
         try:
             status_payload = self._get_memory_value(self.MEM_MACHINE_STATUS, expected_len=4)
             x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5) if read_positions else None
@@ -157,6 +194,24 @@ class RuidaLaser:
         read_positions: bool = True,
         min_stable_s: float = 0.0,
     ) -> MachineState:
+        """
+        Poll until the controller appears idle and stable.
+
+        Args:
+            max_attempts: Maximum polls before giving up.
+            delay_s: Delay between polls (seconds).
+            require_busy_transition: If True, wait until at least one busy/motion state was observed.
+            stable_polls: Number of consecutive stable polls required.
+            pos_tol_mm: Position delta that counts as motion.
+            read_positions: If False, skip reading X/Y/Z.
+            min_stable_s: Minimum time in a stable state before returning.
+
+        Returns:
+            Final MachineState considered ready.
+
+        Raises:
+            RuntimeError: If readiness is not reached within max_attempts.
+        """
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
 
@@ -252,6 +307,12 @@ class RuidaLaser:
         raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
 
     def _set_speed(self, speed_mm_s: float) -> None:
+        """
+        Issue a SET_SPEED command if the requested speed differs from last send.
+
+        Args:
+            speed_mm_s: Speed in mm/sec.
+        """
         speed_ums, changed = should_force_speed(self._last_speed_ums, speed_mm_s)
         if not changed:
             return
@@ -261,6 +322,15 @@ class RuidaLaser:
         self._udp.send_packets(payload)
 
     def move(self, x=None, y=None, z=None, speed=None) -> None:
+        """
+        Move the head to an absolute XY position and optionally adjust Z.
+
+        Args:
+            x: Target X (mm), leaves unchanged if None.
+            y: Target Y (mm), leaves unchanged if None.
+            z: Target logical Z (mm), emits 0x80 0x03 relative to cached Z.
+            speed: Travel speed in mm/sec.
+        """
         self._wait_for_ready()
         if x is not None:
             self.x = x
@@ -292,6 +362,14 @@ class RuidaLaser:
         self._udp.send_packets(payload)
 
     def cut_line(self, x, y, speed) -> None:
+        """
+        Execute a cutting move to an absolute coordinate.
+
+        Args:
+            x: Target X (mm).
+            y: Target Y (mm).
+            speed: Cutting speed (mm/sec).
+        """
         self._wait_for_ready()
         self.x = x
         self.y = y
@@ -303,6 +381,12 @@ class RuidaLaser:
         self._udp.send_packets(payload)
 
     def set_laser_power(self, power_pct) -> None:
+        """
+        Set laser output power, honoring movement-only suppression.
+
+        Args:
+            power_pct: Requested power percentage.
+        """
         self._wait_for_ready()
         requested_power, should_update = clamp_power(power_pct, self.power)
 
@@ -333,6 +417,11 @@ class RuidaLaser:
     def send_rd_job(self, moves: List[RDMove], job_z_mm: float | None = None, *, require_busy_transition: bool = True) -> None:
         """
         Build a minimal RD job and send it over UDP 50200. Auto-runs on receipt.
+
+        Args:
+            moves: Sequence of RDMove objects describing travel/cuts.
+            job_z_mm: Optional logical Z offset for the job header.
+            require_busy_transition: If True, wait for busy->idle before returning.
         """
         if not moves:
             return
@@ -391,6 +480,13 @@ class RuidaLaser:
         """
         Partition commands at ROTATE boundaries; send each laser block as an RD job;
         run rotary moves via provided rotary interface in between.
+
+        Args:
+            commands: Iterable of high-level commands (MOVE/CUT/SET_LASER_POWER/ROTATE).
+            rotary: Rotary backend implementing rotate_to.
+            movement_only: Force power=0 regardless of command (overrides instance flag).
+            travel_only: Legacy alias for movement_only.
+            edge_length_mm: Board edge length to compute Y midline for rotary centering.
         """
         park_angle = getattr(rotary, "angle", 0.0)
         park_speed: float | None = None

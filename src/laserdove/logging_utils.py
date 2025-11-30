@@ -14,6 +14,12 @@ class DedupStreamHandler(logging.StreamHandler):
     terminator = "\n"
 
     def __init__(self, stream: Optional[IO[str]] = None) -> None:
+        """
+        Initialize the deduping stream handler.
+
+        Args:
+            stream: Optional output stream; defaults to sys.stderr via StreamHandler.
+        """
         super().__init__(stream)
         self._last_rendered: Optional[str] = None
         self._last_key: Optional[tuple[int, str, str]] = None
@@ -22,6 +28,12 @@ class DedupStreamHandler(logging.StreamHandler):
         self._last_time: Optional[float] = None
 
     def emit(self, record: logging.LogRecord) -> None:
+        """
+        Emit a log record, collapsing consecutive duplicates into dots.
+
+        Args:
+            record: LogRecord to render.
+        """
         try:
             msg = self.format(record)
             message_key = (record.levelno, record.name, record.getMessage())
@@ -47,6 +59,7 @@ class DedupStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
     def _flush_sequence(self) -> None:
+        """Flush the currently buffered repeated message (if any)."""
         if self._last_rendered is None:
             return
 
@@ -66,6 +79,7 @@ class DedupStreamHandler(logging.StreamHandler):
         self._last_time = None
 
     def close(self) -> None:
+        """Flush any pending sequence before closing the handler."""
         try:
             self._flush_sequence()
         finally:
@@ -73,6 +87,13 @@ class DedupStreamHandler(logging.StreamHandler):
 
 
 def setup_logging(level: str = "INFO", stream: Optional[IO[str]] = None) -> None:
+    """
+    Configure root logging with the deduplicating stream handler.
+
+    Args:
+        level: Log level name (e.g., INFO, DEBUG).
+        stream: Optional stream to write logs to; defaults to stdout.
+    """
     log_level = getattr(logging, level.upper(), logging.INFO)
     handler = DedupStreamHandler(stream or sys.stdout)
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))

@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 
 def main() -> None:
+    """Entry point for the command-line planner/executor."""
     parser = build_arg_parser()
     args = parser.parse_args()
 

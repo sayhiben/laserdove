@@ -21,6 +21,7 @@ from .ruida_common import encode_abscoord_mm_signed
 
 @dataclass
 class RDMove:
+    """Single move/cut with optional inline Z offset."""
     x_mm: float
     y_mm: float
     speed_mm_s: float
@@ -31,6 +32,7 @@ class RDMove:
 
 @dataclass
 class _Layer:
+    """Internal representation of a single RD layer and its paths."""
     paths: List[List[Tuple[float, float]]]
     bbox: List[List[float]]
     speed: Sequence[float]
@@ -55,6 +57,14 @@ class _RDJobBuilder:
         Encode a (possibly signed) number into the Ruida 7-bit chunked format.
         Negative values are represented in two's complement so centered board
         coordinates (e.g., Y around 0) survive RD export instead of clamping to 0.
+
+        Args:
+            num: Number to encode.
+            length: Field length in bytes.
+            scale: Multiplier applied before encoding.
+
+        Returns:
+            Encoded byte sequence.
         """
         res = []
         nn = int(round(num * scale))
@@ -71,10 +81,31 @@ class _RDJobBuilder:
 
     @staticmethod
     def encode_percent(n: float) -> bytes:
+        """
+        Encode a percentage into Ruida's two-byte power field.
+
+        Args:
+            n: Percentage value.
+
+        Returns:
+            Two-byte encoding.
+        """
         a = int(n * 0x3FFF * 0.01)
         return bytes([a >> 7, a & 0x7F])
 
     def encode_relcoord(self, n: float) -> bytes:
+        """
+        Encode a relative coordinate in mm into a 2-byte field.
+
+        Args:
+            n: Relative coordinate.
+
+        Returns:
+            Encoded byte sequence.
+
+        Raises:
+            ValueError: If the value exceeds supported range.
+        """
         nn = int(n * 1000)
         if nn > 8191 or nn < -8191:
             raise ValueError("relcoord out of range; use abscoords")
@@ -83,24 +114,61 @@ class _RDJobBuilder:
         return self.encode_number(nn, length=2, scale=1)
 
     def encode_byte(self, n: int) -> bytes:
+        """Encode a single byte value into the RD number format."""
         return self.encode_number(n, length=1, scale=1)
 
     @staticmethod
     def encode_z_offset(offset_mm: float) -> bytes:
-        """Encode signed Z offsets (mm) for opcode 0x80 0x03."""
+        """
+        Encode signed Z offsets (mm) for opcode 0x80 0x03.
+
+        Args:
+            offset_mm: Signed Z offset in millimeters.
+
+        Returns:
+            Encoded byte sequence.
+        """
         return encode_abscoord_mm_signed(offset_mm)
 
     @staticmethod
     def encode_color(color: Sequence[int]) -> bytes:
+        """
+        Encode an RGB color triple into a 3-byte integer field.
+
+        Args:
+            color: Sequence of three integers (R, G, B).
+
+        Returns:
+            Encoded byte sequence.
+        """
         cc = ((color[2] & 0xFF) << 16) + ((color[1] & 0xFF) << 8) + (color[0] & 0xFF)
         return _RDJobBuilder.encode_number(cc, scale=1)
 
     @staticmethod
     def encode_hex(str_val: str) -> bytes:
+        """
+        Encode a whitespace-separated hex string into raw bytes.
+
+        Args:
+            str_val: Hex string, comments allowed after '#'.
+
+        Returns:
+            Bytes decoded from the string.
+        """
         str_val = re.sub(r"#.*$", "", str_val, flags=re.MULTILINE)
         return bytes(int(x, 16) for x in str_val.split())
 
     def enc(self, fmt: str, tupl: Sequence) -> bytes:
+        """
+        Encode a tuple of values according to a format string.
+
+        Args:
+            fmt: String of format characters (b, n, p, r, c, -).
+            tupl: Values to encode.
+
+        Returns:
+            Concatenated encoded bytes.
+        """
         if len(fmt) != len(tupl):
             raise ValueError("format length differs from tuple length")
         ret = b""
@@ -123,6 +191,15 @@ class _RDJobBuilder:
 
     @staticmethod
     def boundingbox(paths: List[List[Tuple[float, float]]]) -> List[List[float]]:
+        """
+        Compute axis-aligned bounding box for a list of paths.
+
+        Args:
+            paths: List of point lists.
+
+        Returns:
+            [[xmin, ymin], [xmax, ymax]] bounding box.
+        """
         xmin = xmax = paths[0][0][0]
         ymin = ymax = paths[0][0][1]
         for path in paths:
@@ -135,6 +212,16 @@ class _RDJobBuilder:
 
     @staticmethod
     def bbox_combine(bbox1: List[List[float]] | None, bbox2: List[List[float]] | None) -> List[List[float]] | None:
+        """
+        Combine two bounding boxes.
+
+        Args:
+            bbox1: First bounding box or None.
+            bbox2: Second bounding box or None.
+
+        Returns:
+            Combined bounding box or the non-None input.
+        """
         if bbox1 is None:
             return bbox2
         if bbox2 is None:
@@ -147,6 +234,16 @@ class _RDJobBuilder:
 
     # ---------------- RD structure builders ----------------
     def header(self, layers: Sequence[_Layer], filename: str) -> bytes:
+        """
+        Build the RD job header for the provided layers.
+
+        Args:
+            layers: Layer objects containing paths/bbox/speed/power.
+            filename: Filename label for the job.
+
+        Returns:
+            Encoded header bytes.
+        """
         bbox: List[List[float]] | None = self._globalbbox
         for layer in layers:
             bbox = self.bbox_combine(bbox, layer.bbox)
@@ -297,6 +394,17 @@ class _RDJobBuilder:
         return data
 
     def body(self, layers: Sequence[_Layer], *, job_z_mm: float | None = None, air_assist: bool = True) -> bytes:
+        """
+        Build the RD body (layer prologs and move/cut opcodes).
+
+        Args:
+            layers: Layer objects to encode.
+            job_z_mm: Optional job-level Z offset emitted once.
+            air_assist: Whether to include air-assist flags.
+
+        Returns:
+            Encoded body bytes.
+        """
         def relok(last: Tuple[float, float] | None, point: Tuple[float, float]) -> bool:
             maxrel = 8.191
             if last is None:
@@ -418,6 +526,15 @@ class _RDJobBuilder:
         return bytes(data)
 
     def trailer(self, odo: Sequence[float] = (0.0, 0.0)) -> bytes:
+        """
+        Build the RD trailer summarizing travel/cut distance.
+
+        Args:
+            odo: Tuple of (cut_distance_um?, travel_distance_um?) scaled from mm.
+
+        Returns:
+            Encoded trailer bytes.
+        """
         return self.enc(
             "-nn-",
             [
@@ -434,6 +551,15 @@ class _RDJobBuilder:
 
 
 def _moves_to_paths(moves: Iterable[RDMove]) -> Tuple[List[List[Tuple[float, float]]], List[List[float]]]:
+    """
+    Collapse sequential cut segments into paths for bbox computation.
+
+    Args:
+        moves: Iterable of RDMove entries.
+
+    Returns:
+        Tuple of (path list, bounding box [[xmin, ymin], [xmax, ymax]]).
+    """
     paths: List[List[Tuple[float, float]]] = []
     cursor: Tuple[float, float] | None = None
     current_path: List[Tuple[float, float]] | None = None
@@ -470,6 +596,12 @@ def _moves_to_paths(moves: Iterable[RDMove]) -> Tuple[List[List[Tuple[float, flo
 def _compute_odometer(moves: List[RDMove]) -> Tuple[float, float]:
     """
     Compute cut and travel distances in mm (simple segment lengths).
+
+    Args:
+        moves: Sequence of RDMove objects.
+
+    Returns:
+        Tuple of (cut_distance_mm, travel_distance_mm).
     """
     if not moves:
         return (0.0, 0.0)
@@ -498,6 +630,15 @@ def build_rd_job(
     Build an unswizzled RD payload for a sequence of moves.
     The optional job_z_mm is a signed Z offset (mm) encoded once with opcode 0x80 0x03.
     Z moves embedded in RDMove.z_mm emit additional 0x80 0x03 commands inline.
+
+    Args:
+        moves: Sequence of RDMove entries.
+        job_z_mm: Optional job-level Z offset in mm.
+        filename: Filename tag for the RD job.
+        air_assist: Whether to enable air-assist flags.
+
+    Returns:
+        Unscrambled RD job payload bytes.
     """
     if not moves:
         return b""

@@ -32,6 +32,18 @@ class RuidaUDPClient:
         dry_run: bool = False,
         socket_factory=socket.socket,
     ) -> None:
+        """
+        Initialize a UDP client for a Ruida controller.
+
+        Args:
+            host: Controller hostname or IP.
+            port: UDP port for actions (default 50200).
+            source_port: Local UDP source port to bind.
+            timeout_s: Socket timeout for ACK/reply waits.
+            magic: Swizzle magic key.
+            dry_run: If True, log packets instead of sending.
+            socket_factory: Optional socket factory for testing.
+        """
         self.host = host
         self.port = port
         self.source_port = source_port
@@ -42,6 +54,12 @@ class RuidaUDPClient:
         self.sock: Optional[socket.socket] = None
 
     def _ensure_socket(self) -> None:
+        """
+        Create and bind the UDP socket if not already present.
+
+        Returns:
+            None. Sets ``self.sock`` unless dry-run or binding fails.
+        """
         if self.dry_run:
             return
         if self.sock is not None:
@@ -73,6 +91,13 @@ class RuidaUDPClient:
         """
         Swizzle, chunk, prepend checksum, and send with ACK wait. Optionally collect a follow-on reply packet
         (e.g., GET_SETTING responses) and return its unswizzled payload.
+
+        Args:
+            payload: Raw payload to transmit (unswizzled, without checksum).
+            expect_reply: Whether to read an additional reply packet after ACKs.
+
+        Returns:
+            None for dry-run/no reply, otherwise the unswizzled reply bytes.
         """
         self._ensure_socket()
         swizzled = swizzle(payload, magic=self.magic)

@@ -52,6 +52,12 @@ class RunConfig:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """
+    Build the CLI argument parser for planning and execution flags.
+
+    Returns:
+        Configured argparse.ArgumentParser instance.
+    """
     p = argparse.ArgumentParser(
         description="Dovetail joint planner for Thunder Nova + rotary jig",
     )
@@ -150,6 +156,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _load_toml(path: Path) -> dict:
+    """
+    Load a TOML config file.
+
+    Args:
+        path: Path to the TOML file.
+
+    Returns:
+        Parsed dictionary.
+
+    Raises:
+        FileNotFoundError: If the file is missing.
+        tomllib/TOMLDecodeError: On parse errors.
+    """
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     with path.open("rb") as f:
@@ -157,6 +176,17 @@ def _load_toml(path: Path) -> dict:
 
 
 def _dict_get_nested(data: dict, key: str, default=None):
+    """
+    Fetch a dotted-path value from a nested dict.
+
+    Args:
+        data: Mapping to search.
+        key: Dot-separated key path.
+        default: Fallback if key is absent.
+
+    Returns:
+        Retrieved value or default.
+    """
     parts = key.split(".")
     current_level = data
     for part in parts[:-1]:
@@ -167,6 +197,12 @@ def _dict_get_nested(data: dict, key: str, default=None):
 def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
     """
     Return (use_dummy, ruida_host, ruida_port, ruida_magic)
+
+    Args:
+        cfg_data: Parsed config dictionary.
+
+    Returns:
+        Tuple of (use_dummy_backend, ruida_host, ruida_port, swizzle_magic).
     """
     use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", True)
     host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
@@ -176,6 +212,18 @@ def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
 
 
 def load_config_and_args(args: argparse.Namespace) -> RunConfig:
+    """
+    Merge CLI args with TOML config into a RunConfig.
+
+    Args:
+        args: Parsed argparse namespace.
+
+    Returns:
+        RunConfig containing joint/jig/machine settings and backend choices.
+
+    Raises:
+        SystemExit: On missing/invalid config when explicitly requested.
+    """
     cfg_data: dict = {}
     cfg_path: Path | None = args.config
     used_default = False

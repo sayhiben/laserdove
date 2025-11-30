@@ -30,6 +30,19 @@ class SimulatedLaser(LaserInterface):
         z_positive_moves_bed_up: bool = True,
         air_assist: bool = True,
     ) -> None:
+        """
+        Initialize the simulated laser backend.
+
+        Args:
+            real_time: If True, sleep to approximate motion durations.
+            time_scale: Scale factor applied to real-time sleeps.
+            origin_x: Machine-space origin X (mm).
+            origin_y: Machine-space origin Y (mm).
+            edge_length_mm: Board edge length for centering Y coordinates.
+            movement_only: Force power to 0 when recording cuts.
+            z_positive_moves_bed_up: Sign convention for Z (for metadata).
+            air_assist: Whether air assist is considered on for segments.
+        """
         # Absolute machine-space coordinates (after mapping from board coords).
         self.x = origin_x
         self.y = origin_y
@@ -49,6 +62,12 @@ class SimulatedLaser(LaserInterface):
         self.viewer: Optional[SimulationViewer] = None
 
     def set_rotation(self, rotation_deg: float) -> None:
+        """
+        Update the simulated rotary angle and refresh the viewer.
+
+        Args:
+            rotation_deg: New absolute angle (degrees).
+        """
         self.rotation_deg = rotation_deg
         self.current_board = "pin"
         if self.viewer is not None:
@@ -58,10 +77,27 @@ class SimulatedLaser(LaserInterface):
                 self.viewer.update(self.segments, self.rotation_deg)
 
     def _map_coords(self, x: float, y: float) -> tuple[float, float]:
-        # Incoming board coords are relative to board frame: Y=mid-edge is center.
+        """
+        Map board-frame coordinates to machine-frame coordinates.
+
+        Args:
+            x: Board-frame X (mm).
+            y: Board-frame Y (mm), 0 at mid-edge.
+
+        Returns:
+            Tuple of (machine X, machine Y).
+        """
         return self.origin_x + x, self.origin_y + (y - self.y_center)
 
     def _record_segment(self, new_x: float, new_y: float, is_cut: bool) -> None:
+        """
+        Append a segment to the simulated path and refresh the viewer.
+
+        Args:
+            new_x: Target machine X (mm).
+            new_y: Target machine Y (mm).
+            is_cut: True if this segment represents cutting motion.
+        """
         if new_x == self.x and new_y == self.y:
             return
         logical_z = self.z
@@ -86,6 +122,13 @@ class SimulatedLaser(LaserInterface):
                 self.viewer.update(self.segments, self.rotation_deg)
 
     def _sleep_for_motion(self, distance_mm: float, speed: float | None) -> None:
+        """
+        Sleep to simulate motion time when real_time is enabled.
+
+        Args:
+            distance_mm: Distance traveled (mm).
+            speed: Motion speed (mm/s).
+        """
         if not self.real_time:
             return
         if speed is None or speed <= 0 or self.time_scale <= 0:
@@ -95,6 +138,15 @@ class SimulatedLaser(LaserInterface):
             time.sleep(duration)
 
     def move(self, x=None, y=None, z=None, speed=None) -> None:
+        """
+        Simulate a travel move in board coordinates.
+
+        Args:
+            x: Target board X (mm), None to keep current.
+            y: Target board Y (mm), None to keep current.
+            z: Optional logical Z.
+            speed: Travel speed (mm/s).
+        """
         new_x = self.x if x is None else self.origin_x + x
         new_y = self.y if y is None else self.origin_y + (y - self.y_center)
         if z is not None:
@@ -108,6 +160,14 @@ class SimulatedLaser(LaserInterface):
         log.info("MOVE x=%.3f y=%.3f z=%.3f speed=%s", self.x, self.y, self.z, speed)
 
     def cut_line(self, x, y, speed) -> None:
+        """
+        Simulate a cutting move in board coordinates.
+
+        Args:
+            x: Target board X (mm).
+            y: Target board Y (mm).
+            speed: Cutting speed (mm/s).
+        """
         target_x, target_y = self._map_coords(x, y)
         is_cut = (not self.movement_only) and self.power_pct > 0.0
         distance = math.hypot(target_x - self.x, target_y - self.y)
@@ -118,6 +178,12 @@ class SimulatedLaser(LaserInterface):
         log.info("CUT_LINE x=%.3f y=%.3f speed=%.3f", x, y, speed)
 
     def set_laser_power(self, power_pct) -> None:
+        """
+        Cache a power value for simulated cuts.
+
+        Args:
+            power_pct: Requested power percentage.
+        """
         self.power_pct = 0.0 if self.movement_only else power_pct
         log.info("SET_LASER_POWER %.1f%% (movement_only=%s)", power_pct, self.movement_only)
 
@@ -135,6 +201,7 @@ class SimulatedLaser(LaserInterface):
             self.viewer.update(self.segments, self.rotation_deg)
 
     def show(self) -> None:
+        """Open the viewer and render the accumulated segments."""
         if not self.segments and self.viewer is None:
             log.info("No segments to visualize.")
             return
@@ -148,18 +215,35 @@ class SimulatedLaser(LaserInterface):
 
 
 class SimulatedRotary(RotaryInterface):
+    """Simulated rotary axis that optionally drives a viewer."""
+
     def __init__(
         self,
         visualizer: SimulatedLaser | None = None,
         real_time: bool = False,
         time_scale: float = 1.0,
     ) -> None:
+        """
+        Initialize the simulated rotary axis.
+
+        Args:
+            visualizer: Optional SimulatedLaser to sync rotation with.
+            real_time: If True, sleep to approximate rotation duration.
+            time_scale: Scale factor applied to real-time sleeps.
+        """
         self.angle = 0.0
         self.visualizer = visualizer
         self.real_time = real_time
         self.time_scale = time_scale
 
     def rotate_to(self, angle_deg: float, speed_dps: float) -> None:
+        """
+        Rotate to an absolute angle and update the viewer.
+
+        Args:
+            angle_deg: Target angle (degrees).
+            speed_dps: Rotation speed (deg/sec).
+        """
         log.info("[SIM ROTARY] rotate_to θ=%.3f° at %.1f dps", angle_deg, speed_dps)
         delta_angle = abs(angle_deg - self.angle)
         self.angle = angle_deg

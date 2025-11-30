@@ -9,14 +9,17 @@ from .model import JointParams, TailLayout
 
 def compute_tail_layout(joint_params: JointParams) -> TailLayout:
     """
-    Compute a symmetric layout along Y for tails and pins on the tail board,
-    with Y in [0, L].
+    Compute a symmetric tail/pin layout along Y in [0, L].
 
-    Pattern:   half-pin, (tail, full-pin)*, tail, half-pin
+    Pattern: half-pin, (tail, full-pin)*, tail, half-pin. The caller provides
+    the tail outer width; the pin width is derived so tails and pins fill the
+    edge length exactly.
 
-    User specifies tail_outer_width_mm; we compute full pin width such that:
+    Args:
+        joint_params: Joint geometry describing edge length, tail count, and tail width.
 
-        L = N * tail_outer_width + N * pin_outer_width
+    Returns:
+        TailLayout describing tail centers and the derived pin/tail widths.
     """
     edge_length_mm = joint_params.edge_length_mm
     num_tails = joint_params.num_tails
@@ -57,18 +60,17 @@ def kerf_offset_boundary(
     is_tail_board: bool,  # reserved for future biasing
 ) -> float:
     """
-    Compute Y of the cut centerline for a straight boundary at Y=y_geo.
+    Compute the cut centerline Y for a straight boundary at ``y_geo``.
 
-    - kerf_mm: full kerf width.
-    - clearance_mm: total socket-minus-tail clearance at the face.
-    - keep_on_positive_side:
-        True  -> material to keep is at Y > y_geo
-        False -> material to keep is at Y < y_geo
-    - is_tail_board: not used in v1; allows future biasing.
+    Args:
+        y_geo: Logical boundary location (mm).
+        kerf_mm: Full kerf width (mm).
+        clearance_mm: Total socket-minus-tail clearance at the face (mm).
+        keep_on_positive_side: True if material to keep is Y>y_geo, else Y<y_geo.
+        is_tail_board: Reserved for future biasing; unused in v1.
 
-    We split clearance evenly between tails and pins in v1 by shifting the
-    *kept* boundary by +/- clearance/2 and then placing the cut so the kerf
-    edge lands on that shifted boundary.
+    Returns:
+        Y coordinate (mm) of the cut centerline so the kept edge lands at the requested clearance.
     """
     kerf_radius = kerf_mm / 2.0
     clearance_per_board = clearance_mm / 2.0
@@ -83,16 +85,18 @@ def kerf_offset_boundary(
 
 def z_offset_for_angle(y_b_mm: float, angle_deg: float, axis_to_origin_mm: float) -> float:
     """
-    Compute Z offset (mm) required to keep the top surface point at board
-    coordinate Y_b in focus, assuming:
+    Compute the Z offset needed to keep the top surface at ``y_b_mm`` in focus when rotated.
 
-      - We focused at Y_b = 0, θ = 0, with top-surface radius axis_to_origin_mm from axis.
-      - Y_b is measured along the edge from the mid-edge (job origin), so
-        Y_b = 0 corresponds to the mid-edge.
+    Assumes focus was set at ``y_b_mm=0`` and ``angle_deg=0`` with the surface radius
+    ``axis_to_origin_mm`` from the rotary axis.
 
-    Result is "bed move" relative to the 0° focus height.
-    Sign convention:
-      Positive means "move bed up by this amount" if machine Z+ is "bed up".
+    Args:
+        y_b_mm: Board Y coordinate from the mid-edge origin (mm).
+        angle_deg: Absolute rotary angle in degrees.
+        axis_to_origin_mm: Radius from rotary axis to the top surface at 0° (mm).
+
+    Returns:
+        Signed Z delta (mm) to move the bed; positive means bed-up when Z+ is bed-up.
     """
     # Use the magnitude of the tilt; the sign of y_b already encodes which edge
     # is farther/closer to the head at a given rotation.

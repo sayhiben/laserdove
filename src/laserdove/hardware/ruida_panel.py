@@ -35,6 +35,17 @@ class RuidaPanelInterface:
         socket_factory=socket.socket,
         dry_run: bool = False,
     ) -> None:
+        """
+        Create a panel-port interface for jogging/basic actions.
+
+        Args:
+            host: Controller hostname or IP.
+            port: Panel UDP port (default 50207).
+            source_port: Local UDP port to bind.
+            timeout_s: Socket timeout for ACK wait.
+            socket_factory: Optional socket factory (for tests).
+            dry_run: If True, log commands without sending.
+        """
         self.host = host
         self.port = port
         self.source_port = source_port
@@ -44,6 +55,12 @@ class RuidaPanelInterface:
         self.dry_run = dry_run
 
     def _ensure_socket(self) -> None:
+        """
+        Lazily create/bind the UDP socket and perform a best-effort handshake.
+
+        Returns:
+            None. Updates ``self.sock`` or sets dry-run on failure.
+        """
         if self.dry_run:
             return
         if self.sock is not None:
@@ -73,6 +90,12 @@ class RuidaPanelInterface:
     def send_command(self, cmd: bytes) -> None:
         """
         Send an unswizzled panel command and expect a single-byte ACK (0xCC).
+
+        Args:
+            cmd: Raw command bytes to send.
+
+        Returns:
+            None.
         """
         if self.dry_run:
             log.info("[RUDA PANEL DRY] %s", cmd.hex(" "))

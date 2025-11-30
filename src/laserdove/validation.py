@@ -7,6 +7,15 @@ from .model import JointParams, JigParams, MachineParams, TailLayout
 
 
 def validate_joint_params(joint_params: JointParams) -> List[str]:
+    """
+    Validate joint geometry and kerf parameters.
+
+    Args:
+        joint_params: Joint parameter dataclass.
+
+    Returns:
+        List of error strings; empty if valid.
+    """
     errors: List[str] = []
 
     if joint_params.num_tails <= 0:
@@ -37,6 +46,16 @@ def validate_joint_params(joint_params: JointParams) -> List[str]:
 
 
 def validate_tail_layout(joint_params: JointParams, layout: TailLayout) -> List[str]:
+    """
+    Validate derived tail layout against joint limits.
+
+    Args:
+        joint_params: Joint parameter dataclass.
+        layout: Tail layout to check.
+
+    Returns:
+        List of error strings; empty if valid.
+    """
     errors: List[str] = []
 
     if not layout.tail_centers_y:
@@ -58,6 +77,15 @@ def validate_tail_layout(joint_params: JointParams, layout: TailLayout) -> List[
 
 
 def validate_machine_limits(machine_params: MachineParams) -> List[str]:
+    """
+    Validate machine speed/power limits.
+
+    Args:
+        machine_params: Machine parameter dataclass.
+
+    Returns:
+        List of error strings; empty if valid.
+    """
     errors: List[str] = []
 
     if machine_params.cut_speed_tail_mm_s <= 0 or machine_params.cut_speed_pin_mm_s <= 0:
@@ -79,6 +107,15 @@ def validate_machine_limits(machine_params: MachineParams) -> List[str]:
 
 
 def validate_jig(jig_params: JigParams) -> List[str]:
+    """
+    Validate jig geometry.
+
+    Args:
+        jig_params: Jig parameter dataclass.
+
+    Returns:
+        List of error strings; empty if valid.
+    """
     errors: List[str] = []
     if jig_params.axis_to_origin_mm <= 0:
         errors.append("axis_to_origin_mm must be > 0 (distance from axis to job origin)")
@@ -91,6 +128,18 @@ def validate_all(
     machine_params: MachineParams,
     layout: TailLayout,
 ) -> List[str]:
+    """
+    Run all validation checks and collect errors.
+
+    Args:
+        joint_params: Joint parameter dataclass.
+        jig_params: Jig parameter dataclass.
+        machine_params: Machine parameter dataclass.
+        layout: Tail layout to validate.
+
+    Returns:
+        Combined list of error strings.
+    """
     errors: List[str] = []
     errors += validate_joint_params(joint_params)
     errors += validate_tail_layout(joint_params, layout)

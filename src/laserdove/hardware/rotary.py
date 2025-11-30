@@ -14,6 +14,13 @@ class LoggingStepperDriver:
     """No-op driver that just logs step intents."""
 
     def move_steps(self, steps: int, step_rate_hz: float) -> None:
+        """
+        Log a step request without hardware output.
+
+        Args:
+            steps: Number of steps to move (sign indicates direction).
+            step_rate_hz: Step pulse rate in Hz.
+        """
         log.info("[ROTARY DRV] steps=%d rate=%.1fHz", steps, step_rate_hz)
 
 
@@ -38,6 +45,21 @@ class GPIOStepperDriver:
         invert_dir: bool = False,
         pin_mode: str = "BOARD",
     ) -> None:
+        """
+        Initialize GPIO pins for a STEP/DIR external driver.
+
+        Args:
+            step_pin: Negative/active step pin (if using differential pairs).
+            dir_pin: Negative/active direction pin.
+            step_pin_pos: Positive step pin (held static if step_pin used).
+            dir_pin_pos: Positive direction pin (held static if dir_pin used).
+            enable_pin: Optional enable pin (active low on many drivers).
+            alarm_pin: Optional alarm input pin.
+            step_high_s: Duration to hold step high.
+            step_low_s: Duration to hold step low.
+            invert_dir: Invert direction polarity.
+            pin_mode: 'BCM' or 'BOARD' numbering.
+        """
         try:
             import RPi.GPIO as GPIO  # type: ignore
         except Exception as e:  # pragma: no cover - hardware only
@@ -81,6 +103,16 @@ class GPIOStepperDriver:
             GPIO.setup(alarm_pin, GPIO.IN)
 
     def move_steps(self, steps: int, step_rate_hz: float) -> None:
+        """
+        Emit step pulses at the requested rate.
+
+        Args:
+            steps: Number of steps to move (sign sets direction).
+            step_rate_hz: Pulse rate in Hz; capped and defaulted if <= 0.
+
+        Raises:
+            RuntimeError: If the driver alarm input is active.
+        """
         GPIO = self.GPIO  # local alias
         if steps == 0:
             return
@@ -150,6 +182,15 @@ class RealRotary(RotaryInterface):
         driver: Optional[object] = None,
         max_step_rate_hz: float | None = 500.0,
     ) -> None:
+        """
+        Initialize the real rotary axis controller.
+
+        Args:
+            steps_per_rev: Full steps per revolution (pre-microstep).
+            microsteps: Microstep setting of the driver.
+            driver: Stepper driver object with move_steps.
+            max_step_rate_hz: Optional cap on step rate.
+        """
         self.angle = 0.0
         self.steps_per_rev = steps_per_rev
         self.microsteps = microsteps
@@ -163,6 +204,13 @@ class RealRotary(RotaryInterface):
         )
 
     def rotate_to(self, angle_deg: float, speed_dps: float) -> None:
+        """
+        Rotate to an absolute angle, issuing step pulses when possible.
+
+        Args:
+            angle_deg: Target angle in degrees.
+            speed_dps: Desired rotation speed in degrees/sec.
+        """
         prev_angle = self.angle
         delta = angle_deg - prev_angle
         log.info("[ROTARY] rotate_to θ=%.3f° (Δ=%.3f°) at %.1f dps", angle_deg, delta, speed_dps)

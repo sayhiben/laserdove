@@ -27,10 +27,15 @@ def plan_tail_board(
     tail_layout: TailLayout,
 ) -> List[Command]:
     """
-    v1 tail planner:
-      - Treat each pin pocket as a trapezoid from X=0..tail_depth_mm, widening by dovetail angle.
-      - Cut its outline at kerf-offset Y positions on the outer face (X=0) and expand inward.
-      - Caller is responsible for board positioning and z_zero_tail_mm.
+    Plan tail cuts as trapezoids widened by the dovetail angle.
+
+    Args:
+        joint_params: Joint geometry (tails, kerf, clearances).
+        machine_params: Machine/process parameters (speeds, powers, Z zeros).
+        tail_layout: Tail spacing derived from geometry.
+
+    Returns:
+        Ordered Command list to cut all tails and return to origin.
     """
     commands: List[Command] = []
 
@@ -142,13 +147,18 @@ def compute_pin_plan(
     tail_layout: TailLayout,
 ) -> PinPlan:
     """
-    Compute a simple pin plan:
+    Compute pin flank rotations, Z offsets, and boundaries.
 
-    - Pins are the gaps between tails (plus half-pins at ends).
-    - Each pin has two sides:
-        LEFT  uses rotation_zero_deg - β
-        RIGHT uses rotation_zero_deg + β
-    - Z focus uses mid-thickness reference (delta-radius = 0 for v1).
+    Pins are the gaps between tails (plus half-pins at ends). Each pin has two
+    sides: LEFT at rotation_zero_deg - β and RIGHT at rotation_zero_deg + β.
+
+    Args:
+        joint_params: Joint geometry and kerf/clearance parameters.
+        jig_params: Rotary geometry and speed hints.
+        tail_layout: Previously computed tail spacing.
+
+    Returns:
+        PinPlan enumerating all pin flanks with rotations and Z offsets.
     """
     num_tails = joint_params.num_tails
     pin_outer_width = tail_layout.pin_outer_width
@@ -243,6 +253,15 @@ def plan_pin_board(
             set Z
             move XY to kerf-adjusted Y at X=0
             cut a closed rectangle spanning half the gap to the neighboring pin.
+
+    Args:
+        joint_params: Joint geometry and kerf/clearance parameters.
+        jig_params: Rotary geometry and speed hints.
+        machine_params: Machine/process parameters (speeds, powers, Z zeros).
+        pin_plan: Pin flank plan from compute_pin_plan.
+
+    Returns:
+        Ordered Command list for cutting all pins and returning to origin.
     """
     commands: List[Command] = []
 

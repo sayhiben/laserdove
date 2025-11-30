@@ -9,7 +9,17 @@ log = logging.getLogger(__name__)
 
 
 class SimulationViewer:
+    """Tkinter-based viewer for simulated laser paths and rotary position."""
+
     def __init__(self, width: int = 960, height: int = 540, padding: int = 20) -> None:
+        """
+        Initialize the viewer with canvas dimensions.
+
+        Args:
+            width: Canvas width in pixels.
+            height: Canvas height in pixels.
+            padding: Padding around viewports in pixels.
+        """
         self.width = width
         self.height = height
         self.padding = padding
@@ -19,6 +29,12 @@ class SimulationViewer:
         self._canvas = None
 
     def _reset_default_root(self, tk_mod) -> None:
+        """
+        Destroy any implicit Tk default root to avoid reuse across runs.
+
+        Args:
+            tk_mod: Imported tkinter module.
+        """
         try:
             if getattr(tk_mod, "_default_root", None) is not None:
                 tk_mod._default_root.destroy()  # type: ignore[attr-defined]
@@ -27,6 +43,7 @@ class SimulationViewer:
             pass
 
     def open(self) -> None:
+        """Create the Tk window and canvas if not already present."""
         try:
             import tkinter as tk
         except Exception as exc:  # pragma: no cover - UI import guard
@@ -66,6 +83,7 @@ class SimulationViewer:
         self._root.protocol("WM_DELETE_WINDOW", on_close)
 
     def close(self) -> None:
+        """Destroy the Tk window and clear cached handles."""
         try:
             if self._root is not None:
                 self._root.destroy()
@@ -75,6 +93,15 @@ class SimulationViewer:
         self._canvas = None
 
     def _extents(self, segments: List[Dict[str, float | bool]]) -> Optional[Tuple[float, float, float, float]]:
+        """
+        Compute bounding box extents from a list of segments.
+
+        Args:
+            segments: Sequence of segment dicts with x0/x1/y0/y1 keys.
+
+        Returns:
+            Tuple of (min_x, max_x, min_y, max_y) or None if no segments.
+        """
         if not segments:
             return None
         min_x = min(min(seg["x0"], seg["x1"]) for seg in segments)
@@ -84,6 +111,16 @@ class SimulationViewer:
         return min_x, max_x, min_y, max_y
 
     def _scale_candidate(self, extents: Optional[Tuple[float, float, float, float]], viewport: Tuple[float, float, float, float]) -> Optional[float]:
+        """
+        Compute a viewport scale factor for the given extents.
+
+        Args:
+            extents: Bounding box tuple or None.
+            viewport: Canvas viewport rectangle (x0, y0, x1, y1).
+
+        Returns:
+            Scale factor to fit extents inside viewport, or None if no extents.
+        """
         if extents is None:
             return None
         min_x, max_x, min_y, max_y = extents
@@ -102,6 +139,19 @@ class SimulationViewer:
         extents: Tuple[float, float, float, float],
         viewport: Tuple[float, float, float, float],
     ) -> tuple[float, float]:
+        """
+        Convert logical coordinates to canvas coordinates.
+
+        Args:
+            x_val: Logical X value.
+            y_val: Logical Y value.
+            scale: Pixels per logical unit.
+            extents: Overall bounding box.
+            viewport: Canvas viewport rectangle (x0, y0, x1, y1).
+
+        Returns:
+            Canvas (x, y) tuple.
+        """
         min_x, max_x, min_y, max_y = extents
         vx0, vy0, vx1, vy1 = viewport
         avail_w = vx1 - vx0 - 2 * self.padding
@@ -115,6 +165,17 @@ class SimulationViewer:
         return cx, cy
 
     def _color_for_z(self, z_val: float, z_min: float, z_max: float) -> str:
+        """
+        Map a Z value to a color gradient.
+
+        Args:
+            z_val: Z value to map.
+            z_min: Minimum Z in range.
+            z_max: Maximum Z in range.
+
+        Returns:
+            Hex color string.
+        """
         if z_max - z_min < 1e-6:
             return "#1e88e5"
         t = (z_val - z_min) / (z_max - z_min)
@@ -129,6 +190,14 @@ class SimulationViewer:
         viewport: Tuple[float, float, float, float],
         top_offset_px: Optional[float] = None,
     ) -> None:
+        """
+        Draw a vertical Z gauge showing recent pin cut depths.
+
+        Args:
+            pin_segments: Segments for the pin board.
+            viewport: Canvas viewport for the pin panel.
+            top_offset_px: Optional offset to align under the rotary indicator.
+        """
         if self._canvas is None:
             return
         z_values = [seg["z"] for seg in pin_segments if seg["is_cut"]]
@@ -184,6 +253,17 @@ class SimulationViewer:
         extents: Optional[Tuple[float, float, float, float]],
         annotate_z: bool = False,
     ) -> None:
+        """
+        Draw segments within a viewport, optionally colorized by Z.
+
+        Args:
+            segments: Segment dictionaries with endpoints and metadata.
+            viewport: Canvas rectangle to draw into.
+            use_z_color: If True, color cuts based on Z value.
+            common_scale: Scaling factor for both tail/pin views.
+            extents: Bounding box for scaling; required to draw.
+            annotate_z: If True, label cuts with Z values.
+        """
         if self._canvas is None or not segments or extents is None:
             return
         z_values = [seg.get("logical_z", seg["z"]) for seg in segments if seg["is_cut"]]
@@ -205,6 +285,13 @@ class SimulationViewer:
                 self._canvas.create_text(mx, my - 6, text=f"{z_val:.2f}", fill=color, font=("Arial", 8), anchor="s")
 
     def _draw_rotary_indicator(self, viewport: Tuple[float, float, float, float], rotation_deg: float) -> None:
+        """
+        Draw a small rotary indicator dial in the given viewport.
+
+        Args:
+            viewport: Canvas rectangle to draw into.
+            rotation_deg: Current rotary angle.
+        """
         if self._canvas is None:
             return
         vx0, vy0, vx1, vy1 = viewport
@@ -219,6 +306,7 @@ class SimulationViewer:
         self._canvas.create_text(cx, cy + radius + 12, text=f"θ={rotation_deg:.1f}°", font=("Arial", 9))
 
     def _draw_legends(self) -> None:
+        """Render a legend for rotation colors used in the view."""
         if self._canvas is None:
             return
         legend_y = self.padding / 2
@@ -235,6 +323,16 @@ class SimulationViewer:
         y_center: Optional[float],
         common_scale: float,
     ) -> None:
+        """
+        Overlay origin and midline guides on a viewport.
+
+        Args:
+            viewport: Canvas rectangle to draw into.
+            extents: Bounding box for scaling.
+            origin: Optional logical origin point.
+            y_center: Optional board midline Y.
+            common_scale: Shared scale factor.
+        """
         if self._canvas is None or extents is None:
             return
         vx0, vy0, vx1, vy1 = viewport
@@ -251,6 +349,15 @@ class SimulationViewer:
             self._canvas.create_text(vx0 + 6, cyp - 6, text="Y mid", font=("Arial", 9), anchor="w")
 
     def render(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
+        """
+        Render the full tail/pin view for the given segments and angle.
+
+        Args:
+            segments: All segments to visualize.
+            rotation_deg: Current rotary angle.
+            origin: Optional logical origin marker.
+            y_center: Optional board midline.
+        """
         if self._root is None or self._canvas is None:
             return
 
@@ -310,6 +417,15 @@ class SimulationViewer:
         self._draw_legends()
 
     def update(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
+        """
+        Incrementally update the canvas without entering the Tk mainloop.
+
+        Args:
+            segments: All segments to visualize.
+            rotation_deg: Current rotary angle.
+            origin: Optional logical origin marker.
+            y_center: Optional board midline.
+        """
         if self._root is None:
             return
         self.render(segments, rotation_deg, origin=origin, y_center=y_center)
@@ -320,6 +436,15 @@ class SimulationViewer:
             pass
 
     def mainloop(self, segments: List[Dict[str, float | bool]], rotation_deg: float, *, origin: Optional[Tuple[float, float]] = None, y_center: Optional[float] = None) -> None:
+        """
+        Block in the Tk mainloop while rendering the provided segments.
+
+        Args:
+            segments: All segments to visualize.
+            rotation_deg: Current rotary angle.
+            origin: Optional logical origin marker.
+            y_center: Optional board midline.
+        """
         if self._root is None:
             return
         try:
