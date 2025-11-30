@@ -51,8 +51,16 @@ class _RDJobBuilder:
     # ---------------- Encoding helpers ----------------
     @staticmethod
     def encode_number(num: float, length: int = 5, scale: int = 1000) -> bytes:
+        """
+        Encode a (possibly signed) number into the Ruida 7-bit chunked format.
+        Negative values are represented in two's complement so centered board
+        coordinates (e.g., Y around 0) survive RD export instead of clamping to 0.
+        """
         res = []
-        nn = int(num * scale)
+        nn = int(round(num * scale))
+        # Mirror encode_abscoord_mm_signed: use 32-bit two's complement for negatives.
+        if nn < 0:
+            nn &= 0xFFFFFFFF
         while nn > 0:
             res.append(nn & 0x7F)
             nn >>= 7
