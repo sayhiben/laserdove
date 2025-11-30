@@ -58,12 +58,13 @@ def decode_bits(raw: int) -> str:
     return " ".join(parts)
 
 
-def poll_status_once(laser: RuidaLaser, label: str) -> None:
+def poll_status_once(laser: RuidaLaser, label: str) -> bool:
     state = laser._read_machine_state()
     if state:
         LOG.info("[%s] status %s x=%.3f y=%.3f", label, decode_bits(state.status_bits), state.x_mm, state.y_mm)
-    else:
-        LOG.info("[%s] status: timeout/none", label)
+        return True
+    LOG.info("[%s] status: timeout/none", label)
+    return False
 
 
 def run_with_capture(
@@ -135,9 +136,9 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=50200, help="Ruida controller UDP port (default 50200)")
     ap.add_argument("--source-port", type=int, default=40200, help="Local UDP source port (default 40200)")
     ap.add_argument("--status-source-port", type=int, help="Local UDP source port for status polling (default source-port+1 when dual-socket)")
-    ap.add_argument("--dual-socket", dest="dual_socket", action="store_true", help="Use a dedicated socket for status polling to avoid reply mix-ups (default: on)")
-    ap.add_argument("--single-socket", dest="dual_socket", action="store_false", help="Force reuse of a single socket for both actions and polling")
-    ap.set_defaults(dual_socket=True)
+    ap.add_argument("--dual-socket", dest="dual_socket", action="store_true", help="Use a dedicated socket for status polling to avoid reply mix-ups")
+    ap.add_argument("--single-socket", dest="dual_socket", action="store_false", help="Force reuse of a single socket for both actions and polling (default)")
+    ap.set_defaults(dual_socket=False)
     ap.add_argument(
         "--run-actions",
         action="store_true",
@@ -185,11 +186,28 @@ def main() -> None:
             magic=args.magic,
             air_assist=True,
         )
+    LOG.info(
+        "Probing host=%s port=%d source_port=%d status_port=%d dual_socket=%s",
+        args.host,
+        args.port,
+        args.source_port,
+        status_source_port,
+        use_dual,
+    )
 
     # Baseline polling only
+    baseline_results = []
     for i in range(args.baseline_polls):
-        poll_status_once(poll_laser, f"baseline#{i+1}")
+        baseline_results.append(poll_status_once(poll_laser, f"baseline#{i+1}"))
         time.sleep(args.interval)
+
+    if use_dual and baseline_results and not any(baseline_results):
+        LOG.warning("Dual-socket baseline polling timed out; falling back to single-socket on source_port=%d", args.source_port)
+        poll_laser = action_laser
+        use_dual = False
+        for i in range(args.baseline_polls):
+            poll_status_once(poll_laser, f"baseline-single#{i+1}")
+            time.sleep(args.interval)
 
     if not args.run_actions:
         LOG.info("Actions skipped (pass --run-actions to enable movement-only probes).")
