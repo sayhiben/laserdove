@@ -13,7 +13,6 @@ def test_execute_commands_updates_state():
         Command(type=CommandType.MOVE, x=1.0, y=2.0, z=3.0, speed_mm_s=100.0),
         Command(type=CommandType.CUT_LINE, x=5.0, y=2.0, speed_mm_s=10.0),
         Command(type=CommandType.ROTATE, angle_deg=15.0, speed_mm_s=5.0),
-        Command(type=CommandType.DWELL, dwell_ms=1),
     ]
 
     execute_commands(commands, laser, rotary)

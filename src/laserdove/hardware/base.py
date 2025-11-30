@@ -99,17 +99,11 @@ def execute_commands(
             raise ValueError("ROTATE without angle_deg")
         rotary.rotate_to(command.angle_deg, command.speed_mm_s or 0.0)
 
-    def handle_dwell(command: Command) -> None:
-        if command.dwell_ms is None:
-            return
-        time.sleep(command.dwell_ms / 1000.0)
-
     dispatch: Dict[CommandType, Callable[[Command], None]] = {
         CommandType.MOVE: handle_move,
         CommandType.CUT_LINE: handle_cut_line,
         CommandType.SET_LASER_POWER: handle_set_laser_power,
         CommandType.ROTATE: handle_rotate,
-        CommandType.DWELL: handle_dwell,
     }
 
     try:

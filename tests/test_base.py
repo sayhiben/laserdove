@@ -62,19 +62,14 @@ def test_dummy_laser_updates_state_and_logs():
     assert laser.power == 55.0
 
 
-def test_execute_commands_runs_all_handlers_and_cleans(monkeypatch):
+def test_execute_commands_runs_all_handlers_and_cleans():
     laser = TrackingLaser()
     rotary = TrackingRotary()
-    slept = {}
-    monkeypatch.setattr("laserdove.hardware.base.time.sleep", lambda t: slept.setdefault("t", t))
-
     commands = [
         Command(type=CommandType.MOVE, x=0.0, y=0.0, z=0.0, speed_mm_s=100.0, comment="start"),
         Command(type=CommandType.SET_LASER_POWER, power_pct=10.0),
         Command(type=CommandType.CUT_LINE, x=1.0, y=1.0, speed_mm_s=5.0),
         Command(type=CommandType.ROTATE, angle_deg=45.0, speed_mm_s=30.0),
-        Command(type=CommandType.DWELL, dwell_ms=50),
-        Command(type=CommandType.DWELL, dwell_ms=None),  # cover early return
     ]
     execute_commands(commands, laser, rotary)
 
@@ -82,7 +77,6 @@ def test_execute_commands_runs_all_handlers_and_cleans(monkeypatch):
     assert ("power", 10.0) in laser.calls
     assert ("cut", 1.0, 1.0, 5.0) in laser.calls
     assert ("rotate", 45.0, 30.0) in rotary.calls
-    assert slept["t"] == 0.05  # dwell_ms converted to seconds
     assert laser.cleaned is True
     assert rotary.cleaned is True
 

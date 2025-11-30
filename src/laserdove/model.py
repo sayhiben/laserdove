@@ -94,7 +94,6 @@ class CommandType(Enum):
     CUT_LINE = auto()
     SET_LASER_POWER = auto()
     ROTATE = auto()
-    DWELL = auto()
 
 
 @dataclass
@@ -107,5 +106,4 @@ class Command:
     angle_deg: Optional[float] = None
     speed_mm_s: Optional[float] = None
     power_pct: Optional[float] = None
-    dwell_ms: Optional[int] = None
     comment: str = ""
