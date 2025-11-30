@@ -860,6 +860,19 @@ class RuidaLaser:
                     last_set_z = target_z
                     block_z = target_z
 
+        def set_z_if_needed(target_z: float | None, *, update_origin: bool = False) -> None:
+            """Always apply commanded Z moves, even in travel-only runs."""
+            if target_z is None:
+                return
+            nonlocal current_z, last_set_z, origin_z, origin_z_from_command
+            if current_z is None or not math.isclose(target_z, current_z, abs_tol=1e-6):
+                self.move(z=target_z, speed=self.z_speed_mm_s)
+            current_z = target_z
+            last_set_z = current_z
+            if update_origin and not origin_z_from_command:
+                origin_z = current_z
+                origin_z_from_command = True
+
         def flush_block(block_moves: List[RDMove], _block_z: float | None) -> None:
             if not block_moves:
                 return
@@ -892,14 +905,7 @@ class RuidaLaser:
                 if cmd.type.name == "MOVE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
-                            self.move(z=cmd.z, speed=self.z_speed_mm_s)
-                        current_z = cmd.z
-                        last_set_z = current_z
-                        if not origin_z_from_command:
-                            origin_z = current_z
-                            origin_z_from_command = True
+                    set_z_if_needed(cmd.z, update_origin=True)
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                         if origin_speed is None:
@@ -914,11 +920,7 @@ class RuidaLaser:
                 if cmd.type.name == "CUT_LINE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
-                            self.move(z=cmd.z, speed=self.z_speed_mm_s)
-                        current_z = cmd.z
-                        last_set_z = current_z
+                    set_z_if_needed(cmd.z)
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                     if current_speed is None:
