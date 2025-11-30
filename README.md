@@ -160,9 +160,11 @@ Runs against the simulated backend and opens a Tkinter view of moves/cuts. Motio
 python3 -m laserdove.novadovetail --config example-config.toml --mode both --simulate
 ```
 
-#### RD export
+#### RD export and inspection
 
 - `--save-rd-dir /path/to/out` writes swizzled `.rd` jobs to disk for inspection; works with real or dry-run Ruida modes.
+- Decode RD files in text (bbox, Z offsets, speeds): `PYTHONPATH=src:. .venv/bin/python tools/rd_parser.py rd_out/job_001.rd`
+- Visualize RD files directly in the Tk viewer: `PYTHONPATH=src:. .venv/bin/python tools/rd_visualize.py rd_out/job_001.rd --edge-length-mm 100 --rotation-deg 0 --board tail`
 
 #### Options
 

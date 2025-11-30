@@ -42,6 +42,7 @@
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
 - RD File Inspection
   - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
+  - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or visualize with `tools/rd_visualize.py` to compare the emitted Ruida commands against the planned moves.
 
 ## Reference Materials (do not import)
 - `reference/` holds vendor and research docs only; never import them into code, use for background.

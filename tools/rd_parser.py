@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import math
 from typing import List, Tuple
 
 from laserdove.hardware.ruida_common import unswizzle
@@ -30,10 +31,36 @@ class RuidaParser:
         self._prio = 0
         self._z_offsets: List[tuple[int, float, bytes, int]] = []
         self._current_pos: int = -1
+        self._segments: List[dict] = []
+        self._cursor: List[float] = [0.0, 0.0]
+        self._current_z: float = 0.0
         if file and buf is None:
             with open(file, "rb") as fd:
                 raw = fd.read()
             self._buf = self.unscramble_bytes(raw)
+
+    # ---------------- Segment helpers ----------------
+    def _emit_segment(self, x: float, y: float, *, is_cut: bool) -> None:
+        if not self._segments:
+            last_x, last_y = self._cursor
+        else:
+            last = self._segments[-1]
+            last_x, last_y = last["x1"], last["y1"]
+        if math.isclose(last_x, x, abs_tol=1e-9) and math.isclose(last_y, y, abs_tol=1e-9):
+            self._cursor = [x, y]
+            return
+        self._segments.append(
+            {
+                "x0": last_x,
+                "y0": last_y,
+                "x1": x,
+                "y1": y,
+                "is_cut": is_cut,
+                "z": self._current_z,
+                "logical_z": self._current_z,
+            }
+        )
+        self._cursor = [x, y]
 
     # ---------------- Basic helpers ----------------
     def unscramble_bytes(self, data: bytes) -> bytes:
@@ -263,6 +290,7 @@ class RuidaParser:
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self.new_path().append([x, y])
+        self._emit_segment(x, y, is_cut=False)
         return off, f"t_move_abs({x:.3f}mm, {y:.3f}mm)"
 
     def t_move_rel(self, n: int, desc=None):
@@ -270,24 +298,28 @@ class RuidaParser:
         off, dy = self.arg_rel(off)
         xy = self.relative_xy(dx, dy)
         self.new_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=False)
         return off, f"t_move_rel({dx:.3f}mm, {dy:.3f}mm)"
 
     def t_move_horiz(self, n: int, desc=None):
         off, dx = self.arg_rel()
         xy = self.relative_xy(dx, 0)
         self.new_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=False)
         return off, f"t_move_horiz({dx:.3f}mm)"
 
     def t_move_vert(self, n: int, desc=None):
         off, dy = self.arg_rel()
         xy = self.relative_xy(0, dy)
         self.new_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=False)
         return off, f"t_move_vert({dy:.3f}mm)"
 
     def t_cut_abs(self, n: int, desc=None):
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self.get_path().append([x, y])
+        self._emit_segment(x, y, is_cut=True)
         return off, f"t_cut_abs({x:.3f}mm, {y:.3f}mm)"
 
     def t_cut_rel(self, n: int, desc=None):
@@ -295,24 +327,28 @@ class RuidaParser:
         off, dy = self.arg_rel(off)
         xy = self.relative_xy(dx, dy)
         self.get_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=True)
         return off, f"t_cut_rel({dx:.3f}mm, {dy:.3f}mm)"
 
     def t_cut_horiz(self, n: int, desc=None):
         off, dx = self.arg_rel()
         xy = self.relative_xy(dx, 0)
         self.get_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=True)
         return off, f"t_cut_horiz({dx:.3f}mm)"
 
     def t_cut_vert(self, n: int, desc=None):
         off, dy = self.arg_rel()
         xy = self.relative_xy(0, dy)
         self.get_path().append(xy)
+        self._emit_segment(xy[0], xy[1], is_cut=True)
         return off, f"t_cut_vert({dy:.3f}mm)"
 
     def t_z_offset_8003(self, n: int, desc=None):
         raw = self._buf[:5]
         val = self.decode_number(raw)
         self._z_offsets.append((self._current_pos, val, raw, self._prio))
+        self._current_z = val
         return 5, f"Z_Offset_80_03({val:.3f}mm raw={raw.hex(' ')})"
 
     # ---------------- Decoder table ----------------
