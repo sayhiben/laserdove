@@ -716,11 +716,11 @@ class RuidaLaser:
             return
         job_has_power = any(mv.is_cut and mv.power_pct > 0.0 for mv in moves)
         require_busy_transition = require_busy_transition and job_has_power
+        start_z = self.z
         job_z_offset_mm = None
-        if job_z_mm is not None:
-            delta = job_z_mm - self.z
-            if abs(delta) > 1e-6:
-                job_z_offset_mm = delta if self.z_positive_moves_bed_up else -delta
+        if job_z_mm is not None and start_z is not None:
+            delta = job_z_mm - start_z
+            job_z_offset_mm = delta if self.z_positive_moves_bed_up else -delta
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
@@ -747,7 +747,7 @@ class RuidaLaser:
             path.write_bytes(swizzled)
             log.info("[RUIDA UDP] Saved RD job to %s", path)
         log.info("[RUIDA UDP] Uploading RD job with %d moves%s",
-                 len(moves), f" z={job_z_mm:.3f}" if job_z_mm is not None else "")
+                 len(moves), f" z={job_z_offset_mm:.3f}" if job_z_offset_mm is not None else "")
         if self.dry_run:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._send_packets(payload)
@@ -756,6 +756,8 @@ class RuidaLaser:
             require_busy_transition=require_busy_transition,
             min_stable_s=self.min_stable_s,
         )
+        if job_z_mm is not None:
+            self.z = job_z_mm
 
     def run_sequence_with_rotary(self, commands: Iterable, rotary, *, travel_only: bool = False, edge_length_mm: float | None = None) -> None:
         """
@@ -860,11 +862,6 @@ class RuidaLaser:
             if not block_moves:
                 return
             job_z = block_z if block_z is not None else last_set_z
-            if job_z is not None and not self.dry_run:
-                try:
-                    self.move(z=job_z, speed=self.z_speed_mm_s)
-                except Exception:
-                    log.debug("Pre-RD Z move failed; continuing to embed Z in RD", exc_info=True)
             self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
 
         block: List[RDMove] = []
