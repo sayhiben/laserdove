@@ -292,6 +292,10 @@ class RuidaLaser:
         if self.dry_run:
             return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
 
+        effective_min_stable_s = min_stable_s
+        if self.movement_only:
+            effective_min_stable_s = min(min_stable_s, 1.0)
+
         last_state: Optional[RuidaLaser.MachineState] = None
         baseline_bits: Optional[int] = None
         baseline_pos: dict[str, float] = {}
@@ -323,17 +327,18 @@ class RuidaLaser:
                 part_end = bool(state.status_bits & self.STATUS_BIT_PART_END)
                 move_low = bool(state.status_bits & 0x10)  # lower-byte IsMove per EduTech wiki
                 run_low = bool(state.status_bits & 0x01)  # lower-byte JobRunning bit on some firmwares
-                log.debug(
-                    "[RUIDA UDP] Status poll %d/%d: raw=0x%08X low_move=%s low_run=%s part_end=%s stable_counter=%d saw_activity=%s",
-                    attempt,
-                    max_attempts,
-                    state.status_bits,
-                    move_low,
-                    run_low,
-                    part_end,
-                    stable_counter,
-                    saw_activity,
-                )
+                if attempt <= 2 or attempt % 10 == 1:
+                    log.debug(
+                        "[RUIDA UDP] Status poll %d/%d: raw=0x%08X low_move=%s low_run=%s part_end=%s stable_counter=%d saw_activity=%s",
+                        attempt,
+                        max_attempts,
+                        state.status_bits,
+                        move_low,
+                        run_low,
+                        part_end,
+                        stable_counter,
+                        saw_activity,
+                    )
                 positions = {
                     "x": state.x_mm,
                     "y": state.y_mm,
@@ -399,7 +404,7 @@ class RuidaLaser:
                     )
                     return state
 
-                if not require_busy_transition and stable_counter >= stable_polls and stable_elapsed >= min_stable_s:
+                if not require_busy_transition and stable_counter >= stable_polls and stable_elapsed >= effective_min_stable_s:
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
@@ -418,7 +423,7 @@ class RuidaLaser:
                     )
                     return state
 
-                if not require_busy_transition and stable_counter >= stable_target and stable_elapsed >= min_stable_s:
+                if not require_busy_transition and stable_counter >= stable_target and stable_elapsed >= effective_min_stable_s:
                     if state.x_mm is not None:
                         self.x = state.x_mm
                     if state.y_mm is not None:
@@ -440,7 +445,7 @@ class RuidaLaser:
                 if (
                     stable_counter >= stable_target
                     and (saw_activity or move_low or run_low or part_end)
-                    and stable_elapsed >= min_stable_s
+                    and stable_elapsed >= effective_min_stable_s
                 ):
                     if state.x_mm is not None:
                         self.x = state.x_mm
@@ -460,12 +465,13 @@ class RuidaLaser:
                         stable_elapsed,
                     )
                     return state
-                if stable_counter >= stable_target and stable_elapsed < min_stable_s:
-                    log.debug(
-                        "[RUIDA UDP] Stable but waiting for %.2fs (elapsed %.2fs)",
-                        min_stable_s,
-                        stable_elapsed,
-                    )
+                if stable_counter >= stable_target and stable_elapsed < effective_min_stable_s:
+                    if attempt <= 2 or attempt % 10 == 1:
+                        log.debug(
+                            "[RUIDA UDP] Stable but waiting for %.2fs (elapsed %.2fs)",
+                            effective_min_stable_s,
+                            stable_elapsed,
+                        )
             else:
                 if last_state and not require_busy_transition:
                     if last_state.x_mm is not None:
