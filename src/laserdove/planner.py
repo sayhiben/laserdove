@@ -202,7 +202,10 @@ def compute_pin_plan(
 
         for side in (Side.LEFT, Side.RIGHT):
             rotation_deg = rotation_for_side[side]
+            # Flip Y across 0° so Z offsets keep a consistent sign convention per tilt.
             y_b_centered = y_for_side_centered[side]
+            if rotation_deg > 0:
+                y_b_centered = -y_b_centered
             z_offset = z_offset_for_angle(
                 y_b_mm=y_b_centered,
                 angle_deg=rotation_deg,

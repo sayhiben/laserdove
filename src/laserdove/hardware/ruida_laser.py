@@ -860,14 +860,13 @@ class RuidaLaser:
                     last_set_z = target_z
                     block_z = target_z
 
-        def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
+        def flush_block(block_moves: List[RDMove], _block_z: float | None) -> None:
             if not block_moves:
                 return
-            job_z = block_z if block_z is not None else last_set_z
-            self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
+            self.send_rd_job(block_moves, job_z_mm=None, require_busy_transition=True)
 
         block: List[RDMove] = []
-        block_z: float | None = None
+        block_z: float | None = None  # kept for signature; unused
 
         try:
             for cmd in commands:
@@ -893,16 +892,14 @@ class RuidaLaser:
                 if cmd.type.name == "MOVE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                            flush_block(block, block_z)
-                            block = []
+                    if cmd.z is not None and not travel_only:
+                        if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
+                            self.move(z=cmd.z, speed=self.z_speed_mm_s)
                         current_z = cmd.z
+                        last_set_z = current_z
                         if not origin_z_from_command:
                             origin_z = current_z
                             origin_z_from_command = True
-                        last_set_z = current_z
-                        block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                         if origin_speed is None:
@@ -917,13 +914,11 @@ class RuidaLaser:
                 if cmd.type.name == "CUT_LINE":
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                            flush_block(block, block_z)
-                            block = []
+                    if cmd.z is not None and not travel_only:
+                        if current_z is None or not math.isclose(cmd.z, current_z, abs_tol=1e-6):
+                            self.move(z=cmd.z, speed=self.z_speed_mm_s)
                         current_z = cmd.z
                         last_set_z = current_z
-                        block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                     if current_speed is None:
@@ -954,6 +949,14 @@ class RuidaLaser:
                         rotary.rotate_to(park_angle, target_speed)
             except Exception:
                 log.debug("Rotary park failed", exc_info=True)
+            try:
+                origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else job_origin_x
+                origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else job_origin_y
+                if origin_x is not None and origin_y is not None:
+                    if not (math.isclose(self.x, origin_x, abs_tol=1e-6) and math.isclose(self.y, origin_y, abs_tol=1e-6)):
+                        self.move(x=origin_x, y=origin_y, speed=self.z_speed_mm_s)
+            except Exception:
+                log.debug("XY park failed", exc_info=True)
 
     def cleanup(self) -> None:
         """Release UDP socket if open."""
