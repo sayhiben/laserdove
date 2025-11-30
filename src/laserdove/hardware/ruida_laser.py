@@ -823,9 +823,34 @@ class RuidaLaser:
                 self.move(x=origin_x, y=origin_y, speed=move_speed)
                 cursor_x, cursor_y = origin_x, origin_y
 
+        def _ensure_at_job_origin() -> None:
+            """
+            If the controller auto-returns to a machine origin between RD jobs, reposition
+            back to the captured job origin before uploading the next block. Polls state
+            when possible to avoid drifting self.{x,y}.
+            """
+            nonlocal cursor_x, cursor_y
+            state = None
+            try:
+                state = self._read_machine_state(read_positions=True)
+            except TypeError:
+                state = self._read_machine_state()
+            if state:
+                if state.x_mm is not None:
+                    self.x = state.x_mm
+                if state.y_mm is not None:
+                    self.y = state.y_mm
+            need_rehome = not math.isclose(self.x, origin_x, abs_tol=1e-6) or not math.isclose(self.y, origin_y, abs_tol=1e-6)
+            if not need_rehome:
+                return
+            move_speed = origin_speed or current_speed or self.z_speed_mm_s
+            self.move(x=origin_x, y=origin_y, speed=move_speed)
+            cursor_x, cursor_y = origin_x, origin_y
+
         def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
             if not block_moves:
                 return
+            _ensure_at_job_origin()
             self.send_rd_job(block_moves, job_z_mm=None, require_busy_transition=True)
 
         block: List[RDMove] = []
