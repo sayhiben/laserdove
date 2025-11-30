@@ -318,9 +318,9 @@ class RuidaParser:
     # ---------------- Decoder table ----------------
     rd_decoder_table = {
         0x80: {
-            0x01: ["Axis_X_Move (80 01)", t_skip_bytes, 5],
+            0x01: ["Axis_X_Move (80 01)", t_skip_bytes, 5],  # observed as X on 6442
             0x03: ["Axis_Z_Offset (80 03)", t_z_offset_8003, 0, [0]],  # signed abscoord
-            0x08: ["Axis_Y_Move (80 08)", t_skip_bytes, 5],
+            0x08: ["Axis_Y_Move (80 08)", t_skip_bytes, 5],  # observed as Y on 6442
         },
         0x88: ["Mov_Abs", t_move_abs, 5 + 5, ":abs, :abs"],
         0x89: ["Mov_Rel", t_move_rel, 2 + 2, ":rel, :rel"],
@@ -330,6 +330,12 @@ class RuidaParser:
         0xA9: ["Cut_Rel", t_cut_rel, 2 + 2, ":rel, :rel"],
         0xAA: ["Cut_Horiz", t_cut_horiz, 2, ":rel"],
         0xAB: ["Cut_Vert", t_cut_vert, 2, ":rel"],
+        0xC0: ["Unknown_C0", t_skip_bytes, 2],
+        0xC1: ["Unknown_C1", t_skip_bytes, 2],
+        0xC2: ["Unknown_C2", t_skip_bytes, 2],
+        0xC3: ["Unknown_C3", t_skip_bytes, 2],
+        0xC4: ["Unknown_C4", t_skip_bytes, 2],
+        0xC5: ["Unknown_C5", t_skip_bytes, 2],
         0xC6: {
             0x01: ["Laser_1_Min_Pow_C6_01", t_laser_min_pow, 2, ":power", 1],
             0x02: ["Laser_1_Max_Pow_C6_02", t_laser_max_pow, 2, ":power", 1],
@@ -359,6 +365,7 @@ class RuidaParser:
             0x56: ["Cut_through_power4", t_cut_through_pow, 2, ":power", 4],
             0x60: ["Laser_Freq", t_laser_freq, 1 + 1 + 5, ":laser, 0x00, :freq"],
         },
+        0xC7: ["Unknown_C7", t_skip_bytes, 2],
         0xC8: ["Unknown_C8", t_skip_bytes, 2],
         0xC9: {
             0x02: ["Speed_Laser1 (C9 02)", t_skip_bytes, 5, ":speed", arg_abs],
@@ -366,6 +373,8 @@ class RuidaParser:
             0x04: ["Layer_Speed", t_layer_speed, 1 + 5, ":layer, :speed"],
         },
         0xCA: {
+            0x12: ["Blow_off", t_skip_bytes, 0],
+            0x13: ["Blow_on", t_skip_bytes, 0],
             0x01: ["Flags_CA_01", t_skip_bytes, 1, "flags"],
             0x02: ["Prio", t_layer_priority, 1, ":priority"],
             0x03: ["Unkown_CA_03", t_skip_bytes, 1],
@@ -374,8 +383,9 @@ class RuidaParser:
             0x22: ["Layer_Count", t_skip_bytes, 1],
             0x41: ["Layer_CA_41", t_skip_bytes, 2, ":layer, -1"],
         },
+        0xCC: ["Ack_CC", t_skip_bytes, 0],
         0xD7: ["EOF"],
-        0xD8: {0x00: ["Light_RED"], 0x10: ["Unknown_D8_10", t_skip_bytes, 0]},
+        0xD8: {0x00: ["Light_RED"], 0x10: ["Unknown_D8_10", t_skip_bytes, 0], 0x11: ["Unknown_D8_11", t_skip_bytes, 0], 0x12: ["UploadFollows_D8_12", t_skip_bytes, 0]},
         0xD9: {
             0x00: ["Direct_Move_X_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
             0x01: ["Direct_Move_Y_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
@@ -409,10 +419,11 @@ class RuidaParser:
             0x61: ["Layer_Top_Left_E7_61", t_lay_top_left, 1 + 5 + 5, ":layer, :abs, :abs"],
             0x62: ["Layer_Bottom_Right_E7_62", t_lay_bot_right, 1 + 5 + 5, ":layer, :abs, :abs"],
         },
+        0xE8: {0x01: ["FileStore_E8_01", t_skip_bytes, 2, ":number, :string"], 0x02: ["PrepFilename_E8_02", t_skip_bytes, 0]},
         0xEA: ["Unkown_EA", t_skip_bytes, 1],
         0xEB: ["Finish"],
         0xF0: ["Magic88"],
-        0xF1: {0x00: ["Start0", t_skip_bytes, 1], 0x01: ["Start1", t_skip_bytes, 1], 0x02: ["Start2", t_skip_bytes, 1], 0x03: ["Laser2_Offset", t_laser_offset, 5 + 5, ":abs, :abs", 2]},
+        0xF1: {0x00: ["Start0", t_skip_bytes, 1], 0x01: ["Start1", t_skip_bytes, 1], 0x02: ["Start2", t_skip_bytes, 1], 0x03: ["Laser2_Offset", t_laser_offset, 5 + 5, ":abs, :abs", 2], 0x04: ["Enable_Feeding_F1_04", t_skip_bytes, 1]},
         0xF2: {
             0x00: ["Raster_Params? F2_00", t_skip_bytes, 1],
             0x01: ["Raster_Params? F2_01", t_skip_bytes, 1],
