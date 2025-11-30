@@ -390,7 +390,7 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
-                    if state.z_mm is not None:
+                    if state.z_mm is not None and not self.movement_only:
                         self.z = state.z_mm
                     log.debug(
                         "[RUIDA UDP] Ready via busy transition on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
@@ -409,7 +409,7 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
-                    if state.z_mm is not None:
+                    if state.z_mm is not None and not self.movement_only:
                         self.z = state.z_mm
                     log.debug(
                         "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
@@ -428,7 +428,7 @@ class RuidaLaser:
                         self.x = state.x_mm
                     if state.y_mm is not None:
                         self.y = state.y_mm
-                    if state.z_mm is not None:
+                    if state.z_mm is not None and not self.movement_only:
                         self.z = state.z_mm
                     log.debug(
                         "[RUIDA UDP] Ready via idle stability on attempt %d: status=0x%08X x=%.3f y=%.3f z=%.3f stable_counter=%d stable_elapsed=%.2fs",
@@ -801,6 +801,8 @@ class RuidaLaser:
         origin_speed: float | None = None
 
         def park_head_before_rotary() -> None:
+            if travel_only:
+                return
             nonlocal cursor_x, cursor_y, current_z, last_set_z, block_z
             target_z = origin_z if origin_z is not None else last_set_z
             move_speed = origin_speed or current_speed
@@ -813,7 +815,7 @@ class RuidaLaser:
             current_z_for_order = current_z if current_z is not None else last_set_z
 
             # If we know the target Z and current Z, order moves to avoid collisions.
-            if need_xy and need_z and current_z_for_order is not None and target_z is not None:
+            if not travel_only and need_xy and need_z and current_z_for_order is not None and target_z is not None:
                 closer = target_z > current_z_for_order if self.z_positive_moves_bed_up else target_z < current_z_for_order
                 if closer:
                     # Move closer (bed up) first, then translate.
@@ -835,7 +837,7 @@ class RuidaLaser:
                     return
 
             # If we have a target Z but no current Z (e.g., never set), do a combined move.
-            if need_z and target_z is not None:
+            if not travel_only and need_z and target_z is not None:
                 self.move(x=origin_x if need_xy else None, y=origin_y if need_xy else None, z=target_z, speed=move_speed)
                 if need_xy:
                     cursor_x, cursor_y = origin_x, origin_y
@@ -845,7 +847,7 @@ class RuidaLaser:
                 return
 
             # Only XY to park; include Z if known to keep at origin height.
-            if need_xy:
+            if need_xy and not travel_only:
                 self.move(
                     x=origin_x,
                     y=origin_y,
