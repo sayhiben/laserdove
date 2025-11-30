@@ -265,14 +265,18 @@ class RuidaLaser:
         raw_z_mm = self._decode_abscoord_mm(z_payload) if z_payload else None
         if raw_z_mm is not None and self._z_origin_mm is None:
             self._z_origin_mm = raw_z_mm
-        z_mm = raw_z_mm - self._z_origin_mm if raw_z_mm is not None and self._z_origin_mm is not None else None
+        z_rel = raw_z_mm - self._z_origin_mm if raw_z_mm is not None and self._z_origin_mm is not None else None
+        if z_rel is not None and not self.z_positive_moves_bed_up:
+            z_rel = -z_rel
+        z_mm = z_rel
         return self.MachineState(status_bits=status_bits, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)
 
     def _hardware_z_from_logical(self, z_mm: float | None) -> float | None:
         if z_mm is None:
             return None
         origin = self._z_origin_mm or 0.0
-        return origin + z_mm
+        logical = z_mm if self.z_positive_moves_bed_up else -z_mm
+        return origin + logical
 
     def _wait_for_ready(
         self,
@@ -635,8 +639,14 @@ class RuidaLaser:
         if z is not None:
             delta_z = z - self.z
             if abs(delta_z) > 1e-6:
-                payload = b"\x80\x03" + encode_abscoord_mm_signed(delta_z)
-                log.info("[RUIDA UDP] MOVE_Z via 0x80 0x03: target=%.3f delta=%.3f", z, delta_z)
+                hardware_delta = delta_z if self.z_positive_moves_bed_up else -delta_z
+                payload = b"\x80\x03" + encode_abscoord_mm_signed(hardware_delta)
+                log.info(
+                    "[RUIDA UDP] MOVE_Z via 0x80 0x03: target=%.3f delta=%.3f (hw_delta=%.3f)",
+                    z,
+                    delta_z,
+                    hardware_delta,
+                )
                 self._send_packets(payload)
                 self.z = z
         if self.power != 0.0:
@@ -700,6 +710,8 @@ class RuidaLaser:
         job_has_power = any(mv.is_cut and mv.power_pct > 0.0 for mv in moves)
         require_busy_transition = require_busy_transition and job_has_power
         job_z_offset_mm = job_z_mm
+        if job_z_offset_mm is not None and not self.z_positive_moves_bed_up:
+            job_z_offset_mm = -job_z_offset_mm
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
