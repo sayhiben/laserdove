@@ -201,3 +201,39 @@ def clamp_power(power_pct: float | None, current_power: float) -> tuple[float, b
     """
     requested = 0.0 if power_pct is None else power_pct
     return requested, not math.isclose(current_power, requested, abs_tol=1e-6)
+
+
+# Subset of RD opcode descriptions derived from reference/rpa_protocol.py.
+RD_KNOWN_COMMANDS: dict[int, object] = {
+    0x80: {
+        0x00: "AXIS_X_MOVE",
+        0x03: "AXIS_Z_OFFSET",
+        0x08: "AXIS_Y_MOVE",
+    },
+    0x88: "MOVE_ABS_XY",
+    0x89: "MOVE_REL_XY",
+    0x8A: "MOVE_REL_X",
+    0x8B: "MOVE_REL_Y",
+    0xA8: "CUT_ABS_XY",
+    0xA9: "CUT_REL_XY",
+    0xAA: "CUT_REL_X",
+    0xAB: "CUT_REL_Y",
+    0xC6: "POWER_TABLE",
+    0xC7: "IMD_POWER_1",
+    0xC8: "END_POWER_1",
+    0xC9: {0x02: "SPEED_LASER_1", 0x05: "FORCE_ENG_SPEED"},
+    0xCA: {0x01: {0x12: "AIR_ASSIST_OFF", 0x13: "AIR_ASSIST_ON"}},
+    0xD8: {
+        0x00: "START_PROCESS",
+        0x01: "STOP_PROCESS",
+        0x02: "PAUSE_PROCESS",
+        0x03: "RESTORE_PROCESS",
+    },
+    0xD9: {
+        0x00: "RAPID_MOVE_X",
+        0x01: "RAPID_MOVE_Y",
+        0x02: "RAPID_MOVE_Z",
+        0x10: "RAPID_MOVE_XY",
+    },
+    0xE6: {0x01: "SET_ABSOLUTE"},
+}

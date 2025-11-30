@@ -11,9 +11,9 @@ from __future__ import annotations
 import argparse
 import sys
 import math
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
-from laserdove.hardware.ruida_common import unswizzle
+from laserdove.hardware.ruida_common import RD_KNOWN_COMMANDS, unswizzle
 
 
 class RuidaParser:
@@ -34,6 +34,7 @@ class RuidaParser:
         self._segments: List[dict] = []
         self._cursor: List[float] = [0.0, 0.0]
         self._current_z: float = 0.0
+        self._air_assist: bool | None = None
         if file and buf is None:
             with open(file, "rb") as fd:
                 raw = fd.read()
@@ -58,6 +59,7 @@ class RuidaParser:
                 "is_cut": is_cut,
                 "z": self._current_z,
                 "logical_z": self._current_z,
+                "air_assist": self._air_assist,
             }
         )
         self._cursor = [x, y]
@@ -247,6 +249,13 @@ class RuidaParser:
         las["offset"][1] = y
         return off, f"t_laser_offset({las['n']}, {x:.8g}mm, {y:.8g}mm)"
 
+    def t_set_absolute(self, n: int, desc=None):
+        return 0, "t_set_absolute()"
+
+    def t_process_control(self, n: int, desc=None):
+        label = desc or "process_control"
+        return 0, f"t_{label}"
+
     def t_bb_top_left(self, n: int, desc=None):
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
@@ -351,6 +360,33 @@ class RuidaParser:
         self._current_z = val
         return 5, f"Z_Offset_80_03({val:.3f}mm raw={raw.hex(' ')})"
 
+    def t_air_assist(self, n: int, desc=None):
+        self._air_assist = bool(desc)
+        state = "ON" if self._air_assist else "OFF"
+        return 1, f"t_air_assist({state})"
+
+    def t_rapid_move_abs(self, n: int, desc=None):
+        mode = self._buf[0]
+        off, x = self.arg_abs(1)
+        off, y = self.arg_abs(off)
+        self.new_path().append([x, y])
+        self._emit_segment(x, y, is_cut=False)
+        return off, f"t_rapid_move_abs(mode=0x{mode:02X}, x={x:.3f}mm, y={y:.3f}mm)"
+
+    def t_rapid_move_axis(self, n: int, desc=None):
+        axis = desc or "axis"
+        if isinstance(axis, (list, tuple)) and axis:
+            axis = axis[0]
+        mode = self._buf[0]
+        off, coord = self.arg_abs(1)
+        if axis.lower() in ("x", "y"):
+            if axis.lower() == "x":
+                self._cursor[0] = coord
+            else:
+                self._cursor[1] = coord
+            self._emit_segment(self._cursor[0], self._cursor[1], is_cut=False)
+        return off, f"t_rapid_move_{axis}(mode=0x{mode:02X}, coord={coord:.3f}mm)"
+
     # ---------------- Decoder table ----------------
     rd_decoder_table = {
         0x80: {
@@ -407,29 +443,55 @@ class RuidaParser:
             0x02: ["Speed_Laser1 (C9 02)", t_skip_bytes, 5, ":speed", arg_abs],
             0x03: ["Speed_Axis (C9 03)", t_speed_axis, 5, ":speed"],
             0x04: ["Layer_Speed", t_layer_speed, 1 + 5, ":layer, :speed"],
+            0x05: ["Force_Eng_Speed_C9_05", t_speed_axis, 5, ":speed"],
         },
         0xCA: {
-            0x12: ["Blow_off", t_skip_bytes, 0],
-            0x13: ["Blow_on", t_skip_bytes, 0],
-            0x01: ["Flags_CA_01", t_skip_bytes, 1, "flags"],
-            0x02: ["Prio", t_layer_priority, 1, ":priority"],
+            0x01: {
+                0x00: ["Layer_End_CA_01_00", t_skip_bytes, 1],
+                0x01: ["Work_Mode_1_CA_01_01", t_skip_bytes, 1],
+                0x02: ["Work_Mode_2_CA_01_02", t_skip_bytes, 1],
+                0x03: ["Work_Mode_3_CA_01_03", t_skip_bytes, 1],
+                0x04: ["Work_Mode_4_CA_01_04", t_skip_bytes, 1],
+                0x05: ["Work_Mode_6_CA_01_05", t_skip_bytes, 1],
+                0x10: ["Laser_Device_0_CA_01_10", t_skip_bytes, 1],
+                0x11: ["Laser_Device_1_CA_01_11", t_skip_bytes, 1],
+                0x12: ["Air_Assist_OFF_CA_01_12", t_air_assist, 1, 0],
+                0x13: ["Air_Assist_ON_CA_01_13", t_air_assist, 1, 1],
+                0x14: ["DB_Head_CA_01_14", t_skip_bytes, 1],
+                0x30: ["En_Laser_2_Offset0_CA_01_30", t_skip_bytes, 1],
+                0x31: ["En_Laser_2_Offset1_CA_01_31", t_skip_bytes, 1],
+                0x55: ["Work_Mode_5_CA_01_55", t_skip_bytes, 1],
+            },
+            0x02: ["Layer_Number_Part_CA_02", t_skip_bytes, 1],
             0x03: ["Unkown_CA_03", t_skip_bytes, 1],
             0x06: ["Layer_Color", t_layer_color, 1 + 5, ":layer, :color"],
             0x10: ["Unkown_CA_10", t_skip_bytes, 1],
+            0x12: ["Blow_off", t_skip_bytes, 0],
+            0x13: ["Blow_on", t_skip_bytes, 0],
             0x22: ["Layer_Count", t_skip_bytes, 1],
             0x41: ["Layer_CA_41", t_skip_bytes, 2, ":layer, -1"],
         },
         0xCC: ["Ack_CC", t_skip_bytes, 0],
         0xD7: ["EOF"],
-        0xD8: {0x00: ["Light_RED"], 0x10: ["Unknown_D8_10", t_skip_bytes, 0], 0x11: ["Unknown_D8_11", t_skip_bytes, 0], 0x12: ["UploadFollows_D8_12", t_skip_bytes, 0]},
+        0xD8: {
+            0x00: ["Start_Process_D8_00", t_process_control, 0, "start_process"],
+            0x01: ["Stop_Process_D8_01", t_process_control, 0, "stop_process"],
+            0x02: ["Pause_Process_D8_02", t_process_control, 0, "pause_process"],
+            0x03: ["Restore_Process_D8_03", t_process_control, 0, "restore_process"],
+            0x10: ["Unknown_D8_10", t_skip_bytes, 0],
+            0x11: ["Unknown_D8_11", t_skip_bytes, 0],
+            0x12: ["UploadFollows_D8_12", t_skip_bytes, 0],
+        },
         0xD9: {
-            0x00: ["Direct_Move_X_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
-            0x01: ["Direct_Move_Y_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
-            0x02: ["Direct_Move_Z_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
+            0x00: ["Rapid_Move_X_D9_00", t_rapid_move_axis, 1 + 5, "x"],
+            0x01: ["Rapid_Move_Y_D9_01", t_rapid_move_axis, 1 + 5, "y"],
+            0x02: ["Rapid_Move_Z_D9_02", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
+            0x03: ["Direct_Move_U_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
+            0x10: ["Rapid_Move_XY_D9_10", t_rapid_move_abs, 1 + 5 + 5],
         },
         0xDA: {0x00: ["Work_Interval query", t_skip_bytes, 2], 0x01: ["Work_Interval resp1", t_skip_bytes, 2 + 5, "??", 2, arg_abs, arg_abs]},
         0xE5: {0x05: ["Work_Spacing? (E5 05)", t_skip_bytes, 5, "??", arg_abs]},
-        0xE6: {0x01: ["Job_Header? (E6 01)"]},
+        0xE6: {0x01: ["Job_Header? (E6 01)", t_set_absolute, 0]},
         0xE7: {
             0x00: ["Stop"],
             0x01: ["SetFilename", t_skip_bytes, 0, ":strz", arg_strz],
@@ -516,14 +578,36 @@ class RuidaParser:
                     if c:
                         self._buf = self._buf[1:]
                         pos += 1
-                        out = f"{pos:5d}: {b0:02x} {b1:02x} {c[0]}"
-                        consumed, msg = self.token_method(c)
-                        if msg is not None:
-                            out += " " + msg
-                        if debug:
-                            print(out, file=debugfile)
-                        self._buf = self._buf[consumed:]
-                        pos += consumed
+                        if isinstance(c, dict):
+                            if not self._buf:
+                                if debug:
+                                    print(f"{pos:5d}: {b0:02x} {b1:02x} ERROR: truncated", file=debugfile)
+                                break
+                            b2 = self._buf[0]
+                            c2 = c.get(b2)
+                            if c2:
+                                self._buf = self._buf[1:]
+                                pos += 1
+                                out = f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} {c2[0]}"
+                                consumed, msg = self.token_method(c2)
+                                if msg is not None:
+                                    out += " " + msg
+                                if debug:
+                                    print(out, file=debugfile)
+                                self._buf = self._buf[consumed:]
+                                pos += consumed
+                            else:
+                                if debug:
+                                    print(f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} unknown nested token", file=debugfile)
+                        else:
+                            out = f"{pos:5d}: {b0:02x} {b1:02x} {c[0]}"
+                            consumed, msg = self.token_method(c)
+                            if msg is not None:
+                                out += " " + msg
+                            if debug:
+                                print(out, file=debugfile)
+                            self._buf = self._buf[consumed:]
+                            pos += consumed
                     else:
                         if debug:
                             print(f"{pos:5d}: {b0:02x} {self._buf[0]:02x} second byte not defined in rd_dec", file=debugfile)
