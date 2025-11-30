@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 import math
+import struct
 from typing import Dict, List, Tuple
 
 from laserdove.hardware.ruida_common import RD_KNOWN_COMMANDS, unswizzle
@@ -35,6 +36,8 @@ class RuidaParser:
         self._cursor: List[float] = [0.0, 0.0]
         self._current_z: float = 0.0
         self._air_assist: bool | None = None
+        self._opcode_counts: Dict[str, int] = {}
+        self._unknown_counts: Dict[str, int] = {}
         if file and buf is None:
             with open(file, "rb") as fd:
                 raw = fd.read()
@@ -239,7 +242,8 @@ class RuidaParser:
 
     def t_job_units_hint(self, n: int, desc=None):
         val = self._buf[0]
-        return 1, f"job_units_flag=0x{val:02X} (00=mm?, 01=in?)"
+        hint = "mm" if val == 0x00 else "inch" if val == 0x01 else "unknown"
+        return 1, f"job_units_flag=0x{val:02X} ({hint} guess; 00=mm?, 01=in?)"
 
     def t_laser_offset(self, n: int, desc=None):
         las = self.get_laser(desc[1])
@@ -248,6 +252,28 @@ class RuidaParser:
         las["offset"][0] = x
         las["offset"][1] = y
         return off, f"t_laser_offset({las['n']}, {x:.8g}mm, {y:.8g}mm)"
+
+    def t_work_spacing(self, n: int, desc=None):
+        """
+        E5 05 payload observed as 5 bytes; bytes[1:] look like a float mm spacing.
+        """
+        raw = self._buf[:5]
+        spacing_mm = None
+        if len(raw) >= 5:
+            try:
+                spacing_mm = struct.unpack("<f", raw[1:5])[0]
+            except Exception:
+                spacing_mm = None
+        if spacing_mm is not None:
+            return 5, f"work_spacing≈{spacing_mm:.4f}mm raw={raw.hex(' ')}"
+        return 5, f"Work_Spacing_raw={raw.hex(' ')}"
+
+    # ---------------- Counters ----------------
+    def _count_label(self, label: str) -> None:
+        self._opcode_counts[label] = self._opcode_counts.get(label, 0) + 1
+
+    def _count_unknown(self, label: str) -> None:
+        self._unknown_counts[label] = self._unknown_counts.get(label, 0) + 1
 
     def t_set_absolute(self, n: int, desc=None):
         return 0, "t_set_absolute()"
@@ -490,7 +516,7 @@ class RuidaParser:
             0x10: ["Rapid_Move_XY_D9_10", t_rapid_move_abs, 1 + 5 + 5],
         },
         0xDA: {0x00: ["Work_Interval query", t_skip_bytes, 2], 0x01: ["Work_Interval resp1", t_skip_bytes, 2 + 5, "??", 2, arg_abs, arg_abs]},
-        0xE5: {0x05: ["Work_Spacing? (E5 05)", t_skip_bytes, 5, "??", arg_abs]},
+        0xE5: {0x05: ["Work_Spacing? (E5 05)", t_work_spacing, 5]},
         0xE6: {0x01: ["Job_Header? (E6 01)", t_set_absolute, 0]},
         0xE7: {
             0x00: ["Stop"],
@@ -588,7 +614,9 @@ class RuidaParser:
                             if c2:
                                 self._buf = self._buf[1:]
                                 pos += 1
-                                out = f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} {c2[0]}"
+                                label = c2[0]
+                                self._count_label(label)
+                                out = f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} {label}"
                                 consumed, msg = self.token_method(c2)
                                 if msg is not None:
                                     out += " " + msg
@@ -599,8 +627,11 @@ class RuidaParser:
                             else:
                                 if debug:
                                     print(f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} unknown nested token", file=debugfile)
+                                self._count_unknown(f"UNKNOWN_{b0:02X}_{b1:02X}_{b2:02X}")
                         else:
-                            out = f"{pos:5d}: {b0:02x} {b1:02x} {c[0]}"
+                            label = c[0]
+                            self._count_label(label)
+                            out = f"{pos:5d}: {b0:02x} {b1:02x} {label}"
                             consumed, msg = self.token_method(c)
                             if msg is not None:
                                 out += " " + msg
@@ -609,10 +640,13 @@ class RuidaParser:
                             self._buf = self._buf[consumed:]
                             pos += consumed
                     else:
+                        self._count_unknown(f"UNKNOWN_{b0:02X}_{self._buf[0]:02X}")
                         if debug:
                             print(f"{pos:5d}: {b0:02x} {self._buf[0]:02x} second byte not defined in rd_dec", file=debugfile)
                 else:
-                    out = f"{pos:5d}: {b0:02x} {tok[0]}"
+                    label = tok[0]
+                    self._count_label(label)
+                    out = f"{pos:5d}: {b0:02x} {label}"
                     consumed, msg = self.token_method(tok)
                     if msg is not None:
                         out += " " + msg
@@ -621,6 +655,7 @@ class RuidaParser:
                     self._buf = self._buf[consumed:]
                     pos += consumed
             else:
+                self._count_unknown(f"UNKNOWN_{b0:02X}")
                 if debug:
                     print(f"{pos:5d}: {b0:02x} ERROR: ----------- token not found in rd_dec", file=debugfile)
 
@@ -629,10 +664,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Decode and dump Ruida RD files (unswizzle + token decode).")
     ap.add_argument("rd_file", help=".rd file to decode")
     ap.add_argument("--no-summary", action="store_true", help="Skip summary of Z offsets at end")
+    ap.add_argument("--summary", action="store_true", help="Add opcode/unknown counts after decode")
+    ap.add_argument("--summary-only", action="store_true", help="Only show opcode/unknown counts (skip per-token dump)")
     args = ap.parse_args()
 
     parser = RuidaParser(file=args.rd_file)
-    parser.decode(debug=True)
+    parser.decode(debug=not args.summary_only)
     if not args.no_summary and parser._z_offsets:
         print("\nZ offsets (80 03 signed):")
         for idx, (pos, val, raw, prio) in enumerate(parser._z_offsets, 1):
@@ -657,6 +694,14 @@ def main() -> None:
                 w_in = width / 25.4
                 h_in = height / 25.4
                 print(f"   Approx size in inches: {w_in:.3f}in x {h_in:.3f}in")
+    if args.summary or args.summary_only:
+        print("\nOpcode counts (top 30):")
+        for label, count in sorted(parser._opcode_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:30]:
+            print(f"  {label}: {count}")
+        if parser._unknown_counts:
+            print("\nUnknown tokens:")
+            for label, count in sorted(parser._unknown_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+                print(f"  {label}: {count}")
 
 
 if __name__ == "__main__":
