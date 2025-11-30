@@ -26,6 +26,7 @@ class RDMove:
     speed_mm_s: float
     power_pct: float
     is_cut: bool
+    z_mm: float | None = None
 
 
 @dataclass
@@ -431,6 +432,9 @@ def _moves_to_paths(moves: Iterable[RDMove]) -> Tuple[List[List[Tuple[float, flo
     cutting = False
 
     for mv in moves:
+        if mv.z_mm is not None:
+            # Z-only move does not affect XY path construction.
+            continue
         point = (mv.x_mm, mv.y_mm)
         if mv.is_cut:
             if cutting and current_path is not None:
@@ -484,7 +488,8 @@ def build_rd_job(
 ) -> bytes:
     """
     Build an unswizzled RD payload for a sequence of moves.
-    The optional job_z_mm is a signed Z offset (mm) encoded with opcode 0x80 0x03.
+    The optional job_z_mm is a signed Z offset (mm) encoded once with opcode 0x80 0x03.
+    Z moves embedded in RDMove.z_mm emit additional 0x80 0x03 commands inline.
     """
     if not moves:
         return b""
@@ -501,6 +506,7 @@ def build_rd_job(
                 speed_mm_s=mv.speed_mm_s,
                 power_pct=power_pct,
                 is_cut=is_cut,
+                z_mm=mv.z_mm,
             )
         )
 
@@ -521,6 +527,83 @@ def build_rd_job(
     cut_dist, travel_dist = _compute_odometer(normalized_moves)
 
     header = builder.header([layer], filename=filename)
-    body = builder.body([layer], job_z_mm=job_z_mm, air_assist=air_assist)
+    # Build a simplified body that preserves move order and injects inline Z offsets.
+    data = bytearray()
+
+    prolog_flags = "ca 01 30\nca 01 10\n"
+    if air_assist:
+        prolog_flags += "ca 01 13\n"
+    data.extend(builder.enc("-b-", ["ca 01 00\nca 02", 0, prolog_flags]))
+
+    SPEED_SET = "c9 02"
+    CUT_DELAY_ON = "c6 15 00 00 00 00 00"
+    CUT_DELAY_OFF = "c6 16 00 00 00 00 00"
+    L1_MIN = "c6 01"
+    L1_MAX = "c6 02"
+    L2_MIN = "c6 21"
+    L2_MAX = "c6 22"
+    L3_MIN = "c6 05"
+    L3_MAX = "c6 06"
+    L4_MIN = "c6 07"
+    L4_MAX = "c6 08"
+    ENABLE_LAYER = "ca 03 01"
+    IO_FLAGS = "ca 10 00"
+
+    power_vals = [power, power, power, power, power, power, power, power]
+    speed_vals = [travel_speed, cut_speed]
+
+    data.extend(
+        builder.enc(
+            "-n---p-p-p-p-p-p-p-p--",
+            [
+                SPEED_SET,
+                speed_vals[1],
+                CUT_DELAY_ON,
+                CUT_DELAY_OFF,
+                L1_MIN,
+                power_vals[0],
+                L1_MAX,
+                power_vals[1],
+                L2_MIN,
+                power_vals[2],
+                L2_MAX,
+                power_vals[3],
+                L3_MIN,
+                power_vals[4],
+                L3_MAX,
+                power_vals[5],
+                L4_MIN,
+                power_vals[6],
+                L4_MAX,
+                power_vals[7],
+                ENABLE_LAYER,
+                IO_FLAGS,
+            ],
+        )
+    )
+
+    def emit_speed(speed: float) -> bytes:
+        return builder.enc("-n", [SPEED_SET, speed])
+
+    # Optionally start with a job-level Z offset.
+    if job_z_mm is not None:
+        data.extend(bytes([0x80, 0x03]))
+        data.extend(builder.encode_z_offset(job_z_mm))
+
+    last_speed = None
+    for mv in normalized_moves:
+        if mv.z_mm is not None:
+            data.extend(bytes([0x80, 0x03]))
+            data.extend(builder.encode_z_offset(mv.z_mm))
+            continue
+
+        if mv.speed_mm_s is not None and (last_speed is None or abs(mv.speed_mm_s - last_speed) > 1e-6):
+            data.extend(emit_speed(mv.speed_mm_s))
+            last_speed = mv.speed_mm_s
+
+        opcode = "a8" if mv.is_cut else "88"
+        data.extend(builder.enc("-nn", [opcode, mv.x_mm, mv.y_mm]))
+
+    body = bytes(data)
     trailer = builder.trailer((cut_dist, travel_dist))
     return header + body + trailer

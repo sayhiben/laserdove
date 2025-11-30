@@ -71,5 +71,6 @@ def test_movement_only_still_emits_z_in_rd_job() -> None:
 
     assert laser.jobs, "Expected RD job to be emitted"
     moves, job_z = laser.jobs[0]
-    assert job_z == target_z
+    assert job_z is None
+    assert any(getattr(mv, "z_mm", None) == target_z for mv in moves)
     assert all(not mv.is_cut for mv in moves)

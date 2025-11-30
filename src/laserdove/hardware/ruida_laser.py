@@ -826,8 +826,7 @@ class RuidaLaser:
         def flush_block(block_moves: List[RDMove], block_z: float | None) -> None:
             if not block_moves:
                 return
-            job_z = block_z if block_z is not None else last_set_z
-            self.send_rd_job(block_moves, job_z_mm=job_z, require_busy_transition=True)
+            self.send_rd_job(block_moves, job_z_mm=None, require_busy_transition=True)
 
         block: List[RDMove] = []
         block_z: float | None = None
@@ -857,9 +856,6 @@ class RuidaLaser:
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
                     if cmd.z is not None:
-                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                            flush_block(block, block_z)
-                            block = []
                         current_z = cmd.z
                         if not origin_z_from_command:
                             origin_z = current_z
@@ -867,6 +863,14 @@ class RuidaLaser:
                         last_set_z = current_z
                         self.z = current_z
                         block_z = current_z
+                        block.append(RDMove(
+                            x_mm=x,
+                            y_mm=y,
+                            speed_mm_s=self.z_speed_mm_s,
+                            power_pct=current_power,
+                            is_cut=False,
+                            z_mm=current_z,
+                        ))
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                         if origin_speed is None:
@@ -882,13 +886,18 @@ class RuidaLaser:
                     x = cursor_x if cmd.x is None else job_origin_x + cmd.x
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
                     if cmd.z is not None:
-                        if block_z is not None and not math.isclose(cmd.z, block_z, abs_tol=1e-6) and block:
-                            flush_block(block, block_z)
-                            block = []
                         current_z = cmd.z
                         last_set_z = current_z
                         self.z = current_z
                         block_z = current_z
+                        block.append(RDMove(
+                            x_mm=x,
+                            y_mm=y,
+                            speed_mm_s=self.z_speed_mm_s,
+                            power_pct=current_power,
+                            is_cut=False,
+                            z_mm=current_z,
+                        ))
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                     if current_speed is None:
@@ -916,9 +925,10 @@ class RuidaLaser:
                                 speed_mm_s=self.z_speed_mm_s,
                                 power_pct=0.0,
                                 is_cut=False,
+                                z_mm=park_z,
                             )
                         ]
-                        self.send_rd_job(park_moves, job_z_mm=park_z, require_busy_transition=True)
+                        self.send_rd_job(park_moves, job_z_mm=None, require_busy_transition=True)
                         last_set_z = park_z
                         current_z = park_z
                 except Exception:
