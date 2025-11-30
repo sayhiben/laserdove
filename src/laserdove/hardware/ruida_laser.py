@@ -792,6 +792,8 @@ class RuidaLaser:
             job_origin_z = initial_state.z_mm
         elif self._z_origin_mm is not None:
             job_origin_z = 0.0  # treat as logical zero if origin captured but no absolute read
+        if job_origin_z is not None:
+            self.z = job_origin_z
         y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
         # movement_only is the preferred name; travel_only is accepted for backward compatibility.
@@ -807,6 +809,7 @@ class RuidaLaser:
         origin_z: float | None = job_origin_z
         origin_z_from_command = False
         origin_speed: float | None = None
+        park_z: float | None = job_origin_z
 
         def park_head_before_rotary() -> None:
             if movement_only_mode:
@@ -864,6 +867,7 @@ class RuidaLaser:
                             origin_z = current_z
                             origin_z_from_command = True
                         last_set_z = current_z
+                        self.z = current_z
                         block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
@@ -885,6 +889,7 @@ class RuidaLaser:
                             block = []
                         current_z = cmd.z
                         last_set_z = current_z
+                        self.z = current_z
                         block_z = current_z
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
@@ -902,6 +907,24 @@ class RuidaLaser:
 
             flush_block(block, block_z)
         finally:
+            if park_z is not None:
+                try:
+                    needs_park = last_set_z is None or not math.isclose(last_set_z, park_z, abs_tol=1e-6)
+                    if needs_park:
+                        park_moves = [
+                            RDMove(
+                                x_mm=cursor_x,
+                                y_mm=cursor_y,
+                                speed_mm_s=self.z_speed_mm_s,
+                                power_pct=0.0,
+                                is_cut=False,
+                            )
+                        ]
+                        self.send_rd_job(park_moves, job_z_mm=park_z, require_busy_transition=True)
+                        last_set_z = park_z
+                        current_z = park_z
+                except Exception:
+                    log.debug("Z park via RD failed", exc_info=True)
             try:
                 if park_angle is not None and hasattr(rotary, "rotate_to"):
                     target_speed = park_speed if park_speed is not None else 30.0
