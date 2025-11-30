@@ -94,9 +94,10 @@ def z_offset_for_angle(y_b_mm: float, angle_deg: float, axis_to_origin_mm: float
     Sign convention:
       Positive means "move bed up by this amount" if machine Z+ is "bed up".
     """
-    angle_rad = math.radians(angle_deg)
+    # Use the magnitude of the tilt; the sign of y_b already encodes which edge
+    # is farther/closer to the head at a given rotation.
+    angle_rad = math.radians(abs(angle_deg))
     z_physical = y_b_mm * math.sin(angle_rad) + axis_to_origin_mm * math.cos(angle_rad)
     z_physical_at_origin = axis_to_origin_mm
     delta_physical = z_physical - z_physical_at_origin
     return -delta_physical
-
