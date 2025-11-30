@@ -636,7 +636,7 @@ class RuidaLaser:
             delta_z = z - self.z
             if abs(delta_z) > 1e-6:
                 payload = b"\x80\x03" + encode_abscoord_mm_signed(delta_z)
-                log.info("[RUIDA UDP] MOVE_Z via 0x80 0x03: delta=%.3f target=%.3f", delta_z, z)
+                log.info("[RUIDA UDP] MOVE_Z via 0x80 0x03: target=%.3f delta=%.3f", z, delta_z)
                 self._send_packets(payload)
                 self.z = z
         if self.power != 0.0:
@@ -697,9 +697,7 @@ class RuidaLaser:
         """
         if not moves:
             return
-        hardware_job_z = self._hardware_z_from_logical(job_z_mm)
-        # Attempt Z move via panel port first, if configured.
-        self._apply_job_z(job_z_mm)
+        job_z_offset_mm = job_z_mm
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
@@ -714,13 +712,13 @@ class RuidaLaser:
         if self.movement_only:
             for mv in moves:
                 mv.power_pct = 0.0
-        payload = build_rd_job(moves, job_z_mm=hardware_job_z, air_assist=self.air_assist)
+        payload = build_rd_job(moves, job_z_mm=job_z_offset_mm, air_assist=self.air_assist)
         if self.save_rd_dir:
             self.save_rd_dir.mkdir(parents=True, exist_ok=True)
             self._rd_job_counter += 1
             filename = f"job_{self._rd_job_counter:03d}"
-            if hardware_job_z is not None:
-                filename += f"_z{hardware_job_z:.3f}"
+            if job_z_offset_mm is not None:
+                filename += f"_z{job_z_offset_mm:+.3f}"
             path = self.save_rd_dir / f"{filename}.rd"
             swizzled = self._swizzle(payload, magic=self.magic)
             path.write_bytes(swizzled)

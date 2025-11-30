@@ -6,7 +6,7 @@ RD job builder for simple XY move/cut sequences.
 This borrows the on-wire structure observed in public Ruida RD examples:
  - full header/body/trailer framing
  - single layer, absolute XY moves (0x88) and cuts (0xA8)
- - optional job Z emitted before the first layer movement
+ - optional job Z emitted via 0x80 0x03 using signed mm offsets
 
 It is intentionally small and only covers what our planner emits.
 """
@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
+from .ruida_common import encode_abscoord_mm_signed
 
 @dataclass
 class RDMove:
@@ -74,6 +75,11 @@ class _RDJobBuilder:
 
     def encode_byte(self, n: int) -> bytes:
         return self.encode_number(n, length=1, scale=1)
+
+    @staticmethod
+    def encode_z_offset(offset_mm: float) -> bytes:
+        """Encode signed Z offsets (mm) for opcode 0x80 0x03."""
+        return encode_abscoord_mm_signed(offset_mm)
 
     @staticmethod
     def encode_color(color: Sequence[int]) -> bytes:
@@ -370,8 +376,8 @@ class _RDJobBuilder:
             )
 
             if job_z_mm is not None:
-                data.extend(bytes([0x80, 0x01]))
-                data.extend(self.encode_number(job_z_mm))
+                data.extend(bytes([0x80, 0x03]))
+                data.extend(self.encode_z_offset(job_z_mm))
 
             relcounter = 0
             last_point: Tuple[float, float] | None = None
@@ -478,6 +484,7 @@ def build_rd_job(
 ) -> bytes:
     """
     Build an unswizzled RD payload for a sequence of moves.
+    The optional job_z_mm is a signed Z offset (mm) encoded with opcode 0x80 0x03.
     """
     if not moves:
         return b""

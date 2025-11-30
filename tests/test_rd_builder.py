@@ -31,9 +31,10 @@ def test_build_rd_job_contains_z_speed_and_power_blocks():
     # Filename block (E7 01) is intentionally omitted.
     assert b"\xE7\x01" not in payload
 
-    # Z move block (AXIS_Z_MOVE) should be present.
-    z_bytes = _RDJobBuilder.encode_number(5.0)
-    assert b"\x80\x01" + z_bytes in payload
+    # Z offset block (0x80 0x03) should be present using signed mm offsets.
+    z_bytes = _RDJobBuilder.encode_z_offset(5.0)
+    assert b"\x80\x03" + z_bytes in payload
+    assert b"\x80\x01" not in payload
 
     # Speed block uses C9 02 with encoded speed; last speed set should be 20 mm/s.
     speed_bytes = _RDJobBuilder.encode_number(20.0)
@@ -74,3 +75,14 @@ def test_zero_power_cut_emits_move_not_cut():
     assert b"\xAA" not in payload
     assert b"\xAB" not in payload
     assert b"\x88" in payload  # move-to-abs present
+
+
+def test_build_rd_job_encodes_negative_z_offset():
+    moves = [
+        RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False),
+        RDMove(1.0, 0.0, speed_mm_s=10.0, power_pct=50.0, is_cut=True),
+    ]
+    payload = build_rd_job(moves, job_z_mm=-1.5, filename="NEGZ")
+
+    z_bytes = _RDJobBuilder.encode_z_offset(-1.5)
+    assert b"\x80\x03" + z_bytes in payload

@@ -92,7 +92,6 @@ def direct_udp_axis_move_alt(laser: RuidaLaser, logical_target_mm: float) -> Non
 
 
 def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
-    hw_target = _hardware_target(laser, logical_target_mm)
     moves = [
         RDMove(
             x_mm=laser.x,
@@ -102,8 +101,9 @@ def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
             is_cut=False,
         )
     ]
-    payload = build_rd_job(moves, job_z_mm=hw_target, air_assist=laser.air_assist)
-    log.info("RD job Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    payload = build_rd_job(moves, job_z_mm=logical_target_mm, air_assist=laser.air_assist)
+    hw_target = _hardware_target(laser, logical_target_mm)
+    log.info("RD job Z move via 0x80 0x03 offset: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "rd-job", count=10, delay=0.2)
 
