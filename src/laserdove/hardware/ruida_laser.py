@@ -716,11 +716,9 @@ class RuidaLaser:
             return
         job_has_power = any(mv.is_cut and mv.power_pct > 0.0 for mv in moves)
         require_busy_transition = require_busy_transition and job_has_power
-        start_z = self.z
         job_z_offset_mm = None
-        if job_z_mm is not None and start_z is not None:
-            delta = job_z_mm - start_z
-            job_z_offset_mm = delta if self.z_positive_moves_bed_up else -delta
+        if job_z_mm is not None:
+            job_z_offset_mm = job_z_mm if self.z_positive_moves_bed_up else -job_z_mm
         # Log current status before building/sending.
         pre_state = self._read_machine_state()
         if pre_state:
