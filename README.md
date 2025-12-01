@@ -1,6 +1,12 @@
-# laserdove
-
-![LaserDove logo](logo.png)
+<div style="display:flex; align-items:center; justify-content:space-between;">
+  <h1 style="margin:0; display:flex; align-items:center; gap:1rem;">
+    <img src="logo.png" alt="LaserDove logo" style="height:1.67em; vertical-align:middle;"> laserdove
+  </h1>
+  <div>
+    <a href="https://github.com/sayhiben/laserdove/actions/workflows/python-tests.yml"><img src="https://github.com/sayhiben/laserdove/actions/workflows/python-tests.yml/badge.svg" alt="Python Tests"></a>
+    <a href="https://github.com/sayhiben/laserdove/actions/workflows/python-lint.yml"><img src="https://github.com/sayhiben/laserdove/actions/workflows/python-lint.yml/badge.svg" alt="Python Lint"></a>
+  </div>
+</div>
 
 Experimental Python tooling to plan and drive dovetail joints on laser cutting machines with a stepper-based rotary jig. This is pre-production software: use at your own risk and double-check every motion before powering a laser.
 
