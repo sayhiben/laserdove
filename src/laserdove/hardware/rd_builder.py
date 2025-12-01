@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 RD job builder for simple XY move/cut sequences.
 
@@ -11,6 +9,8 @@ This borrows the on-wire structure observed in public Ruida RD examples:
 It is intentionally small and only covers what our planner emits.
 """
 
+from __future__ import annotations
+
 import copy
 import math
 import re
@@ -19,9 +19,11 @@ from typing import Iterable, List, Sequence, Tuple
 
 from .ruida_common import encode_abscoord_mm_signed
 
+
 @dataclass
 class RDMove:
     """Single move/cut with optional target Z (absolute logical position, mm)."""
+
     x_mm: float
     y_mm: float
     speed_mm_s: float
@@ -33,6 +35,7 @@ class RDMove:
 @dataclass
 class _Layer:
     """Internal representation of a single RD layer and its paths."""
+
     paths: List[List[Tuple[float, float]]]
     bbox: List[List[float]]
     speed: Sequence[float]
@@ -211,7 +214,9 @@ class _RDJobBuilder:
         return [[xmin, ymin], [xmax, ymax]]
 
     @staticmethod
-    def bbox_combine(bbox1: List[List[float]] | None, bbox2: List[List[float]] | None) -> List[List[float]] | None:
+    def bbox_combine(
+        bbox1: List[List[float]] | None, bbox2: List[List[float]] | None
+    ) -> List[List[float]] | None:
         """
         Combine two bounding boxes.
 
@@ -393,7 +398,9 @@ class _RDJobBuilder:
         )
         return data
 
-    def body(self, layers: Sequence[_Layer], *, job_z_mm: float | None = None, air_assist: bool = True) -> bytes:
+    def body(
+        self, layers: Sequence[_Layer], *, job_z_mm: float | None = None, air_assist: bool = True
+    ) -> bytes:
         """
         Build the RD body (layer prologs and move/cut opcodes).
 
@@ -405,6 +412,7 @@ class _RDJobBuilder:
         Returns:
             Encoded body bytes.
         """
+
         def relok(last: Tuple[float, float] | None, point: Tuple[float, float]) -> bool:
             maxrel = 8.191
             if last is None:
@@ -501,7 +509,9 @@ class _RDJobBuilder:
             for path in layer.paths:
                 travel = True
                 for point in path:
-                    if relok(last_point, point) and (self._forceabs == 0 or relcounter < self._forceabs):
+                    if relok(last_point, point) and (
+                        self._forceabs == 0 or relcounter < self._forceabs
+                    ):
                         if self._forceabs > 0:
                             relcounter += 1
                         MOVE_REL_X = "8a"
@@ -511,16 +521,31 @@ class _RDJobBuilder:
                         CUT_REL_Y = "ab"
                         CUT_REL_XY = "a9"
                         if point[1] == last_point[1]:
-                            data += self.enc("-r", [MOVE_REL_X if travel else CUT_REL_X, point[0] - last_point[0]])
+                            data += self.enc(
+                                "-r",
+                                [MOVE_REL_X if travel else CUT_REL_X, point[0] - last_point[0]],
+                            )
                         elif point[0] == last_point[0]:
-                            data += self.enc("-r", [MOVE_REL_Y if travel else CUT_REL_Y, point[1] - last_point[1]])
+                            data += self.enc(
+                                "-r",
+                                [MOVE_REL_Y if travel else CUT_REL_Y, point[1] - last_point[1]],
+                            )
                         else:
-                            data += self.enc("-rr", [MOVE_REL_XY if travel else CUT_REL_XY, point[0] - last_point[0], point[1] - last_point[1]])
+                            data += self.enc(
+                                "-rr",
+                                [
+                                    MOVE_REL_XY if travel else CUT_REL_XY,
+                                    point[0] - last_point[0],
+                                    point[1] - last_point[1],
+                                ],
+                            )
                     else:
                         MOVE_ABS_XY = "88"
                         CUT_ABS_XY = "a8"
                         relcounter = 0
-                        data += self.enc("-nn", [MOVE_ABS_XY if travel else CUT_ABS_XY, point[0], point[1]])
+                        data += self.enc(
+                            "-nn", [MOVE_ABS_XY if travel else CUT_ABS_XY, point[0], point[1]]
+                        )
                     last_point = point
                     travel = False
         return bytes(data)
@@ -550,7 +575,9 @@ class _RDJobBuilder:
         )
 
 
-def _moves_to_paths(moves: Iterable[RDMove]) -> Tuple[List[List[Tuple[float, float]]], List[List[float]]]:
+def _moves_to_paths(
+    moves: Iterable[RDMove],
+) -> Tuple[List[List[Tuple[float, float]]], List[List[float]]]:
     """
     Collapse sequential cut segments into paths for bbox computation.
 
@@ -675,9 +702,14 @@ def build_rd_job(
         z_relative_moves.append(mv_copy)
 
     paths, bbox = _moves_to_paths(normalized_moves)
-    travel_speed = next((mv.speed_mm_s for mv in normalized_moves if not mv.is_cut), normalized_moves[0].speed_mm_s)
+    travel_speed = next(
+        (mv.speed_mm_s for mv in normalized_moves if not mv.is_cut), normalized_moves[0].speed_mm_s
+    )
     cut_speed = next((mv.speed_mm_s for mv in normalized_moves if mv.is_cut), travel_speed)
-    power = next((mv.power_pct for mv in normalized_moves if mv.is_cut), next((mv.power_pct for mv in normalized_moves), 0.0))
+    power = next(
+        (mv.power_pct for mv in normalized_moves if mv.is_cut),
+        next((mv.power_pct for mv in normalized_moves), 0.0),
+    )
     power = max(0.0, power)
 
     layer = _Layer(
@@ -761,7 +793,9 @@ def build_rd_job(
             data.extend(builder.encode_z_offset(mv.z_mm))
             continue
 
-        if mv.speed_mm_s is not None and (last_speed is None or abs(mv.speed_mm_s - last_speed) > 1e-6):
+        if mv.speed_mm_s is not None and (
+            last_speed is None or abs(mv.speed_mm_s - last_speed) > 1e-6
+        ):
             data.extend(emit_speed(mv.speed_mm_s))
             last_speed = mv.speed_mm_s
 

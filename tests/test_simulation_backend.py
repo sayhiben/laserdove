@@ -66,7 +66,9 @@ def test_simulated_rotary_updates_visualizer(monkeypatch):
 
 def test_simulated_laser_real_time_sleep(monkeypatch):
     slept = {}
-    monkeypatch.setattr("laserdove.hardware.sim.time.sleep", lambda duration: slept.setdefault("duration", duration))
+    monkeypatch.setattr(
+        "laserdove.hardware.sim.time.sleep", lambda duration: slept.setdefault("duration", duration)
+    )
     laser = SimulatedLaser(real_time=True, time_scale=1.0)
     laser._sleep_for_motion(distance_mm=10.0, speed=5.0)
     assert slept["duration"] == 2.0

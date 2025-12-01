@@ -63,7 +63,11 @@ class DedupStreamHandler(logging.StreamHandler):
         if self._last_rendered is None:
             return
 
-        if self._repeat_count > 1 and self._repeat_start is not None and self._last_time is not None:
+        if (
+            self._repeat_count > 1
+            and self._repeat_start is not None
+            and self._last_time is not None
+        ):
             duration = self._last_time - self._repeat_start
             self.stream.write(f" (repeated {self._repeat_count} times over {duration:.2f}s)")
 

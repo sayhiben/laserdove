@@ -22,23 +22,29 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
+from pathlib import Path
 import sys
 import threading
 import time
 from typing import Callable, List
 
-from pathlib import Path
-
-# Ensure repository root is on sys.path so we can import tools/rd_parser when executed as a script.
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from laserdove.hardware.rd_builder import RDMove, build_rd_job
-from laserdove.hardware.ruida_laser import RuidaLaser
-from laserdove.logging_utils import setup_logging
-from tools.rd_parser import RuidaParser
+try:
+    from laserdove.hardware.rd_builder import RDMove, build_rd_job
+    from laserdove.hardware.ruida_laser import RuidaLaser
+    from laserdove.logging_utils import setup_logging
+    from tools.rd_parser import RuidaParser
+except ImportError:
+    # Allow running directly from the repository without editable install.
+    REPO_ROOT = Path(__file__).resolve().parent.parent
+    SRC_ROOT = REPO_ROOT / "src"
+    for path in (SRC_ROOT, REPO_ROOT):
+        path_str = str(path)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+    from laserdove.hardware.rd_builder import RDMove, build_rd_job
+    from laserdove.hardware.ruida_laser import RuidaLaser
+    from laserdove.logging_utils import setup_logging
+    from tools.rd_parser import RuidaParser
 
 LOG = logging.getLogger("ruida_status_probe")
 
@@ -61,7 +67,13 @@ def decode_bits(raw: int) -> str:
 def poll_status_once(laser: RuidaLaser, label: str) -> bool:
     state = laser._read_machine_state()
     if state:
-        LOG.info("[%s] status %s x=%.3f y=%.3f", label, decode_bits(state.status_bits), state.x_mm, state.y_mm)
+        LOG.info(
+            "[%s] status %s x=%.3f y=%.3f",
+            label,
+            decode_bits(state.status_bits),
+            state.x_mm,
+            state.y_mm,
+        )
         return True
     LOG.info("[%s] status: timeout/none", label)
     return False
@@ -98,7 +110,7 @@ def run_with_capture(
         t.join(timeout=interval * 2)
 
     for i in range(polls_after):
-        poll_status_once(poll_laser, f"{label}-after#{i+1}")
+        poll_status_once(poll_laser, f"{label}-after#{i + 1}")
         time.sleep(interval)
     LOG.info("=== %s END ===", label)
 
@@ -131,13 +143,33 @@ def log_rd_summary(tag: str, moves: List[RDMove], job_z_mm: float | None) -> Non
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Poll Ruida status and run movement-only actions to map status bits.")
+    ap = argparse.ArgumentParser(
+        description="Poll Ruida status and run movement-only actions to map status bits."
+    )
     ap.add_argument("--host", required=True, help="Ruida controller host/IP")
-    ap.add_argument("--port", type=int, default=50200, help="Ruida controller UDP port (default 50200)")
-    ap.add_argument("--source-port", type=int, default=40200, help="Local UDP source port (default 40200)")
-    ap.add_argument("--status-source-port", type=int, help="Local UDP source port for status polling (default source-port+1 when dual-socket)")
-    ap.add_argument("--dual-socket", dest="dual_socket", action="store_true", help="Use a dedicated socket for status polling to avoid reply mix-ups")
-    ap.add_argument("--single-socket", dest="dual_socket", action="store_false", help="Force reuse of a single socket for both actions and polling (default)")
+    ap.add_argument(
+        "--port", type=int, default=50200, help="Ruida controller UDP port (default 50200)"
+    )
+    ap.add_argument(
+        "--source-port", type=int, default=40200, help="Local UDP source port (default 40200)"
+    )
+    ap.add_argument(
+        "--status-source-port",
+        type=int,
+        help="Local UDP source port for status polling (default source-port+1 when dual-socket)",
+    )
+    ap.add_argument(
+        "--dual-socket",
+        dest="dual_socket",
+        action="store_true",
+        help="Use a dedicated socket for status polling to avoid reply mix-ups",
+    )
+    ap.add_argument(
+        "--single-socket",
+        dest="dual_socket",
+        action="store_false",
+        help="Force reuse of a single socket for both actions and polling (default)",
+    )
     ap.set_defaults(dual_socket=False)
     ap.add_argument(
         "--run-actions",
@@ -146,12 +178,18 @@ def main() -> None:
     )
     ap.add_argument("--log-level", default="INFO", help="Log level (default INFO)")
     ap.add_argument("--timeout-s", type=float, default=3.0, help="UDP timeout seconds")
-    ap.add_argument("--interval", type=float, default=0.5, help="Seconds between status polls during actions")
+    ap.add_argument(
+        "--interval", type=float, default=0.5, help="Seconds between status polls during actions"
+    )
     ap.add_argument("--move-dist-mm", type=float, default=10.0, help="Distance for X/Y moves (mm)")
     ap.add_argument("--z-move-mm", type=float, default=1.0, help="Z move magnitude (mm)")
     ap.add_argument("--polls-after", type=int, default=5, help="Status polls after each action")
-    ap.add_argument("--baseline-polls", type=int, default=1, help="Status polls before running actions")
-    ap.add_argument("--magic", type=lambda x: int(x, 0), default=0x88, help="Swizzle magic (default 0x88)")
+    ap.add_argument(
+        "--baseline-polls", type=int, default=1, help="Status polls before running actions"
+    )
+    ap.add_argument(
+        "--magic", type=lambda x: int(x, 0), default=0x88, help="Swizzle magic (default 0x88)"
+    )
     args = ap.parse_args()
 
     setup_logging(args.log_level)
@@ -198,15 +236,18 @@ def main() -> None:
     # Baseline polling only
     baseline_results = []
     for i in range(args.baseline_polls):
-        baseline_results.append(poll_status_once(poll_laser, f"baseline#{i+1}"))
+        baseline_results.append(poll_status_once(poll_laser, f"baseline#{i + 1}"))
         time.sleep(args.interval)
 
     if use_dual and baseline_results and not any(baseline_results):
-        LOG.warning("Dual-socket baseline polling timed out; falling back to single-socket on source_port=%d", args.source_port)
+        LOG.warning(
+            "Dual-socket baseline polling timed out; falling back to single-socket on source_port=%d",
+            args.source_port,
+        )
         poll_laser = action_laser
         use_dual = False
         for i in range(args.baseline_polls):
-            poll_status_once(poll_laser, f"baseline-single#{i+1}")
+            poll_status_once(poll_laser, f"baseline-single#{i + 1}")
             time.sleep(args.interval)
 
     if not args.run_actions:
@@ -217,8 +258,10 @@ def main() -> None:
 
     # X move
     def move_x():
-        mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
-              RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
+        mv = [
+            RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
+            RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
+        ]
         log_rd_summary("move-x", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
@@ -226,8 +269,10 @@ def main() -> None:
 
     # Y move
     def move_y():
-        mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
-              RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
+        mv = [
+            RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
+            RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
+        ]
         log_rd_summary("move-y", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
@@ -243,8 +288,10 @@ def main() -> None:
 
     # Air assist ON small job
     def air_on_job():
-        mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
-              RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
+        mv = [
+            RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
+            RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
+        ]
         log_rd_summary("air-assist-on-job", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
@@ -252,8 +299,10 @@ def main() -> None:
 
     # Air assist OFF small job (omit CA 01 13)
     def air_off_job():
-        mv = [RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
-              RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False)]
+        mv = [
+            RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
+            RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
+        ]
         log_rd_summary("air-assist-off-job", mv, None)
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
@@ -314,7 +363,9 @@ def main() -> None:
     actions.append(("upload-only-travel", upload_only))
 
     for label, fn in actions:
-        run_with_capture(poll_laser, label, fn, interval=args.interval, polls_after=args.polls_after)
+        run_with_capture(
+            poll_laser, label, fn, interval=args.interval, polls_after=args.polls_after
+        )
 
     print("Done. Review logs above for status transitions.")
 

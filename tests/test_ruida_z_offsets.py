@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import types
 
-import pytest
-
 from laserdove.hardware.ruida_common import encode_abscoord_mm_signed
 from laserdove.hardware.ruida_laser import RuidaLaser
 

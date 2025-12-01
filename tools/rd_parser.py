@@ -84,10 +84,10 @@ class RuidaParser:
 
     def get_laser(self, n: int, lay: int | None = None) -> dict:
         if lay is not None:
-            l = self.get_layer(lay)
-            if n not in l["laser"]:
-                l["laser"][n] = {"n": n, "offset": [0, 0], "layer": lay}
-            return l["laser"][n]
+            layer = self.get_layer(lay)
+            if n not in layer["laser"]:
+                layer["laser"][n] = {"n": n, "offset": [0, 0], "layer": lay}
+            return layer["laser"][n]
         if n not in self._laser:
             self._laser[n] = {"n": n, "offset": [0, 0]}
         return self._laser[n]
@@ -192,15 +192,15 @@ class RuidaParser:
         return self.skip_msg(n, desc)
 
     def t_layer_priority(self, n: int, desc=None):
-        l = self._buf[0]
-        self._prio = l
-        return 1, f"t_layer_priority({l})"
+        layer_id = self._buf[0]
+        self._prio = layer_id
+        return 1, f"t_layer_priority({layer_id})"
 
     def t_layer_color(self, n: int, desc=None):
-        l = self.get_layer(self._buf[0])
+        layer = self.get_layer(self._buf[0])
         off, c = self.arg_color(1)
-        l["color"] = "#%06x" % c
-        return off, f"t_layer_color({l['n']}, {l['color']})"
+        layer["color"] = "#%06x" % c
+        return off, f"t_layer_color({layer['n']}, {layer['color']})"
 
     def _laser_from_desc(self, desc, default=1) -> int:
         if isinstance(desc, (list, tuple)):
@@ -248,9 +248,9 @@ class RuidaParser:
     def t_layer_speed(self, n: int, desc=None):
         layer_id = self._buf[0] if self._buf else None
         off, s = self.arg_abs(1)
-        l = self.get_layer(layer_id if layer_id is not None else 0)
-        l["speed"] = s
-        return off, f"t_layer_speed({l['n']}, {s}mm)"
+        layer = self.get_layer(layer_id if layer_id is not None else 0)
+        layer["speed"] = s
+        return off, f"t_layer_speed({layer['n']}, {s}mm)"
 
     def t_laser_freq(self, n: int, desc=None):
         laser_id = self._laser_from_desc(desc, default=1)
@@ -344,24 +344,24 @@ class RuidaParser:
         return off, f"t_bb_bot_right({x:.8g}mm, {y:.8g}mm)"
 
     def t_lay_top_left(self, n: int, desc=None):
-        l = self.get_layer(self._buf[0])
+        layer = self.get_layer(self._buf[0])
         off, x = self.arg_abs(1)
         off, y = self.arg_abs(off)
         self._bbox[0] = min(self._bbox[0], x)
         self._bbox[1] = min(self._bbox[1], y)
-        l["bbox"][0] = x
-        l["bbox"][1] = y
-        return off, f"t_lay_top_left({l['n']}, {x:.8g}mm, {y:.8g}mm)"
+        layer["bbox"][0] = x
+        layer["bbox"][1] = y
+        return off, f"t_lay_top_left({layer['n']}, {x:.8g}mm, {y:.8g}mm)"
 
     def t_lay_bot_right(self, n: int, desc=None):
-        l = self.get_layer(self._buf[0])
+        layer = self.get_layer(self._buf[0])
         off, x = self.arg_abs(1)
         off, y = self.arg_abs(off)
         self._bbox[2] = max(self._bbox[2], x)
         self._bbox[3] = max(self._bbox[3], y)
-        l["bbox"][2] = x
-        l["bbox"][3] = y
-        return off, f"t_lay_bot_right({l['n']}, {x:.8g}mm, {y:.8g}mm)"
+        layer["bbox"][2] = x
+        layer["bbox"][3] = y
+        return off, f"t_lay_bot_right({layer['n']}, {x:.8g}mm, {y:.8g}mm)"
 
     def t_feeding(self, n: int, desc=None):
         off, x = self.arg_abs()
@@ -562,21 +562,54 @@ class RuidaParser:
             0x03: ["Direct_Move_U_rel", t_skip_bytes, 1 + 5, ":mm", 1, arg_abs],
             0x10: ["Rapid_Move_XY_D9_10", t_rapid_move_abs, 1 + 5 + 5],
         },
-        0xDA: {0x00: ["Work_Interval query", t_skip_bytes, 2], 0x01: ["Work_Interval resp1", t_skip_bytes, 2 + 5, "??", 2, arg_abs, arg_abs]},
+        0xDA: {
+            0x00: ["Work_Interval query", t_skip_bytes, 2],
+            0x01: ["Work_Interval resp1", t_skip_bytes, 2 + 5, "??", 2, arg_abs, arg_abs],
+        },
         0xE5: {0x05: ["Work_Spacing? (E5 05)", t_work_spacing, 5]},
         0xE6: {0x01: ["Job_Header? (E6 01)", t_set_absolute, 0]},
         0xE7: {
             0x00: ["Stop"],
             0x01: ["SetFilename", t_skip_bytes, 0, ":strz", arg_strz],
             0x03: ["Bounding_Box_Top_Left", t_bb_top_left, 5 + 5, ":abs, :abs"],
-            0x04: ["Layer_Bbox_Reset? (E7 04)", t_skip_bytes, 4 + 5 + 5, ":abs, :abs", 4, arg_abs, arg_abs],
+            0x04: [
+                "Layer_Bbox_Reset? (E7 04)",
+                t_skip_bytes,
+                4 + 5 + 5,
+                ":abs, :abs",
+                4,
+                arg_abs,
+                arg_abs,
+            ],
             0x05: ["Layer_Bbox_Flush? (E7 05)", t_skip_bytes, 1],
             0x06: ["Feeding", t_feeding, 5 + 5, ":abs, :abs"],
             0x07: ["Bounding_Box_Bottom_Right", t_bb_bot_right, 5 + 5, ":abs, :abs"],
-            0x08: ["Layer_Bbox_Bottom_Right? (E7 08)", t_skip_bytes, 4 + 5 + 5, ":abs, :abs", 4, arg_abs, arg_abs],
+            0x08: [
+                "Layer_Bbox_Bottom_Right? (E7 08)",
+                t_skip_bytes,
+                4 + 5 + 5,
+                ":abs, :abs",
+                4,
+                arg_abs,
+                arg_abs,
+            ],
             0x13: ["Layout_Origin? (E7 13)", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
-            0x17: ["Layout_Bottom_Right? (E7 17)", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
-            0x23: ["Layout_Origin_Alt? (E7 23)", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
+            0x17: [
+                "Layout_Bottom_Right? (E7 17)",
+                t_skip_bytes,
+                5 + 5,
+                ":abs, :abs",
+                arg_abs,
+                arg_abs,
+            ],
+            0x23: [
+                "Layout_Origin_Alt? (E7 23)",
+                t_skip_bytes,
+                5 + 5,
+                ":abs, :abs",
+                arg_abs,
+                arg_abs,
+            ],
             0x24: ["Layout_Flags? (E7 24)", t_skip_bytes, 1],
             0x37: ["Layout_Bbox_Alt? (E7 37)", t_skip_bytes, 5 + 5, "??", arg_abs, arg_abs],
             0x38: ["Job_Units? (E7 38)", t_job_units_hint, 1],
@@ -590,18 +623,35 @@ class RuidaParser:
             0x61: ["Layer_Top_Left_E7_61", t_lay_top_left, 1 + 5 + 5, ":layer, :abs, :abs"],
             0x62: ["Layer_Bottom_Right_E7_62", t_lay_bot_right, 1 + 5 + 5, ":layer, :abs, :abs"],
         },
-        0xE8: {0x01: ["FileStore_E8_01", t_skip_bytes, 2, ":number, :string"], 0x02: ["PrepFilename_E8_02", t_skip_bytes, 0]},
+        0xE8: {
+            0x01: ["FileStore_E8_01", t_skip_bytes, 2, ":number, :string"],
+            0x02: ["PrepFilename_E8_02", t_skip_bytes, 0],
+        },
         0xEA: ["Unkown_EA", t_skip_bytes, 1],
         0xEB: ["Finish"],
         0xF0: ["Magic88"],
-        0xF1: {0x00: ["Start0", t_skip_bytes, 1], 0x01: ["Start1", t_skip_bytes, 1], 0x02: ["Start2", t_skip_bytes, 1], 0x03: ["Laser2_Offset", t_laser_offset, 5 + 5, ":abs, :abs", 2], 0x04: ["Enable_Feeding_F1_04", t_skip_bytes, 1]},
+        0xF1: {
+            0x00: ["Start0", t_skip_bytes, 1],
+            0x01: ["Start1", t_skip_bytes, 1],
+            0x02: ["Start2", t_skip_bytes, 1],
+            0x03: ["Laser2_Offset", t_laser_offset, 5 + 5, ":abs, :abs", 2],
+            0x04: ["Enable_Feeding_F1_04", t_skip_bytes, 1],
+        },
         0xF2: {
             0x00: ["Raster_Params? F2_00", t_skip_bytes, 1],
             0x01: ["Raster_Params? F2_01", t_skip_bytes, 1],
             0x02: ["Job_Scale? F2_02 (maybe DPI/scale)", t_skip_bytes, 10, "??", arg_abs, arg_abs],
             0x03: ["Job_Top_Left? F2_03", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
             0x04: ["Job_Bottom_Right? F2_04", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
-            0x05: ["Job_Size? F2_05", t_skip_bytes, 4 + 5 + 5, "4, :abs, :abs", 4, arg_abs, arg_abs],
+            0x05: [
+                "Job_Size? F2_05",
+                t_skip_bytes,
+                4 + 5 + 5,
+                "4, :abs, :abs",
+                4,
+                arg_abs,
+                arg_abs,
+            ],
             0x06: ["Job_Offsets? F2_06", t_skip_bytes, 5 + 5, ":abs, :abs", arg_abs, arg_abs],
             0x07: ["Job_Flags? F2_07", t_skip_bytes, 1],
         },
@@ -654,7 +704,10 @@ class RuidaParser:
                         if isinstance(c, dict):
                             if not self._buf:
                                 if debug:
-                                    print(f"{pos:5d}: {b0:02x} {b1:02x} ERROR: truncated", file=debugfile)
+                                    print(
+                                        f"{pos:5d}: {b0:02x} {b1:02x} ERROR: truncated",
+                                        file=debugfile,
+                                    )
                                 break
                             b2 = self._buf[0]
                             c2 = c.get(b2)
@@ -673,7 +726,10 @@ class RuidaParser:
                                 pos += consumed
                             else:
                                 if debug:
-                                    print(f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} unknown nested token", file=debugfile)
+                                    print(
+                                        f"{pos:5d}: {b0:02x} {b1:02x} {b2:02x} unknown nested token",
+                                        file=debugfile,
+                                    )
                                 self._count_unknown(f"UNKNOWN_{b0:02X}_{b1:02X}_{b2:02X}")
                         else:
                             label = c[0]
@@ -689,7 +745,10 @@ class RuidaParser:
                     else:
                         self._count_unknown(f"UNKNOWN_{b0:02X}_{self._buf[0]:02X}")
                         if debug:
-                            print(f"{pos:5d}: {b0:02x} {self._buf[0]:02x} second byte not defined in rd_dec", file=debugfile)
+                            print(
+                                f"{pos:5d}: {b0:02x} {self._buf[0]:02x} second byte not defined in rd_dec",
+                                file=debugfile,
+                            )
                 else:
                     label = tok[0]
                     self._count_label(label)
@@ -704,15 +763,24 @@ class RuidaParser:
             else:
                 self._count_unknown(f"UNKNOWN_{b0:02X}")
                 if debug:
-                    print(f"{pos:5d}: {b0:02x} ERROR: ----------- token not found in rd_dec", file=debugfile)
+                    print(
+                        f"{pos:5d}: {b0:02x} ERROR: ----------- token not found in rd_dec",
+                        file=debugfile,
+                    )
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Decode and dump Ruida RD files (unswizzle + token decode).")
+    ap = argparse.ArgumentParser(
+        description="Decode and dump Ruida RD files (unswizzle + token decode)."
+    )
     ap.add_argument("rd_file", help=".rd file to decode")
     ap.add_argument("--no-summary", action="store_true", help="Skip summary of Z offsets at end")
     ap.add_argument("--summary", action="store_true", help="Add opcode/unknown counts after decode")
-    ap.add_argument("--summary-only", action="store_true", help="Only show opcode/unknown counts (skip per-token dump)")
+    ap.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Only show opcode/unknown counts (skip per-token dump)",
+    )
     args = ap.parse_args()
 
     parser = RuidaParser(file=args.rd_file)
@@ -727,7 +795,9 @@ def main() -> None:
             bbox = info.get("bbox", [])
             speed = info.get("speed", None)
             color = info.get("color", None)
-            bbox_str = f"[{bbox[0]:.1f}, {bbox[1]:.1f}]–[{bbox[2]:.1f}, {bbox[3]:.1f}]" if bbox else "n/a"
+            bbox_str = (
+                f"[{bbox[0]:.1f}, {bbox[1]:.1f}]–[{bbox[2]:.1f}, {bbox[3]:.1f}]" if bbox else "n/a"
+            )
             speed_str = f"{speed} mm/s" if speed is not None else "n/a"
             print(f"  Layer {ln}: speed={speed_str} bbox={bbox_str} color={color or 'n/a'}")
     if not args.no_summary:
@@ -735,7 +805,9 @@ def main() -> None:
         if parser._bbox[2] > -10e8 and parser._bbox[3] > -10e8:
             width = parser._bbox[2] - parser._bbox[0]
             height = parser._bbox[3] - parser._bbox[1]
-            print(f"\nJob bbox: [{parser._bbox[0]:.3f}, {parser._bbox[1]:.3f}]–[{parser._bbox[2]:.3f}, {parser._bbox[3]:.3f}] (w={width:.3f}mm h={height:.3f}mm)")
+            print(
+                f"\nJob bbox: [{parser._bbox[0]:.3f}, {parser._bbox[1]:.3f}]–[{parser._bbox[2]:.3f}, {parser._bbox[3]:.3f}] (w={width:.3f}mm h={height:.3f}mm)"
+            )
             if max(width, height) > 0:
                 # If width/25.4 is close to a round number, guess inches
                 w_in = width / 25.4
@@ -743,11 +815,15 @@ def main() -> None:
                 print(f"   Approx size in inches: {w_in:.3f}in x {h_in:.3f}in")
     if args.summary or args.summary_only:
         print("\nOpcode counts (top 30):")
-        for label, count in sorted(parser._opcode_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:30]:
+        for label, count in sorted(parser._opcode_counts.items(), key=lambda kv: (-kv[1], kv[0]))[
+            :30
+        ]:
             print(f"  {label}: {count}")
         if parser._unknown_counts:
             print("\nUnknown tokens:")
-            for label, count in sorted(parser._unknown_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            for label, count in sorted(
+                parser._unknown_counts.items(), key=lambda kv: (-kv[1], kv[0])
+            ):
                 print(f"  {label}: {count}")
 
 

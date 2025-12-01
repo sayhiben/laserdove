@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List
+from typing import List
 
 from laserdove.hardware.ruida_laser import RuidaLaser
 from laserdove.model import Command, CommandType
@@ -21,7 +21,9 @@ class CapturingRuida(RuidaLaser):
     back to a different position after each job.
     """
 
-    def __init__(self, *, initial_x: float, initial_y: float, return_x: float, return_y: float) -> None:
+    def __init__(
+        self, *, initial_x: float, initial_y: float, return_x: float, return_y: float
+    ) -> None:
         super().__init__(
             host="0.0.0.0",
             port=0,

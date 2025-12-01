@@ -1,5 +1,3 @@
-import types
-
 from laserdove.hardware.ruida import RuidaPanelInterface
 
 

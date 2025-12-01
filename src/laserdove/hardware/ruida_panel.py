@@ -17,13 +17,13 @@ class RuidaPanelInterface:
     PORT = 50207
     SRC_PORT = 40207
 
-    CMD_STOP = b"\xA5\x50\x09"
-    CMD_ORIGIN = b"\xA5\x50\x08"
-    CMD_FRAME = b"\xA5\x53\x00"
-    CMD_Y_DOWN = b"\xA5\x50\x03"
-    CMD_Y_UP = b"\xA5\x51\x03"
-    CMD_Z_DOWN = b"\xA5\x50\x0A"
-    CMD_Z_UP = b"\xA5\x51\x0A"
+    CMD_STOP = b"\xa5\x50\x09"
+    CMD_ORIGIN = b"\xa5\x50\x08"
+    CMD_FRAME = b"\xa5\x53\x00"
+    CMD_Y_DOWN = b"\xa5\x50\x03"
+    CMD_Y_UP = b"\xa5\x51\x03"
+    CMD_Z_DOWN = b"\xa5\x50\x0a"
+    CMD_Z_UP = b"\xa5\x51\x0a"
 
     def __init__(
         self,

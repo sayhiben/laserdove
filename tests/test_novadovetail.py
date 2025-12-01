@@ -1,6 +1,6 @@
-import pytest
 import sys
-from io import StringIO
+
+import pytest
 
 from laserdove.cli import main
 from laserdove.config import RunConfig
@@ -270,7 +270,10 @@ def test_main_pins_only_executes_pin_branch(monkeypatch):
         "laserdove.cli.plan_pin_board",
         lambda jp, jg, mp, pin_plan: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
-    monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: called.setdefault("cmds", list(cmds)))
+    monkeypatch.setattr(
+        "laserdove.cli.execute_commands",
+        lambda cmds, laser, rotary: called.setdefault("cmds", list(cmds)),
+    )
     monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "pins"])
     main()
     types = [cmd.type for cmd in called["cmds"]]

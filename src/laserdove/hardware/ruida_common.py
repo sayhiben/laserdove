@@ -4,7 +4,6 @@ import math
 import struct
 
 
-
 def swizzle_byte(b: int, magic: int = 0x88) -> int:
     """
     Scramble a single byte using the Ruida swizzle algorithm.
@@ -40,8 +39,8 @@ def unswizzle_byte(b: int, magic: int = 0x88) -> int:
     fb = b & 0x80
     lb = b & 0x01
     b = (b - fb - lb) & 0xFF
-    b |= (lb << 7)
-    b |= (fb >> 7)
+    b |= lb << 7
+    b |= fb >> 7
     return b
 
 
@@ -202,4 +201,3 @@ def clamp_power(power_pct: float | None, current_power: float) -> tuple[float, b
     """
     requested = 0.0 if power_pct is None else power_pct
     return requested, not math.isclose(current_power, requested, abs_tol=1e-6)
-

@@ -66,10 +66,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         help="TOML config file (defaults to config.toml if present)",
     )
-    p.add_argument("--mode", choices=["tails", "pins", "both"],
-                   default="both", help="Which board to plan")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Do not talk to hardware; just print plan")
+    p.add_argument(
+        "--mode", choices=["tails", "pins", "both"], default="both", help="Which board to plan"
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Do not talk to hardware; just print plan"
+    )
     p.add_argument(
         "--reset",
         action="store_true",
@@ -126,16 +128,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--ruida-timeout-s", type=float, help="UDP ACK timeout seconds for Ruida")
     p.add_argument("--ruida-source-port", type=int, help="Local UDP source port (default 40200)")
     # Rotary tuning
-    p.add_argument("--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)")
+    p.add_argument(
+        "--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)"
+    )
     p.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step (driver DIP)")
     p.add_argument("--rotary-step-pin", type=int, help="BCM pin for STEP (real rotary only)")
     p.add_argument("--rotary-dir-pin", type=int, help="BCM pin for DIR (real rotary only)")
-    p.add_argument("--rotary-step-pin-pos", type=int, help="BCM pin for STEP + (optional; defaults to held high)")
-    p.add_argument("--rotary-dir-pin-pos", type=int, help="BCM pin for DIR + (optional; defaults to held high)")
-    p.add_argument("--rotary-enable-pin", type=int, help="BCM pin for ENABLE (optional, active low)")
+    p.add_argument(
+        "--rotary-step-pin-pos",
+        type=int,
+        help="BCM pin for STEP + (optional; defaults to held high)",
+    )
+    p.add_argument(
+        "--rotary-dir-pin-pos", type=int, help="BCM pin for DIR + (optional; defaults to held high)"
+    )
+    p.add_argument(
+        "--rotary-enable-pin", type=int, help="BCM pin for ENABLE (optional, active low)"
+    )
     p.add_argument("--rotary-alarm-pin", type=int, help="BCM pin for ALARM input (optional)")
-    p.add_argument("--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)")
-    p.add_argument("--rotary-pin-numbering", choices=["bcm", "board"], default="board", help="Pin numbering scheme for rotary GPIO (BCM vs physical)")
+    p.add_argument(
+        "--rotary-invert-dir", action="store_true", help="Invert DIR output (real rotary)"
+    )
+    p.add_argument(
+        "--rotary-pin-numbering",
+        choices=["bcm", "board"],
+        default="board",
+        help="Pin numbering scheme for rotary GPIO (BCM vs physical)",
+    )
     p.add_argument("--rotary-max-step-rate-hz", type=float, help="Cap rotary step pulse rate (Hz)")
     p.add_argument(
         "--dry-run-rd",
@@ -273,7 +292,9 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         cut_power_pin_pct=_dict_get_nested(cfg_data, "machine.cut_power_pin_pct", 65.0),
         travel_power_pct=_dict_get_nested(cfg_data, "machine.travel_power_pct", 0.0),
         air_assist=bool(_dict_get_nested(cfg_data, "machine.air_assist", True)),
-        z_positive_moves_bed_up=bool(_dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)),
+        z_positive_moves_bed_up=bool(
+            _dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)
+        ),
         z_zero_tail_mm=_dict_get_nested(cfg_data, "machine.z_zero_tail_mm", 0.0),
         z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
     )
@@ -309,11 +330,17 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
     # Default pins match the known working script (BOARD/physical numbers): pulse PUL+/DIR+, PUL-/DIR- tied to GND.
-    rotary_pin_numbering = _dict_get_nested(cfg_data, "backend.rotary_pin_numbering", "board").lower()
-    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)   # PUL-
-    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)    # DIR-
-    rotary_step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)  # PUL+ (physical pin 11)
-    rotary_dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 13)    # DIR+ (physical pin 13)
+    rotary_pin_numbering = _dict_get_nested(
+        cfg_data, "backend.rotary_pin_numbering", "board"
+    ).lower()
+    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)  # PUL-
+    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)  # DIR-
+    rotary_step_pin_pos = _dict_get_nested(
+        cfg_data, "backend.rotary_step_pin_pos", 11
+    )  # PUL+ (physical pin 11)
+    rotary_dir_pin_pos = _dict_get_nested(
+        cfg_data, "backend.rotary_dir_pin_pos", 13
+    )  # DIR+ (physical pin 13)
     rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
     rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
@@ -367,9 +394,13 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     valid_laser_backends = {"dummy", "ruida"}
     valid_rotary_backends = {"dummy", "real"}
     if laser_backend not in valid_laser_backends:
-        raise SystemExit(f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}")
+        raise SystemExit(
+            f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}"
+        )
     if rotary_backend not in valid_rotary_backends:
-        raise SystemExit(f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}")
+        raise SystemExit(
+            f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}"
+        )
     if rotary_pin_numbering not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
 

@@ -56,10 +56,23 @@ def rd_segments(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Render RD files in the Tk simulation viewer.")
-    ap.add_argument("rd_files", nargs="+", help="RD files to visualize (swizzled .rd as saved from Ruida dry runs)")
-    ap.add_argument("--edge-length-mm", type=float, default=100.0, help="Board edge length used to recover centered Y")
-    ap.add_argument("--rotation-deg", type=float, default=0.0, help="Rotation to annotate in the viewer")
-    ap.add_argument("--board", choices=["tail", "pin"], default="pin", help="Label to color segments under")
+    ap.add_argument(
+        "rd_files",
+        nargs="+",
+        help="RD files to visualize (swizzled .rd as saved from Ruida dry runs)",
+    )
+    ap.add_argument(
+        "--edge-length-mm",
+        type=float,
+        default=100.0,
+        help="Board edge length used to recover centered Y",
+    )
+    ap.add_argument(
+        "--rotation-deg", type=float, default=0.0, help="Rotation to annotate in the viewer"
+    )
+    ap.add_argument(
+        "--board", choices=["tail", "pin"], default="pin", help="Label to color segments under"
+    )
     args = ap.parse_args()
 
     all_segments: List[dict] = []
@@ -78,8 +91,18 @@ def main() -> None:
 
     viewer = SimulationViewer()
     viewer.open()
-    viewer.render(all_segments, rotation_deg=args.rotation_deg, origin=(0.0, 0.0), y_center=args.edge_length_mm / 2.0)
-    viewer.mainloop(all_segments, rotation_deg=args.rotation_deg, origin=(0.0, 0.0), y_center=args.edge_length_mm / 2.0)
+    viewer.render(
+        all_segments,
+        rotation_deg=args.rotation_deg,
+        origin=(0.0, 0.0),
+        y_center=args.edge_length_mm / 2.0,
+    )
+    viewer.mainloop(
+        all_segments,
+        rotation_deg=args.rotation_deg,
+        origin=(0.0, 0.0),
+        y_center=args.edge_length_mm / 2.0,
+    )
 
 
 if __name__ == "__main__":

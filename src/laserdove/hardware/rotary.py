@@ -74,12 +74,20 @@ class GPIOStepperDriver:
         # Active pins: whichever side we toggle. Static pins are held to bias the optos.
         self.step_pulse_pin = step_pin if step_pin is not None else step_pin_pos
         self.step_pulse_is_pos = step_pin is None
-        self.step_static_pin = None if step_pin is None or step_pin_pos is None else (step_pin_pos if step_pin is not None else step_pin)
+        self.step_static_pin = (
+            None
+            if step_pin is None or step_pin_pos is None
+            else (step_pin_pos if step_pin is not None else step_pin)
+        )
         self.step_static_level = GPIO.HIGH if not self.step_pulse_is_pos else GPIO.LOW
 
         self.dir_active_pin = dir_pin if dir_pin is not None else dir_pin_pos
         self.dir_active_is_pos = dir_pin is None
-        self.dir_static_pin = None if dir_pin is None or dir_pin_pos is None else (dir_pin_pos if dir_pin is not None else dir_pin)
+        self.dir_static_pin = (
+            None
+            if dir_pin is None or dir_pin_pos is None
+            else (dir_pin_pos if dir_pin is not None else dir_pin)
+        )
         self.dir_static_level = GPIO.HIGH if not self.dir_active_is_pos else GPIO.LOW
 
         self.enable_pin = enable_pin
@@ -152,14 +160,16 @@ class GPIOStepperDriver:
         """Release GPIO pins touched by this driver."""
         try:
             pins = [
-                p for p in (
+                p
+                for p in (
                     self.step_pulse_pin,
                     self.step_static_pin,
                     self.dir_active_pin,
                     self.dir_static_pin,
                     self.enable_pin,
                     self.alarm_pin,
-                ) if p is not None
+                )
+                if p is not None
             ]
             if pins:
                 self.GPIO.cleanup(pins)
@@ -226,7 +236,12 @@ class RealRotary(RotaryInterface):
                     self.max_step_rate_hz,
                 )
                 step_rate_hz = self.max_step_rate_hz
-            log.debug("Computed step target: %d steps (microsteps=%s, rate=%.1f Hz)", steps, micro, step_rate_hz)
+            log.debug(
+                "Computed step target: %d steps (microsteps=%s, rate=%.1f Hz)",
+                steps,
+                micro,
+                step_rate_hz,
+            )
             if hasattr(self.driver, "move_steps"):
                 try:
                     self.driver.move_steps(steps, step_rate_hz)

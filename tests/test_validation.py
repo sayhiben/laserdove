@@ -1,5 +1,3 @@
-import pytest
-
 from laserdove.geometry import compute_tail_layout
 from laserdove.model import JointParams, JigParams, MachineParams, TailLayout
 from laserdove.validation import (
@@ -65,7 +63,9 @@ def test_validate_joint_params_flags_invalid_values():
 
 def test_validate_tail_layout_bounds_and_pin_width():
     joint = make_joint(edge_length_mm=10.0, tail_outer_width_mm=8.0, num_tails=1)
-    layout = TailLayout(tail_centers_y=[1.0], tail_outer_width=8.0, pin_outer_width=-1.0, half_pin_width=0.5)
+    layout = TailLayout(
+        tail_centers_y=[1.0], tail_outer_width=8.0, pin_outer_width=-1.0, half_pin_width=0.5
+    )
     errors = validate_tail_layout(joint, layout)
     assert any("outside edge" in e for e in errors)
     assert any("pin_outer_width" in e for e in errors)
@@ -92,6 +92,8 @@ def test_validate_all_collects_errors():
 
 def test_validate_tail_layout_returns_early_for_empty_layout():
     joint = make_joint()
-    empty_layout = TailLayout(tail_centers_y=[], tail_outer_width=1.0, pin_outer_width=1.0, half_pin_width=0.5)
+    empty_layout = TailLayout(
+        tail_centers_y=[], tail_outer_width=1.0, pin_outer_width=1.0, half_pin_width=0.5
+    )
     errors = validate_tail_layout(joint, empty_layout)
     assert errors and "tail_centers_y is empty" in errors[0]

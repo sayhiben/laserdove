@@ -136,12 +136,14 @@ class RuidaLaser:
         if reply is None:
             return None
 
-        if reply.startswith(b"\xDA\x01" + address):
+        if reply.startswith(b"\xda\x01" + address):
             data = reply[4:]
         elif reply.startswith(address):
             data = reply[2:]
         else:
-            log.warning("[RUIDA UDP] Unexpected reply %s for address %s", reply.hex(" "), address.hex(" "))
+            log.warning(
+                "[RUIDA UDP] Unexpected reply %s for address %s", reply.hex(" "), address.hex(" ")
+            )
             return None
 
         if len(data) < expected_len:
@@ -161,15 +163,35 @@ class RuidaLaser:
         """
         try:
             status_payload = self._get_memory_value(self.MEM_MACHINE_STATUS, expected_len=4)
-            x_payload = self._get_memory_value(self.MEM_CURRENT_X, expected_len=5) if read_positions else None
-            y_payload = self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5) if read_positions else None
-            z_payload = self._get_memory_value(self.MEM_CURRENT_Z, expected_len=5) if read_positions else None
+            x_payload = (
+                self._get_memory_value(self.MEM_CURRENT_X, expected_len=5)
+                if read_positions
+                else None
+            )
+            y_payload = (
+                self._get_memory_value(self.MEM_CURRENT_Y, expected_len=5)
+                if read_positions
+                else None
+            )
+            z_payload = (
+                self._get_memory_value(self.MEM_CURRENT_Z, expected_len=5)
+                if read_positions
+                else None
+            )
         except RuntimeError as exc:
             log.warning("[RUIDA UDP] Failed to poll machine state: %s", exc)
-            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z) if self.dry_run else None
+            return (
+                self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
+                if self.dry_run
+                else None
+            )
 
         if status_payload is None:
-            return self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z) if self.dry_run else None
+            return (
+                self.MachineState(status_bits=0, x_mm=self.x, y_mm=self.y, z_mm=self.z)
+                if self.dry_run
+                else None
+            )
 
         status_bits = decode_status_bits(status_payload)
         x_mm = decode_abscoord_mm(x_payload) if x_payload else None
@@ -177,7 +199,11 @@ class RuidaLaser:
         raw_z_mm = decode_abscoord_mm(z_payload) if z_payload else None
         if raw_z_mm is not None and self._z_origin_mm is None:
             self._z_origin_mm = raw_z_mm
-        z_rel = raw_z_mm - self._z_origin_mm if raw_z_mm is not None and self._z_origin_mm is not None else None
+        z_rel = (
+            raw_z_mm - self._z_origin_mm
+            if raw_z_mm is not None and self._z_origin_mm is not None
+            else None
+        )
         if z_rel is not None and not self.z_positive_moves_bed_up:
             z_rel = -z_rel
         z_mm = z_rel
@@ -233,7 +259,9 @@ class RuidaLaser:
 
             if state is None:
                 if attempt <= 2 or attempt % 10 == 1:
-                    log.debug("[RUIDA UDP] Poll returned no state (attempt %d/%d)", attempt, max_attempts)
+                    log.debug(
+                        "[RUIDA UDP] Poll returned no state (attempt %d/%d)", attempt, max_attempts
+                    )
                 time.sleep(delay_s)
                 continue
 
@@ -246,7 +274,11 @@ class RuidaLaser:
             movement = False
             for axis, value in positions.items():
                 prev_val = last_pos.get(axis)
-                if value is not None and prev_val is not None and abs(value - prev_val) > pos_tol_mm:
+                if (
+                    value is not None
+                    and prev_val is not None
+                    and abs(value - prev_val) > pos_tol_mm
+                ):
                     movement = True
                     saw_busy_or_motion = True
             status_changed = last_bits is not None and state.status_bits != last_bits
@@ -268,8 +300,14 @@ class RuidaLaser:
             last_pos = {axis: value for axis, value in positions.items() if value is not None}
 
             idle = not busy
-            stable_enough = stable_counter >= stable_polls and stable_elapsed >= effective_min_stable_s
-            ready = idle and stable_enough and (not require_busy_transition or saw_busy_or_motion or part_end)
+            stable_enough = (
+                stable_counter >= stable_polls and stable_elapsed >= effective_min_stable_s
+            )
+            ready = (
+                idle
+                and stable_enough
+                and (not require_busy_transition or saw_busy_or_motion or part_end)
+            )
 
             if ready:
                 if state.x_mm is not None:
@@ -304,7 +342,9 @@ class RuidaLaser:
                 )
             time.sleep(delay_s)
 
-        raise RuntimeError(f"Ruida controller not ready after {max_attempts} attempts (last={last_state})")
+        raise RuntimeError(
+            f"Ruida controller not ready after {max_attempts} attempts (last={last_state})"
+        )
 
     def _set_speed(self, speed_mm_s: float) -> None:
         """
@@ -376,8 +416,9 @@ class RuidaLaser:
         if speed is not None:
             self._set_speed(speed)
         payload = bytes([0xA8]) + encode_abscoord_mm(x) + encode_abscoord_mm(y)
-        log.info("[RUIDA UDP] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%",
-                 x, y, speed, self.power)
+        log.info(
+            "[RUIDA UDP] CUT_LINE x=%.3f y=%.3f speed=%.3f power=%.1f%%", x, y, speed, self.power
+        )
         self._udp.send_packets(payload)
 
     def set_laser_power(self, power_pct) -> None:
@@ -469,8 +510,11 @@ class RuidaLaser:
             swizzled = swizzle(payload, magic=self.magic)
             path.write_bytes(swizzled)
             log.info("[RUIDA UDP] Saved RD job to %s", path)
-        log.info("[RUIDA UDP] Uploading RD job with %d moves%s",
-                 len(moves), f" z={job_z_offset_mm:.3f}" if job_z_offset_mm is not None else "")
+        log.info(
+            "[RUIDA UDP] Uploading RD job with %d moves%s",
+            len(moves),
+            f" z={job_z_offset_mm:.3f}" if job_z_offset_mm is not None else "",
+        )
         if self.dry_run:
             log.debug("[RUIDA UDP DRY RD] %s", payload.hex(" "))
         self._udp.send_packets(payload)
@@ -519,8 +563,12 @@ class RuidaLaser:
                 bool(initial_state.status_bits & 0x01),
                 bool(initial_state.status_bits & self.STATUS_BIT_PART_END),
             )
-        job_origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
-        job_origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
+        job_origin_x = (
+            initial_state.x_mm if initial_state and initial_state.x_mm is not None else 0.0
+        )
+        job_origin_y = (
+            initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
+        )
         job_origin_z: float | None = None
         if initial_state and initial_state.z_mm is not None:
             job_origin_z = initial_state.z_mm
@@ -540,8 +588,6 @@ class RuidaLaser:
         last_set_z: float | None = None
         origin_x = job_origin_x
         origin_y = job_origin_y
-        origin_z: float | None = job_origin_z
-        origin_z_from_command = False
         origin_speed: float | None = None
         park_z: float | None = job_origin_z
 
@@ -550,7 +596,9 @@ class RuidaLaser:
                 return
             nonlocal cursor_x, cursor_y
             move_speed = origin_speed or current_speed
-            need_xy = not math.isclose(cursor_x, origin_x, abs_tol=1e-9) or not math.isclose(cursor_y, origin_y, abs_tol=1e-9)
+            need_xy = not math.isclose(cursor_x, origin_x, abs_tol=1e-9) or not math.isclose(
+                cursor_y, origin_y, abs_tol=1e-9
+            )
 
             if not need_xy:
                 return
@@ -576,7 +624,9 @@ class RuidaLaser:
                     self.x = state.x_mm
                 if state.y_mm is not None:
                     self.y = state.y_mm
-            need_rehome = not math.isclose(self.x, origin_x, abs_tol=1e-6) or not math.isclose(self.y, origin_y, abs_tol=1e-6)
+            need_rehome = not math.isclose(self.x, origin_x, abs_tol=1e-6) or not math.isclose(
+                self.y, origin_y, abs_tol=1e-6
+            )
             if not need_rehome:
                 return
             move_speed = origin_speed or current_speed or self.z_speed_mm_s
@@ -625,27 +675,33 @@ class RuidaLaser:
                     y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
                     if cmd.z is not None:
                         current_z = cmd.z
-                        if not origin_z_from_command:
-                            origin_z = current_z
-                            origin_z_from_command = True
                         last_set_z = current_z
                         self.z = current_z
-                        block.append(RDMove(
-                            x_mm=x,
-                            y_mm=y,
-                            speed_mm_s=self.z_speed_mm_s,
-                            power_pct=current_power,
-                            is_cut=False,
-                            z_mm=current_z,
-                        ))
+                        block.append(
+                            RDMove(
+                                x_mm=x,
+                                y_mm=y,
+                                speed_mm_s=self.z_speed_mm_s,
+                                power_pct=current_power,
+                                is_cut=False,
+                                z_mm=current_z,
+                            )
+                        )
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                         if origin_speed is None:
                             origin_speed = current_speed
                     if current_speed is None:
                         continue
-                    block.append(RDMove(x_mm=x, y_mm=y, speed_mm_s=current_speed,
-                        power_pct=current_power, is_cut=False))
+                    block.append(
+                        RDMove(
+                            x_mm=x,
+                            y_mm=y,
+                            speed_mm_s=current_speed,
+                            power_pct=current_power,
+                            is_cut=False,
+                        )
+                    )
                     cursor_x, cursor_y = x, y
                     continue
 
@@ -656,25 +712,29 @@ class RuidaLaser:
                         current_z = cmd.z
                         last_set_z = current_z
                         self.z = current_z
-                        block.append(RDMove(
-                            x_mm=x,
-                            y_mm=y,
-                            speed_mm_s=self.z_speed_mm_s,
-                            power_pct=current_power,
-                            is_cut=False,
-                            z_mm=current_z,
-                        ))
+                        block.append(
+                            RDMove(
+                                x_mm=x,
+                                y_mm=y,
+                                speed_mm_s=self.z_speed_mm_s,
+                                power_pct=current_power,
+                                is_cut=False,
+                                z_mm=current_z,
+                            )
+                        )
                     if cmd.speed_mm_s is not None:
                         current_speed = cmd.speed_mm_s
                     if current_speed is None:
                         continue
-                    block.append(RDMove(
-                        x_mm=x,
-                        y_mm=y,
-                        speed_mm_s=current_speed,
-                        power_pct=current_power,
-                        is_cut=not movement_only_mode,
-                    ))
+                    block.append(
+                        RDMove(
+                            x_mm=x,
+                            y_mm=y,
+                            speed_mm_s=current_speed,
+                            power_pct=current_power,
+                            is_cut=not movement_only_mode,
+                        )
+                    )
                     cursor_x, cursor_y = x, y
                     continue
 
@@ -682,7 +742,9 @@ class RuidaLaser:
         finally:
             if park_z is not None:
                 try:
-                    needs_park = last_set_z is None or not math.isclose(last_set_z, park_z, abs_tol=1e-6)
+                    needs_park = last_set_z is None or not math.isclose(
+                        last_set_z, park_z, abs_tol=1e-6
+                    )
                     if needs_park:
                         park_moves = [
                             RDMove(
@@ -713,10 +775,21 @@ class RuidaLaser:
             except Exception:
                 log.debug("Rotary park failed", exc_info=True)
             try:
-                origin_x = initial_state.x_mm if initial_state and initial_state.x_mm is not None else job_origin_x
-                origin_y = initial_state.y_mm if initial_state and initial_state.y_mm is not None else job_origin_y
+                origin_x = (
+                    initial_state.x_mm
+                    if initial_state and initial_state.x_mm is not None
+                    else job_origin_x
+                )
+                origin_y = (
+                    initial_state.y_mm
+                    if initial_state and initial_state.y_mm is not None
+                    else job_origin_y
+                )
                 if origin_x is not None and origin_y is not None:
-                    if not (math.isclose(self.x, origin_x, abs_tol=1e-6) and math.isclose(self.y, origin_y, abs_tol=1e-6)):
+                    if not (
+                        math.isclose(self.x, origin_x, abs_tol=1e-6)
+                        and math.isclose(self.y, origin_y, abs_tol=1e-6)
+                    ):
                         self.move(x=origin_x, y=origin_y, speed=self.z_speed_mm_s)
             except Exception:
                 log.debug("XY park failed", exc_info=True)

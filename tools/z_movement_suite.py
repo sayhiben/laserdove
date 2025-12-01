@@ -35,7 +35,9 @@ def _poll_raw_z(laser: RuidaLaser) -> Optional[float]:
     return decode_abscoord_mm(payload)
 
 
-def _poll_z(laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2, *, update_xy: bool = False) -> Optional[float]:
+def _poll_z(
+    laser: RuidaLaser, label: str, count: int = 3, delay: float = 0.2, *, update_xy: bool = False
+) -> Optional[float]:
     """Poll and log Z a few times; return last logical Z. Optionally seed XY from the last poll."""
     last_z = None
     last_state = None
@@ -86,7 +88,11 @@ def direct_udp_axis_move_alt(laser: RuidaLaser, logical_target_mm: float) -> Non
     """Try alternate opcode 0x80 0x08 reported by some stacks."""
     hw_target = _hardware_target(laser, logical_target_mm)
     payload = b"\x80\x08" + encode_abscoord_mm(hw_target)
-    log.info("Direct UDP axis Z move (alt opcode 0x80 0x08): logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    log.info(
+        "Direct UDP axis Z move (alt opcode 0x80 0x08): logical=%.3f raw=%.3f",
+        logical_target_mm,
+        hw_target,
+    )
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "direct-udp-alt", count=5, delay=0.1)
 
@@ -103,7 +109,9 @@ def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
     ]
     payload = build_rd_job(moves, job_z_mm=logical_target_mm, air_assist=laser.air_assist)
     hw_target = _hardware_target(laser, logical_target_mm)
-    log.info("RD job Z move via 0x80 0x03 offset: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
+    log.info(
+        "RD job Z move via 0x80 0x03 offset: logical=%.3f raw=%.3f", logical_target_mm, hw_target
+    )
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "rd-job", count=10, delay=0.2)
 
@@ -124,7 +132,9 @@ def rd_job_move_alt_opcode(laser: RuidaLaser, logical_target_mm: float) -> None:
     ]
     builder = _RDJobBuilder()
     paths, bbox = rd_builder._moves_to_paths(moves)
-    layer = rd_builder._Layer(paths=paths, bbox=bbox, speed=[laser.z_speed_mm_s, laser.z_speed_mm_s], power=[0.0, 0.0])
+    layer = rd_builder._Layer(
+        paths=paths, bbox=bbox, speed=[laser.z_speed_mm_s, laser.z_speed_mm_s], power=[0.0, 0.0]
+    )
     builder._globalbbox = bbox
     header = builder.header([layer], filename="ALTZ")
     body = builder.body([layer], job_z_mm=None, air_assist=laser.air_assist)
@@ -137,7 +147,9 @@ def rd_job_move_alt_opcode(laser: RuidaLaser, logical_target_mm: float) -> None:
     _poll_z(laser, "rd-job-alt", count=10, delay=0.2)
 
 
-def rd_job_move_z_only(laser: RuidaLaser, logical_target_mm: float, *, rapid_options: int = 0x02) -> None:
+def rd_job_move_z_only(
+    laser: RuidaLaser, logical_target_mm: float, *, rapid_options: int = 0x02
+) -> None:
     """
     RD job containing only a rapid Z command (D9 02) with no XY paths to avoid unintended XY travel.
     """
@@ -223,7 +235,12 @@ def direct_udp_rapid_z(laser: RuidaLaser, logical_target_mm: float, *, options: 
     """
     hw_target = _hardware_target(laser, logical_target_mm)
     payload = bytes([0xD9, 0x02, options & 0xFF]) + encode_abscoord_mm(hw_target)
-    log.info("Direct UDP rapid Z (0xD9 0x02 opt=0x%02X): logical=%.3f raw=%.3f", options, logical_target_mm, hw_target)
+    log.info(
+        "Direct UDP rapid Z (0xD9 0x02 opt=0x%02X): logical=%.3f raw=%.3f",
+        options,
+        logical_target_mm,
+        hw_target,
+    )
     laser._send_packets(payload)  # type: ignore[attr-defined]
     _poll_z(laser, "direct-udp-rapid", count=5, delay=0.1)
 
@@ -237,12 +254,17 @@ def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) ->
     if not laser.z_positive_moves_bed_up:
         direction_up = not direction_up
     cmd = RuidaPanelInterface.CMD_Z_UP if direction_up else RuidaPanelInterface.CMD_Z_DOWN
-    log.info("Panel jog: delta=%.3f cmd=%s steps=%d", logical_delta_mm, "Z_UP" if direction_up else "Z_DOWN", max_steps)
+    log.info(
+        "Panel jog: delta=%.3f cmd=%s steps=%d",
+        logical_delta_mm,
+        "Z_UP" if direction_up else "Z_DOWN",
+        max_steps,
+    )
     _poll_z(laser, "panel-jog-before", count=3, delay=0.1)
     for idx in range(max_steps):
         iface.send_command(cmd)
         time.sleep(0.05)
-        _poll_z(laser, f"panel-jog-step{idx+1}", count=2, delay=0.05)
+        _poll_z(laser, f"panel-jog-step{idx + 1}", count=2, delay=0.05)
 
 
 def panel_main_jog(laser: RuidaLaser, logical_delta_mm: float, *, hold_s: float = 0.3) -> None:
@@ -255,8 +277,8 @@ def panel_main_jog(laser: RuidaLaser, logical_delta_mm: float, *, hold_s: float 
     direction_up = logical_delta_mm > 0
     if not laser.z_positive_moves_bed_up:
         direction_up = not direction_up
-    down_cmd = b"\xD8\x24" if direction_up else b"\xD8\x25"
-    up_cmd = b"\xD8\x34" if direction_up else b"\xD8\x35"
+    down_cmd = b"\xd8\x24" if direction_up else b"\xd8\x25"
+    up_cmd = b"\xd8\x34" if direction_up else b"\xd8\x35"
     log.info(
         "Panel-main jog: delta=%.3f direction=%s hold=%.2fs (keydown %s / keyup %s)",
         logical_delta_mm,
@@ -273,7 +295,9 @@ def panel_main_jog(laser: RuidaLaser, logical_delta_mm: float, *, hold_s: float 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Probe Ruida Z movement fidelity via multiple paths.")
+    parser = argparse.ArgumentParser(
+        description="Probe Ruida Z movement fidelity via multiple paths."
+    )
     parser.add_argument("--host", required=True, help="Ruida controller host/IP")
     parser.add_argument(
         "--mode",
@@ -292,19 +316,47 @@ def main() -> None:
         default="rd",
         help="Single test to run: rd=standard RD Z, rd-alt=RD with 0x80 0x08, rd-zonly=RD with only rapid D9 02 Z and no XY, rd-8003=RD with only 0x80 0x03 signed Z and no XY, udp=direct 0x80 0x01, udp-alt=direct 0x80 0x08, udp-rapid=D9 02 rapid Z, udp-8003=direct 0x80 0x03 signed Z, panel=interface jog, panel-main=keydown/keyup on control port",
     )
-    parser.add_argument("--target-z-mm", type=float, default=0.0, help="Logical Z target relative to startup (mm)")
+    parser.add_argument(
+        "--target-z-mm", type=float, default=0.0, help="Logical Z target relative to startup (mm)"
+    )
     parser.add_argument("--panel-steps", type=int, default=3, help="Max panel jog steps to issue")
-    parser.add_argument("--movement-only", action="store_true", default=True, help="Force power=0 in RD jobs (default)")
+    parser.add_argument(
+        "--movement-only",
+        action="store_true",
+        default=True,
+        help="Force power=0 in RD jobs (default)",
+    )
     parser.add_argument("--no-movement-only", dest="movement_only", action="store_false")
-    parser.add_argument("--panel-main-hold-s", type=float, default=0.3, help="Hold time for panel-main keydown before keyup (s)")
-    parser.add_argument("--rapid-options", type=lambda x: int(x, 0), default=0x02, help="Options byte for rapid Z (D9 02) command")
+    parser.add_argument(
+        "--panel-main-hold-s",
+        type=float,
+        default=0.3,
+        help="Hold time for panel-main keydown before keyup (s)",
+    )
+    parser.add_argument(
+        "--rapid-options",
+        type=lambda x: int(x, 0),
+        default=0x02,
+        help="Options byte for rapid Z (D9 02) command",
+    )
     parser.add_argument("--timeout", type=float, default=3.0, help="Socket timeout (s)")
     parser.add_argument("--dry-run", action="store_true", help="Log packets without sending")
-    parser.add_argument("--relative-delta-mm", type=float, help="Relative Z delta to test via read+absolute (clamped)")
-    parser.add_argument("--max-travel-mm", type=float, default=50.0, help="Clamp absolute/relative target to +/- this travel (mm)")
+    parser.add_argument(
+        "--relative-delta-mm",
+        type=float,
+        help="Relative Z delta to test via read+absolute (clamped)",
+    )
+    parser.add_argument(
+        "--max-travel-mm",
+        type=float,
+        default=50.0,
+        help="Clamp absolute/relative target to +/- this travel (mm)",
+    )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
     try:
         socket.getaddrinfo(args.host, None)
@@ -333,7 +385,13 @@ def main() -> None:
     unclamped = target
     target = max(-max_travel, min(max_travel, target))
     if target != unclamped:
-        log.warning("Clamped %s from %.3f to %.3f (max travel +/-%.1f mm)", target_source, unclamped, target, max_travel)
+        log.warning(
+            "Clamped %s from %.3f to %.3f (max travel +/-%.1f mm)",
+            target_source,
+            unclamped,
+            target,
+            max_travel,
+        )
     else:
         log.info("Using %s: %.3f mm (max travel +/-%.1f mm)", target_source, target, max_travel)
 

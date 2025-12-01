@@ -72,7 +72,12 @@ class SimulatedLaser(LaserInterface):
         self.current_board = "pin"
         if self.viewer is not None:
             try:
-                self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+                self.viewer.update(
+                    self.segments,
+                    self.rotation_deg,
+                    origin=(self.origin_x, self.origin_y),
+                    y_center=self.origin_y,
+                )
             except TypeError:
                 self.viewer.update(self.segments, self.rotation_deg)
 
@@ -117,7 +122,12 @@ class SimulatedLaser(LaserInterface):
         )
         if self.viewer is not None:
             try:
-                self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+                self.viewer.update(
+                    self.segments,
+                    self.rotation_deg,
+                    origin=(self.origin_x, self.origin_y),
+                    y_center=self.origin_y,
+                )
             except TypeError:
                 self.viewer.update(self.segments, self.rotation_deg)
 
@@ -193,8 +203,18 @@ class SimulatedLaser(LaserInterface):
             self.viewer = SimulationViewer()
         self.viewer.open()
         try:
-            self.viewer.render(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
-            self.viewer.update(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            self.viewer.render(
+                self.segments,
+                self.rotation_deg,
+                origin=(self.origin_x, self.origin_y),
+                y_center=self.origin_y,
+            )
+            self.viewer.update(
+                self.segments,
+                self.rotation_deg,
+                origin=(self.origin_x, self.origin_y),
+                y_center=self.origin_y,
+            )
         except TypeError:
             # Fallback for legacy dummy viewers in tests
             self.viewer.render(self.segments, self.rotation_deg)
@@ -209,7 +229,12 @@ class SimulatedLaser(LaserInterface):
         if self.viewer is None:
             return
         try:
-            self.viewer.mainloop(self.segments, self.rotation_deg, origin=(self.origin_x, self.origin_y), y_center=self.origin_y)
+            self.viewer.mainloop(
+                self.segments,
+                self.rotation_deg,
+                origin=(self.origin_x, self.origin_y),
+                y_center=self.origin_y,
+            )
         except TypeError:
             self.viewer.mainloop(self.segments, self.rotation_deg)
 
@@ -251,7 +276,12 @@ class SimulatedRotary(RotaryInterface):
             self.visualizer.set_rotation(angle_deg)
             if self.visualizer.viewer is not None:
                 try:
-                    self.visualizer.viewer.update(self.visualizer.segments, angle_deg, origin=(self.visualizer.origin_x, self.visualizer.origin_y), y_center=self.visualizer.origin_y)
+                    self.visualizer.viewer.update(
+                        self.visualizer.segments,
+                        angle_deg,
+                        origin=(self.visualizer.origin_x, self.visualizer.origin_y),
+                        y_center=self.visualizer.origin_y,
+                    )
                 except TypeError:
                     self.visualizer.viewer.update(self.visualizer.segments, angle_deg)
         if self.real_time and speed_dps > 0 and self.time_scale > 0:

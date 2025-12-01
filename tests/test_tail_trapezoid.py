@@ -38,10 +38,10 @@ def test_tail_pocket_widens_with_angle():
 
     # First pocket command sequence after MOVE and power on:
     # A (move) -> B -> C -> D -> A
-    move_cmd = commands[0]          # A: (0, y_left_top)
-    left_slope_cmd = commands[2]    # B: (tail_depth, y_left_bottom)
-    bottom_edge_cmd = commands[3]   # C: (tail_depth, y_right_bottom)
-    right_slope_cmd = commands[4]   # D: (0, y_right_top)
+    move_cmd = commands[0]  # A: (0, y_left_top)
+    left_slope_cmd = commands[2]  # B: (tail_depth, y_left_bottom)
+    bottom_edge_cmd = commands[3]  # C: (tail_depth, y_right_bottom)
+    right_slope_cmd = commands[4]  # D: (0, y_right_top)
 
     top_width = right_slope_cmd.y - move_cmd.y
     bottom_width = bottom_edge_cmd.y - left_slope_cmd.y

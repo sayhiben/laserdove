@@ -55,7 +55,9 @@ def _plan_commands(run_config) -> List[Command]:
         return _build_reset_commands(run_config)
 
     tail_layout = compute_tail_layout(run_config.joint_params)
-    validation_errors = validate_all(run_config.joint_params, run_config.jig_params, run_config.machine_params, tail_layout)
+    validation_errors = validate_all(
+        run_config.joint_params, run_config.jig_params, run_config.machine_params, tail_layout
+    )
     if validation_errors:
         for error in validation_errors:
             print(f"ERROR: {error}")
@@ -64,11 +66,17 @@ def _plan_commands(run_config) -> List[Command]:
     commands: List[Command] = []
 
     if run_config.mode in ("tails", "both"):
-        commands.extend(plan_tail_board(run_config.joint_params, run_config.machine_params, tail_layout))
+        commands.extend(
+            plan_tail_board(run_config.joint_params, run_config.machine_params, tail_layout)
+        )
 
     if run_config.mode in ("pins", "both"):
         pin_plan = compute_pin_plan(run_config.joint_params, run_config.jig_params, tail_layout)
-        commands.extend(plan_pin_board(run_config.joint_params, run_config.jig_params, run_config.machine_params, pin_plan))
+        commands.extend(
+            plan_pin_board(
+                run_config.joint_params, run_config.jig_params, run_config.machine_params, pin_plan
+            )
+        )
 
     return commands
 
@@ -121,7 +129,11 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
         rotary = DummyRotary()
     elif run_config.rotary_backend == "real":
         driver = LoggingStepperDriver()
-        if any(pin is not None for pin in (run_config.rotary_step_pin, run_config.rotary_step_pin_pos)) and any(pin is not None for pin in (run_config.rotary_dir_pin, run_config.rotary_dir_pin_pos)):
+        if any(
+            pin is not None for pin in (run_config.rotary_step_pin, run_config.rotary_step_pin_pos)
+        ) and any(
+            pin is not None for pin in (run_config.rotary_dir_pin, run_config.rotary_dir_pin_pos)
+        ):
             try:
                 driver = GPIOStepperDriver(
                     step_pin=run_config.rotary_step_pin,
@@ -134,9 +146,13 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
                     pin_mode=run_config.rotary_pin_numbering.upper(),
                 )
             except Exception as e:
-                log.warning("Failed to initialize GPIO rotary driver; using logging driver instead: %s", e)
+                log.warning(
+                    "Failed to initialize GPIO rotary driver; using logging driver instead: %s", e
+                )
         else:
-            log.warning("Rotary backend 'real' selected but step/dir pins not configured; using logging driver.")
+            log.warning(
+                "Rotary backend 'real' selected but step/dir pins not configured; using logging driver."
+            )
 
         rotary = RealRotary(
             steps_per_rev=run_config.rotary_steps_per_rev,
@@ -152,12 +168,15 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
 def _prepend_rotate_zero(commands: List[Command], run_config) -> None:
     if run_config.simulate or run_config.reset_only:
         return
-    commands.insert(0, Command(
-        type=CommandType.ROTATE,
-        angle_deg=run_config.jig_params.rotation_zero_deg,
-        speed_mm_s=run_config.jig_params.rotation_speed_dps,
-        comment="Prep: rotate jig to zero",
-    ))
+    commands.insert(
+        0,
+        Command(
+            type=CommandType.ROTATE,
+            angle_deg=run_config.jig_params.rotation_zero_deg,
+            speed_mm_s=run_config.jig_params.rotation_speed_dps,
+            comment="Prep: rotate jig to zero",
+        ),
+    )
 
 
 def _execute(commands: List[Command], laser, rotary, run_config) -> None:
@@ -205,7 +224,9 @@ def main() -> None:
             print(command)
         return
 
-    laser, rotary = _build_sim_backends(run_config) if run_config.simulate else _build_real_backends(run_config)
+    laser, rotary = (
+        _build_sim_backends(run_config) if run_config.simulate else _build_real_backends(run_config)
+    )
     _prepend_rotate_zero(commands, run_config)
     _execute(commands, laser, rotary, run_config)
 
