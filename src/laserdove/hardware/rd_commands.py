@@ -1,8 +1,10 @@
 """
-Shared RD opcode definitions.
+Shared RD opcode definitions and controller profiles.
 
 This module is the single source of truth for RD command labels so tools and runtime
 code do not drift. Parser attaches handlers; runtime uses labels for logging/metadata.
+Profiles allow small per-controller tweaks (e.g., magic key, opcode variants) without
+forking tables.
 
 Notes:
 - CA 41 appears to encode a layer mode flag: 0x00 covers lines and some fills
@@ -12,7 +14,12 @@ Notes:
   the trailer; likely a job-level spacing/DPI summary.
 """
 
-RD_COMMANDS = {
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict
+
+RD_COMMANDS: Dict[int, Any] = {
     0x80: {
         0x00: "AXIS_X_MOVE",
         0x03: "AXIS_Z_OFFSET",
@@ -145,3 +152,78 @@ RD_COMMANDS = {
         0x07: "JOB_FLAGS?",
     },
 }
+
+
+@dataclass(frozen=True)
+class RuidaProfile:
+    """
+    Encapsulates controller-specific quirks for protocol decoding/building.
+
+    Fields allow per-model overrides while keeping the base opcode labels shared.
+    """
+
+    name: str
+    swizzle_magic: int = 0x88
+    command_overrides: Dict[int, Any] = field(default_factory=dict)
+    decoder_overrides: Dict[int, Any] = field(default_factory=dict)
+
+
+DEFAULT_PROFILE_NAME = "rdc6442g"
+
+PROFILES: Dict[str, RuidaProfile] = {
+    DEFAULT_PROFILE_NAME: RuidaProfile(name=DEFAULT_PROFILE_NAME, swizzle_magic=0x88),
+}
+
+
+def _deep_merge(base: Dict[int, Any], overrides: Dict[int, Any]) -> Dict[int, Any]:
+    """Recursively merge protocol tables (supports nested dicts)."""
+    merged: Dict[int, Any] = {}
+    for key, val in base.items():
+        merged[key] = val
+    for key, val in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = _deep_merge(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
+def merge_protocol_tables(*tables: Dict[int, Any]) -> Dict[int, Any]:
+    """Merge multiple protocol tables left-to-right with deep dict merging."""
+    merged: Dict[int, Any] = {}
+    for table in tables:
+        merged = _deep_merge(merged, table)
+    return merged
+
+
+def get_profile(profile: str | RuidaProfile | None = None) -> RuidaProfile:
+    """Resolve a profile name/object to a RuidaProfile, defaulting to RDC6442G."""
+    if isinstance(profile, RuidaProfile):
+        return profile
+    if profile is None:
+        return PROFILES[DEFAULT_PROFILE_NAME]
+    key = profile.lower()
+    if key not in PROFILES:
+        raise ValueError(f"Unknown Ruida profile '{profile}'")
+    return PROFILES[key]
+
+
+def command_table_for(profile: str | RuidaProfile | None = None) -> Dict[int, Any]:
+    """
+    Return a merged command label table for the requested profile.
+
+    This is the entry point consumers should use to avoid duplicating opcode labels.
+    """
+    prof = get_profile(profile)
+    return merge_protocol_tables(RD_COMMANDS, prof.command_overrides)
+
+
+__all__ = [
+    "RD_COMMANDS",
+    "RuidaProfile",
+    "DEFAULT_PROFILE_NAME",
+    "PROFILES",
+    "command_table_for",
+    "get_profile",
+    "merge_protocol_tables",
+]
