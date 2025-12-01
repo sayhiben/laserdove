@@ -591,39 +591,6 @@ class RuidaLaser:
         origin_speed: float | None = None
         park_z: float | None = job_origin_z
 
-        def refresh_job_origin_from_controller() -> None:
-            """
-            Re-anchor the job origin to the controller's reported XY. Ruida
-            firmware can re-zero between RD jobs; if we keep using the cached
-            origin, subsequent blocks will be offset in Y.
-            """
-            nonlocal job_origin_x, job_origin_y, origin_x, origin_y, cursor_x, cursor_y
-            state = None
-            try:
-                state = self._read_machine_state(read_positions=True)
-            except TypeError:
-                state = self._read_machine_state()
-            if not state or state.x_mm is None or state.y_mm is None:
-                return
-            new_x = state.x_mm
-            new_y = state.y_mm
-            origin_changed = not (
-                math.isclose(new_x, job_origin_x, abs_tol=1e-6)
-                and math.isclose(new_y, job_origin_y, abs_tol=1e-6)
-            )
-            job_origin_x = origin_x = new_x
-            job_origin_y = origin_y = new_y
-            self.x = new_x
-            self.y = new_y
-            if origin_changed:
-                log.debug(
-                    "[RUIDA UDP] Updating job origin to controller XY x=%.3f y=%.3f",
-                    new_x,
-                    new_y,
-                )
-            # Reset cursors so subsequent relative mapping starts from the new origin.
-            cursor_x, cursor_y = job_origin_x, job_origin_y
-
         def park_head_before_rotary() -> None:
             if movement_only_mode:
                 return
@@ -671,8 +638,27 @@ class RuidaLaser:
                 return
             nonlocal block_start_z
             _ensure_at_job_origin()
+            needs_origin_move = not (
+                math.isclose(block_moves[0].x_mm, origin_x, abs_tol=1e-6)
+                and math.isclose(block_moves[0].y_mm, origin_y, abs_tol=1e-6)
+            )
+            origin_move_speed = origin_speed or current_speed or self.z_speed_mm_s
+            payload_moves = (
+                [
+                    RDMove(
+                        x_mm=origin_x,
+                        y_mm=origin_y,
+                        speed_mm_s=origin_move_speed,
+                        power_pct=0.0,
+                        is_cut=False,
+                    )
+                ]
+                + block_moves
+                if needs_origin_move
+                else block_moves
+            )
             self.send_rd_job(
-                block_moves,
+                payload_moves,
                 job_z_mm=None,
                 require_busy_transition=True,
                 start_z_mm=block_start_z,
@@ -681,7 +667,6 @@ class RuidaLaser:
 
         block: List[RDMove] = []
         block_start_z: float | None = current_z
-        origin_dirty = False
 
         try:
             for cmd in commands:
@@ -695,12 +680,7 @@ class RuidaLaser:
                     # After parking, cursor/last_set_z reflect parked position.
                     current_z = last_set_z
                     rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
-                    origin_dirty = True
                     continue
-
-                if origin_dirty:
-                    refresh_job_origin_from_controller()
-                    origin_dirty = False
 
                 if cmd.type.name == "SET_LASER_POWER":
                     if movement_only_mode:
