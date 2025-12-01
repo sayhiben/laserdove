@@ -1,0 +1,6 @@
+Will you please take a deep dive into this codebase to understand what it does
+  and how? There's a good README.md and an AGENTS.md to get you started, and
+  there's a decent amount of reference documentation and inspirational code located
+  in ./reference/. Please describe the purpose, approach, architecture, structure,
+  practice, methodology, and step-by-step instructions for what, how, why, etc.
+  this project is and works
