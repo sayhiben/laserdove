@@ -1,7 +1,8 @@
 import math
+import pytest
 
-from laserdove.geometry import compute_tail_layout
-from laserdove.model import JointParams, JigParams, MachineParams
+from laserdove.geometry import compute_tail_layout, kerf_offset_boundary
+from laserdove.model import JointParams, JigParams, MachineParams, Side
 from laserdove.planner import compute_pin_plan, plan_pin_board
 
 
@@ -62,8 +63,156 @@ def test_pin_cut_spans_half_gap():
     cut_lines = commands[move_index + 2 : move_index + 6]
     assert len(cut_lines) == 4
 
-    y_far = cut_lines[1].y  # pocket span leg
-    expected_half_gap = joint_params.tail_outer_width_mm / 2.0
+    y_far = cut_lines[1].y  # pocket span leg (already projected)
+    cos_theta = math.cos(
+        math.radians(jig_params.rotation_zero_deg + joint_params.dovetail_angle_deg)
+    )
+    expected_half_gap = (joint_params.tail_outer_width_mm / 2.0) * cos_theta
 
     assert y_far > y_start
     assert math.isclose(abs(y_far - y_start), expected_half_gap, abs_tol=1e-6)
+
+
+def test_pin_y_positions_are_projected_for_rotation():
+    joint_params = make_joint()
+    # Increase angle to magnify projection effects.
+    joint_params.dovetail_angle_deg = 30.0
+    layout = compute_tail_layout(joint_params)
+    jig_params = make_jig()
+    machine_params = make_machine()
+
+    pin_plan = compute_pin_plan(joint_params, jig_params, layout)
+    commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
+
+    # Build half-gap lookup matching planner logic.
+    unique_boundaries = sorted({side.y_boundary_mm for side in pin_plan.sides})
+    half_gap_by_side = {}
+    for side in pin_plan.sides:
+        idx = unique_boundaries.index(side.y_boundary_mm)
+        if side.side == Side.LEFT:
+            gap = (
+                side.y_boundary_mm - unique_boundaries[idx - 1]
+                if idx > 0
+                else pin_plan.half_pin_width
+            )
+        else:
+            gap = (
+                unique_boundaries[idx + 1] - side.y_boundary_mm
+                if idx + 1 < len(unique_boundaries)
+                else pin_plan.half_pin_width
+            )
+        half_gap_by_side[(side.pin_index, side.side)] = gap / 2.0
+
+    y_center = joint_params.edge_length_mm / 2.0
+    rotation_deg = jig_params.rotation_zero_deg + joint_params.dovetail_angle_deg
+    cos_theta = math.cos(math.radians(abs(rotation_deg - jig_params.rotation_zero_deg)))
+
+    # Pick a right side to verify projection math.
+    side = next(s for s in pin_plan.sides if s.side == Side.RIGHT)
+
+    y_cut_board = kerf_offset_boundary(
+        y_geo=side.y_boundary_mm,
+        kerf_mm=joint_params.kerf_pin_mm,
+        clearance_mm=joint_params.clearance_mm,
+        keep_on_positive_side=False,
+        is_tail_board=False,
+    )
+    half_gap = half_gap_by_side[(side.pin_index, side.side)]
+    y_far_board = y_cut_board + half_gap
+
+    def project_y(y_board: float) -> float:
+        return y_center + (y_board - y_center) * cos_theta
+
+    expected_y_move = project_y(y_cut_board)
+    expected_y_span = project_y(y_far_board)
+
+    move_cmd_index = next(
+        idx
+        for idx, cmd in enumerate(commands)
+        if cmd.type.name == "MOVE"
+        and cmd.y is not None
+        and f"pin {side.pin_index} {side.side.name}" in (cmd.comment or "")
+    )
+    move_cmd = commands[move_cmd_index]
+    span_cmd = next(
+        cmd
+        for cmd in commands[move_cmd_index:]
+        if cmd.type.name == "CUT_LINE" and (cmd.comment or "").startswith("Pin: pocket span")
+    )
+
+    assert math.isclose(move_cmd.y, expected_y_move, abs_tol=1e-9)
+    assert math.isclose(span_cmd.y, expected_y_span, abs_tol=1e-9)
+
+
+@pytest.mark.parametrize("angle_deg", [0.0, 15.0, -15.0, 45.0])
+def test_pin_projection_varies_with_angle(angle_deg: float):
+    joint_params = make_joint()
+    joint_params.dovetail_angle_deg = abs(angle_deg)
+    layout = compute_tail_layout(joint_params)
+    jig_params = make_jig()
+    # Shift zero so negative angles still exercise delta logic.
+    jig_params.rotation_zero_deg = -5.0
+    machine_params = make_machine()
+
+    pin_plan = compute_pin_plan(joint_params, jig_params, layout)
+    commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
+
+    y_center = joint_params.edge_length_mm / 2.0
+    target_rotation = jig_params.rotation_zero_deg + angle_deg
+    cos_theta = math.cos(math.radians(abs(target_rotation - jig_params.rotation_zero_deg)))
+
+    sides = [s for s in pin_plan.sides if s.side in (Side.LEFT, Side.RIGHT)]
+    half_gap_by_side = {}
+    unique_boundaries = sorted({side.y_boundary_mm for side in pin_plan.sides})
+    for side in pin_plan.sides:
+        idx = unique_boundaries.index(side.y_boundary_mm)
+        if side.side == Side.LEFT:
+            gap = (
+                side.y_boundary_mm - unique_boundaries[idx - 1]
+                if idx > 0
+                else pin_plan.half_pin_width
+            )
+        else:
+            gap = (
+                unique_boundaries[idx + 1] - side.y_boundary_mm
+                if idx + 1 < len(unique_boundaries)
+                else pin_plan.half_pin_width
+            )
+        half_gap_by_side[(side.pin_index, side.side)] = gap / 2.0
+
+    for side in sides:
+        if side.side == Side.RIGHT and side.pin_index == 0:
+            continue  # skip half-pin right to keep symmetry simple
+        y_cut_board = kerf_offset_boundary(
+            y_geo=side.y_boundary_mm,
+            kerf_mm=joint_params.kerf_pin_mm,
+            clearance_mm=joint_params.clearance_mm,
+            keep_on_positive_side=side.side == Side.LEFT,
+            is_tail_board=False,
+        )
+        half_gap = half_gap_by_side[(side.pin_index, side.side)]
+        waste_sign = -1.0 if side.side == Side.LEFT else 1.0
+        y_far_board = y_cut_board + waste_sign * half_gap
+
+        def project_y(y_board: float) -> float:
+            return y_center + (y_board - y_center) * cos_theta
+
+        expected_move = project_y(y_cut_board)
+        expected_span = project_y(y_far_board)
+
+        move_cmd_index = next(
+            idx
+            for idx, cmd in enumerate(commands)
+            if cmd.type.name == "MOVE"
+            and f"pin {side.pin_index} {side.side.name}" in (cmd.comment or "")
+            and cmd.z is None
+        )
+        move_cmd = commands[move_cmd_index]
+        span_cmd = next(
+            cmd
+            for cmd in commands[move_cmd_index:]
+            if cmd.type.name == "CUT_LINE" and (cmd.comment or "").startswith("Pin: pocket span")
+        )
+
+        assert math.isclose(move_cmd.y, expected_move, abs_tol=1e-9)
+        assert math.isclose(span_cmd.y, expected_span, abs_tol=1e-9)

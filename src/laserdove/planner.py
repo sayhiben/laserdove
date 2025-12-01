@@ -313,20 +313,30 @@ def plan_pin_board(
         Side.RIGHT: False,  # pin material at Y < boundary; keep negative side
     }
 
-    current_y = 0.0  # track last Y to order cuts and reduce long travel moves
+    current_y = 0.0  # track last projected Y to order cuts and reduce long travel moves
+    y_center = joint_params.edge_length_mm / 2.0
 
     for rotation_deg, sides in sides_by_angle.items():
+        # Project board Y coordinates into machine Y with foreshortening at this angle.
+        delta_angle_deg = abs(rotation_deg - jig_params.rotation_zero_deg)
+        cos_theta = math.cos(math.radians(delta_angle_deg))
+
+        def project_y(y_board: float) -> float:
+            """Apply orthographic foreshortening about the board midline."""
+            return y_center + (y_board - y_center) * cos_theta
+
         # Nearest-neighbor ordering from current_y to reduce travel swings.
         remaining = sides[:]
         ordered_sides: List[PinSide] = []
         cursor = current_y
         while remaining:
             next_index = min(
-                range(len(remaining)), key=lambda i: abs(remaining[i].y_boundary_mm - cursor)
+                range(len(remaining)),
+                key=lambda i: abs(project_y(remaining[i].y_boundary_mm) - cursor),
             )
             next_side = remaining.pop(next_index)
             ordered_sides.append(next_side)
-            cursor = next_side.y_boundary_mm
+            cursor = project_y(next_side.y_boundary_mm)
 
         commands.append(
             Command(
@@ -355,12 +365,13 @@ def plan_pin_board(
                 keep_on_positive_side=keep_on_positive_side[side.side],
                 is_tail_board=False,
             )
+            y_cut_projected = project_y(y_cut)
 
             commands.append(
                 Command(
                     type=CommandType.MOVE,
                     x=0.0,
-                    y=y_cut,
+                    y=y_cut_projected,
                     speed_mm_s=machine_params.rapid_speed_mm_s,
                     comment=f"Move to pin {side.pin_index} {side.side.name} at edge",
                 )
@@ -378,12 +389,13 @@ def plan_pin_board(
             half_gap = half_gap_by_side[(side.pin_index, side.side)]
             waste_sign = -1.0 if keep_on_positive_side[side.side] else 1.0
             y_far = y_cut + waste_sign * half_gap
+            y_far_projected = project_y(y_far)
 
             commands.append(
                 Command(
                     type=CommandType.CUT_LINE,
                     x=cut_depth,
-                    y=y_cut,
+                    y=y_cut_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
                     comment="Pin: plunge to depth",
                 )
@@ -392,7 +404,7 @@ def plan_pin_board(
                 Command(
                     type=CommandType.CUT_LINE,
                     x=cut_depth,
-                    y=y_far,
+                    y=y_far_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
                     comment="Pin: pocket span",
                 )
@@ -401,7 +413,7 @@ def plan_pin_board(
                 Command(
                     type=CommandType.CUT_LINE,
                     x=0.0,
-                    y=y_far,
+                    y=y_far_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
                     comment="Pin: retract X",
                 )
@@ -410,7 +422,7 @@ def plan_pin_board(
                 Command(
                     type=CommandType.CUT_LINE,
                     x=0.0,
-                    y=y_cut,
+                    y=y_cut_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
                     comment="Pin: close rectangle",
                 )
@@ -423,7 +435,7 @@ def plan_pin_board(
                     comment="Pin: laser off",
                 )
             )
-            current_y = y_cut
+            current_y = y_cut_projected
 
     # Return rotary and head to zeroed positions after pins.
     commands.append(
