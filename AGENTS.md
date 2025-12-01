@@ -1,22 +1,22 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- CLI entrypoint `cli.py` (python -m laserdove.cli or -m laserdove.novadovetail) wires config, validation, planning, and hardware backends.
+- CLI entrypoint `cli.py` (python -m laserdove.cli or -m laserdove.main) wires config, validation, planning, and hardware backends.
 - Core math in `geometry.py`; plans and command sequencing in `planner.py`; shared dataclasses in `model.py`.
 - Hardware abstractions live under `src/laserdove/hardware/`: `base.py` (interfaces/dummy/executor), `sim.py` (Tk viewer backends), `ruida_*` + `rd_builder.py` (UDP transport + RD job builder), and `rotary.py` (logging/GPIO rotary drivers). `simulation_viewer.py` powers the Tk view; logging helpers stay in `logging_utils.py`.
 - Config parsing and CLI overrides are in `config.py`; reference config lives in `example-config.toml`. Per-setup config should be `config.toml` (git-ignored).
 - Tests live under `tests/` (currently `tests/test_geometry.py`); add new suites alongside the module under test.
-- Source code lives under `src/laserdove/`; run with `python -m laserdove.novadovetail`.
+- Source code lives under `src/laserdove/`; run with `python -m laserdove.main`.
 - RD opcode table is centralized in `src/laserdove/hardware/rd_commands.py` (shared by runtime and parser); avoid defining command labels elsewhere.
 
 ## Build, Test, and Development Commands
 - Use Python 3.11+; create a venv (`python3 -m venv .venv && source .venv/bin/activate`) and install dev deps (`pip install pytest`; `tomli` for <3.11).
 - Dry-run the planner to inspect generated commands without touching hardware:  
-  `python3 -m laserdove.novadovetail --config example-config.toml --mode both --dry-run`
+  `python3 -m laserdove.main --config example-config.toml --mode both --dry-run`
 - Tk simulation (visual, real-time pacing):  
-  `python3 -m laserdove.novadovetail --config example-config.toml --simulate`
+  `python3 -m laserdove.main --config example-config.toml --simulate`
 - Save swizzled RD jobs for inspection: add `--save-rd-dir rd_out/` (works with dry-run or live Ruida).
-- Reset-only to park the machine with the beam off: `python3 -m laserdove.novadovetail --reset`
+- Reset-only to park the machine with the beam off: `python3 -m laserdove.main --reset`
 - Copy the sample config when starting: `cp example-config.toml config.toml`, then adjust to your jig and machine; CLI flags override TOML values.
 - Run the full test suite: `python -m pytest tests`; target a single check with `python -m pytest tests/test_geometry.py::test_tail_layout_basic`.
 

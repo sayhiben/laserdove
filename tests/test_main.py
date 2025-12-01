@@ -77,7 +77,7 @@ def make_run_config(**overrides) -> RunConfig:
 
 def test_main_runs_dry_run_and_prints_commands(monkeypatch, capsys):
     monkeypatch.setenv("PYTHONWARNINGS", "ignore")  # silence any warnings
-    argv = ["novadovetail.py", "--mode", "tails", "--dry-run"]
+    argv = ["main.py", "--mode", "tails", "--dry-run"]
     monkeypatch.setattr(sys, "argv", argv)
 
     main()
@@ -92,7 +92,7 @@ def test_main_executes_commands_without_dry_run(monkeypatch):
     def fake_execute(commands, laser, rotary):
         executed["count"] = len(list(commands))
 
-    argv = ["novadovetail.py", "--mode", "tails"]
+    argv = ["main.py", "--mode", "tails"]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr("laserdove.cli.execute_commands", fake_execute)
 
@@ -101,7 +101,7 @@ def test_main_executes_commands_without_dry_run(monkeypatch):
 
 
 def test_main_exits_on_validation_error(monkeypatch):
-    argv = ["novadovetail.py", "--mode", "tails"]
+    argv = ["main.py", "--mode", "tails"]
     monkeypatch.setattr(sys, "argv", argv)
 
     # Force a validation failure without breaking layout computation.
@@ -172,7 +172,7 @@ def test_main_runs_both_boards_and_executes(monkeypatch):
         "laserdove.cli.execute_commands",
         lambda cmds, laser, rotary: captured.setdefault("commands", list(cmds)),
     )
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "both"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "both"])
 
     main()
     types = [cmd.type for cmd in captured["commands"]]
@@ -213,7 +213,7 @@ def test_main_simulate_uses_simulated_backends_and_cleans_up(monkeypatch):
         lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
     monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "tails", "--simulate"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails", "--simulate"])
 
     main()
     assert created["laser"].setup_called is True
@@ -250,7 +250,7 @@ def test_main_ruida_respects_dry_run_rd_and_cleans(monkeypatch):
         "laserdove.cli.plan_tail_board",
         lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "tails"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails"])
 
     main()
     assert init_kwargs["dry_run"] is True
@@ -274,7 +274,7 @@ def test_main_pins_only_executes_pin_branch(monkeypatch):
         "laserdove.cli.execute_commands",
         lambda cmds, laser, rotary: called.setdefault("cmds", list(cmds)),
     )
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "pins"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "pins"])
     main()
     types = [cmd.type for cmd in called["cmds"]]
     assert types[0] == CommandType.ROTATE
@@ -289,7 +289,7 @@ def test_main_real_rotary_without_pins(monkeypatch):
         lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
     monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "tails"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails"])
     main()  # Should not raise even with missing step/dir pins
 
 
@@ -327,7 +327,7 @@ def test_main_simulate_calls_show(monkeypatch):
         lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
     monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--mode", "tails", "--simulate"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails", "--simulate"])
     main()
     assert created["laser"].shown is True
 
@@ -340,7 +340,7 @@ def test_main_reset_only(monkeypatch):
         "laserdove.cli.execute_commands",
         lambda cmds, laser, rotary: captured.setdefault("cmds", list(cmds)),
     )
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py", "--reset"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--reset"])
     main()
     assert [cmd.type for cmd in captured["cmds"]] == [
         CommandType.SET_LASER_POWER,
@@ -352,6 +352,6 @@ def test_main_reset_only(monkeypatch):
 def test_main_invalid_backend_raises(monkeypatch):
     rc = make_run_config(laser_backend="unsupported")
     monkeypatch.setattr("laserdove.cli.load_config_and_args", lambda args: rc)
-    monkeypatch.setattr(sys, "argv", ["novadovetail.py"])
+    monkeypatch.setattr(sys, "argv", ["main.py"])
     with pytest.raises(ValueError):
         main()

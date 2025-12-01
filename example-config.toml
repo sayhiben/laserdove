@@ -30,7 +30,7 @@ air_assist          = true
 z_positive_moves_bed_up = true  # set false if your controller treats Z+ as lowering the bed
 
 [backend]
-# If use_dummy = true, novadovetail will use DummyLaser/DummyRotary
+# If use_dummy = true, laserdove.main will use DummyLaser/DummyRotary
 # regardless of ruida_host.
 use_dummy = false
 laser_backend = "dummy"  # "dummy" or "ruida"

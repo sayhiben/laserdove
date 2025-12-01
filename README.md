@@ -1,5 +1,5 @@
 <!-- README.md -->
-# novadovetail
+# laserdove
 
 Experimental Python tooling to drive a **Thunder Nova 24 Plus** CO₂ laser and a custom **rotary-esque edge jig** to cut dovetail joints in ~¼″ stock.
 
@@ -19,10 +19,10 @@ v1 defaults to dummy hardware; enable Ruida/real rotary via config or CLI when y
 ## Repository layout
 
 ```text
-novadovetail/
+laserdove/
   src/laserdove/
-    cli.py                 # CLI entrypoint (python -m laserdove.cli / -m laserdove.novadovetail)
-    novadovetail.py        # Thin wrapper around cli.main
+    cli.py                 # CLI entrypoint (python -m laserdove.cli / -m laserdove.main)
+    main.py                # Thin wrapper around cli.main (preferred)
     config.py              # TOML + CLI config
     model.py               # Dataclasses (params, layouts, commands)
     geometry.py            # Pure math; tails, pins, Z offsets, kerf
@@ -122,7 +122,7 @@ ruida_timeout_s = 3.0
 ruida_source_port = 40200
 # rotary_* pins may use BOARD or BCM numbering (rotary_pin_numbering)
 ```
-If you do **not** pass `--config`, these same values are used as the built‑in defaults. When you run without `--config`, `novadovetail` will also look for a local `config.toml` and use it automatically if present.
+If you do **not** pass `--config`, these same values are used as the built‑in defaults. When you run without `--config`, `laserdove.main` will also look for a local `config.toml` and use it automatically if present.
 
 For a typical workflow:
 
@@ -133,7 +133,7 @@ cp example-config.toml config.toml
 Then edit `config.toml` to match your machine, jig, and joint preferences, and run with:
 
 ```bash
-python3 -m laserdove.novadovetail --config config.toml
+python3 -m laserdove.main --config config.toml
 ```
 
 ### Reset-only mode
@@ -141,7 +141,7 @@ python3 -m laserdove.novadovetail --config config.toml
 To zero the rotary and park the head at pin Z0 with the laser off (no planning/cutting):
 
 ```bash
-python3 -m laserdove.novadovetail --reset
+python3 -m laserdove.main --reset
 ```
 
 ### CLI
@@ -149,7 +149,7 @@ python3 -m laserdove.novadovetail --reset
 #### Basic usage (dry run)
 
 ```bash
-python3 -m laserdove.novadovetail --config example-config.toml --mode both --dry-run
+python3 -m laserdove.main --config example-config.toml --mode both --dry-run
 ```
 
 #### Simulation mode (visual)
@@ -157,7 +157,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --dry
 Runs against the simulated backend and opens a Tkinter view of moves/cuts. Motion is paced using commanded feed/rotation rates (real-time); close the window to exit:
 
 ```bash
-python3 -m laserdove.novadovetail --config example-config.toml --mode both --simulate
+python3 -m laserdove.main --config example-config.toml --mode both --simulate
 ```
 
 #### RD export and inspection
@@ -230,7 +230,7 @@ python3 -m laserdove.novadovetail --config example-config.toml --mode both --sim
 | `--rotary-invert-dir`  | Invert DIR output when using the real rotary.                                                    | disabled                                   |
 | `--rotary-pin-numbering {bcm,board}` | Pin numbering scheme for rotary GPIO.                                                 | `board`                                    |
 | `--rotary-max-step-rate-hz` | Cap rotary step pulse rate (Hz); prevents over-speeding when using high pulses/rev.     | 500.0                                      |
-| `--log-level`          | Logging verbosity for `novadovetail`.                                                           | `INFO`                                     |
+| `--log-level`          | Logging verbosity for `laserdove.main`.                                                        | `INFO`                                     |
 
 ### Ruida transport and status notes
 
@@ -302,7 +302,7 @@ ruida_port = 50200
 
 ## Validation
 
-Before planning any motion, `novadovetail` validates:
+Before planning any motion, `laserdove.main` validates:
 
 - **Joint geometry**: thickness, `edge_length_mm`, `num_tails`, angles, kerf.  
 - **Tail layout**: tails do not extend outside the edge length.  
