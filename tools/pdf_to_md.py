@@ -78,7 +78,9 @@ def extract_pdf(
                     pix_rgb = fitz.Pixmap(fitz.csRGB, pix)
                     pix_rgb.save(img_path)
                     pix_rgb = None
-                parts.append(f"\n![Page {page_index + 1} image {img_total}]({images_dir.name}/{img_name})\n")
+                parts.append(
+                    f"\n![Page {page_index + 1} image {img_total}]({images_dir.name}/{img_name})\n"
+                )
             except Exception:
                 continue
 
@@ -131,7 +133,9 @@ def main() -> None:
         return
 
     for pdf in pdfs:
-        extract_pdf(pdf, margin_ratio=args.margin_ratio, min_area=args.min_area, min_dim=args.min_dim)
+        extract_pdf(
+            pdf, margin_ratio=args.margin_ratio, min_area=args.min_area, min_dim=args.min_dim
+        )
 
 
 if __name__ == "__main__":
