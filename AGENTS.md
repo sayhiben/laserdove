@@ -2,6 +2,8 @@
 
 ## Project Structure & Module Organization
 - Source code lives under `src/laserdove/`; run with `python -m laserdove.main`.
+- Runtime code must not import from `reference/`; treat that directory as read-only background.
+- Keep optional UI deps (Tk) and hardware deps lazy-imported within simulation/hardware paths so headless/dummy runs keep working.
 - CLI entrypoint `cli.py` (python -m laserdove.cli or -m laserdove.main) wires config, validation, planning, and hardware backends.
 - Config parsing and CLI overrides are in `config.py`; reference config lives in `example-config.toml`. Per-setup config should be `config.toml` (git-ignored).
 - Core math in `geometry.py`; plans and command sequencing in `planner.py`; shared dataclasses in `model.py`.
@@ -11,6 +13,7 @@
 
 ## Build, Test, and Development Commands
 - Use Python 3.11+; create a venv (`python3 -m venv .venv && source .venv/bin/activate`) and install dev deps (`pip install pytest`; `tomli` for <3.11).
+- Run `python -m pytest tests` (and `make test`/`make lint` where available) before publishing changes; do not skip failing checks.
 - Copy the sample config when starting: `cp example-config.toml config.toml`, then adjust to your jig and machine; CLI flags override TOML values.
 - Dry-run the planner to inspect generated commands without touching hardware:  
   `python3 -m laserdove.main --config example-config.toml --mode both --dry-run`
@@ -27,10 +30,15 @@
 - Status probe helper: `tools/ruida_status_probe.py` defaults to dual-socket polling (action vs status sockets) to avoid reply mix-ups; use it to map status bits without panel interaction.
 - Prefer type hints and dataclasses for shared params; log hardware actions rather than printing.
 - Follow existing Python style: 4-space indents, snake_case functions/variables, CamelCase classes/dataclasses, and concise docstrings that explain “why”.
+- Planner/geometry outputs must remain deterministic; if randomness is introduced, seed explicitly and test it.
+- When adding config or CLI flags, update argparse help, defaults in `config.py`, validation coverage, and docs (README/index/AGENTS).
+- Guard GPIO/Tk/UDP imports so non-hardware environments remain usable; provide clear fallbacks/logs on import failure.
 
 ## Testing Guidelines
 - Add pytest cases for new geometry, planning branches, and validation edge cases; cover both happy path and common misconfigurations.
 - When adding calculations, assert numeric tolerances (e.g., `abs(value) < 1e-9`) to match existing patterns.
+- For changes that alter command sequencing, add or update deterministic/snapshot-like assertions to prevent silent regressions.
+- Exercise both dummy/simulated paths and Ruida path toggles in tests when feasible (movement_only vs powered).
 
 ## Commit & Pull Request Guidelines
 - Always review `AGENTS.md`, `README.md`, and `reference/index.html` for project and reference context before answering prompts.
@@ -40,6 +48,8 @@
 - Any new file added under `reference/` must be accompanied by an entry in `reference/index.html`, keeping the table’s current columns intact.
 - PDF->Markdown conversion tool lives at `tools/pdf_to_md.py` (uses PyMuPDF). Run `python tools/pdf_to_md.py --root reference` to regenerate .md and images; filters header/footer and tiny images by default.
 - Always review `AGENTS.md`, `README.md`, and `reference/index.html` for project and reference context before answering prompts.
+- Note hardware-impacting commits explicitly (e.g., Ruida transport, rotary GPIO) and include whether tests were run against dummy/sim or real devices.
+- If touching RD opcode handling (`rd_commands.py`), update dependent tools (parsers/visualizers) and document any new labels and defaults.
 
 ## Safety & Configuration Tips
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
@@ -49,6 +59,7 @@
 - RD File Inspection
   - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
   - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or visualize with `tools/rd_visualize.py` to compare the emitted Ruida commands against the planned moves.
+- When modifying rotary/pin mappings, default to safe (logging/dummy) drivers if pins are unspecified or imports fail; log loudly.
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
 
 ## Reference Materials (do not import)
