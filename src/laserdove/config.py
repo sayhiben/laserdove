@@ -59,7 +59,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         Configured argparse.ArgumentParser instance.
     """
     p = argparse.ArgumentParser(
-        description="Dovetail joint planner for Thunder Nova + rotary jig",
+        description="Dovetail joint planner and driver for rotary jig",
     )
     p.add_argument(
         "--config",

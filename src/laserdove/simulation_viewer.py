@@ -55,7 +55,7 @@ class SimulationViewer:
 
         self._reset_default_root(tk)
         self._root = tk.Tk()
-        self._root.title("Nova dovetail simulation")
+        self._root.title("Laserdove simulation")
         self._canvas = tk.Canvas(self._root, width=self.width, height=self.height, bg="white")
         self._canvas.pack(fill="both", expand=True)
 

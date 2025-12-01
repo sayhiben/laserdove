@@ -2,7 +2,7 @@
 
 ![LaserDove logo](logo.png)
 
-Experimental Python tooling to plan and drive dovetail joints on a Thunder Nova-class CO₂ laser with a stepper-based rotary jig. This is pre-production software: use at your own risk and double-check every motion before powering a laser.
+Experimental Python tooling to plan and drive dovetail joints on laser cutting machines with a stepper-based rotary jig. This is pre-production software: use at your own risk and double-check every motion before powering a laser.
 
 ## Safety warning
 - Always dry-run or simulate before sending motion to hardware.
