@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Laserdove Reference Index</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.4; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; vertical-align: top; }
+    th { background: #f0f0f0; }
+    caption { text-align: left; font-weight: bold; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Reference Index</h1>
+  <p><strong>Assumptions:</strong> Text/scripts were skimmed directly. PDF/HTML/image entries are summarized from filename/context (open them for authoritative detail). MeerK40t files mirror upstream Ruida driver components. <code>.DS_Store</code> is macOS metadata.</p>
+  <table>
+    <caption>reference/ files</caption>
+    <thead>
+      <tr>
+        <th>filepath</th>
+        <th>title</th>
+        <th>description</th>
+        <th>important notes</th>
+        <th>when to use this file</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>reference/.DS_Store</td><td>macOS metadata</td><td>Finder cache file.</td><td>Not project content.</td><td>Ignore.</td></tr>
+      <tr><td>reference/README.md</td><td>Novaprox service setup</td><td>How to install and start the Ruida proxy via systemd + screen.</td><td>Pairs with novaprox-start.sh; assumes /root/scripts.</td><td>Deploying the proxy service on a host.</td></tr>
+      <tr><td>reference/setup.md</td><td>Network setup notes</td><td>Armbian/nmcli steps, /etc/hosts entries for Nova networks.</td><td>Covers static IPs, dhclient notes.</td><td>Configuring proxy box networking.</td></tr>
+      <tr><td>reference/novaprox-start.sh</td><td>RuidaProxy launcher</td><td>Screen-wrapped script starting RuidaProxy.py with two IP endpoints.</td><td>Uses screen session “RuidaProxy”; expects RuidaProxy.py alongside.</td><td>Running or adapting the proxy launcher.</td></tr>
+      <tr><td>reference/novaprox.service</td><td>Systemd unit</td><td>Service calling /root/scripts/novaprox-start.sh.</td><td>Install to /etc/systemd/system.</td><td>Manage proxy via systemd.</td></tr>
+      <tr><td>reference/protocol.md</td><td>Ruida UDP protocol notes</td><td>Fablab Nürnberg wiki excerpt: checksum-first framing, 7-bit payload, MTU, ACK/NACK, command/value encoding table.</td><td>Documents ABSCOORD/RELCOORD/SPEED/POWER formats and key opcodes (A8/88, C6xx, C9 02, D9 axis moves).</td><td>Reasoning about on-wire UDP packet structure.</td></tr>
+      <tr><td>reference/rpa_protocol.py</td><td>CPA Ruida constants</td><td>Handshake and control codes (ACK/ERR/ENQ/NAK, EOF), masks.</td><td>Used by CPA-style parsers; assumes 7-bit data.</td><td>Reference when decoding CPA traces.</td></tr>
+      <tr><td>reference/ruida_parser.py</td><td>CPA state-machine parser</td><td>Byte-by-byte parser emitting via CPA emitter; accumulates parameters/replies.</td><td>Depends on protocols.ruida.*; designed for streaming with per-byte step.</td><td>Pattern for streaming RD decode.</td></tr>
+      <tr><td>reference/ruida.py</td><td>RD builder (2017)</td><td>Python RD writer with layers, bbox, scramble/unscramble, rel/abs encoding.</td><td>Defines maxrel=8.191, _forceabs limit 100, multi-layer power/speed handling.</td><td>Compare encoding strategy to laserdove rd_builder.</td></tr>
+      <tr><td>reference/ruidaparser.py</td><td>RD parser (JW)</td><td>Parses and unscrambles RD files, decodes commands, can export SVG.</td><td>Handles Z moves and layers; token methods prefixed t_; notes Direct_Move_Z_rel.</td><td>Inspect external RD jobs or validate output.</td></tr>
+      <tr><td>reference/rdcam.py</td><td>RD cam utilities</td><td>Encoding helpers (number, checksum, scramble) and capture formatting.</td><td>Includes split_messages and packet direction handling.</td><td>Low-level RD encoding/splitting reference.</td></tr>
+      <tr><td>reference/rd2svg.py</td><td>RD to SVG converter</td><td>CLI using RuidaParser to decode RD and emit SVG (stroke width configurable).</td><td>Requires svg.py and typing_extensions.</td><td>Visualize RD captures as SVG.</td></tr>
+      <tr><td>reference/hexparser.py</td><td>Hex dump decoder</td><td>Parses hex strings, optional checksum validation, unscrambles with RuidaParser.</td><td>Converts logged hex to raw bytes; can read stdin.</td><td>Decode captured packet hex dumps.</td></tr>
+      <tr><td>reference/udpsendruida.py</td><td>UDP sender</td><td>Sends RD payloads over UDP 50200 with checksum/ACK handling.</td><td>Simple CLI; pairs with dummy/proxy.</td><td>Smoke-testing UDP sending.</td></tr>
+      <tr><td>reference/proxy23.py</td><td>UDP/TCP capture proxy</td><td>Listens on 50200 TCP/UDP, writes streams to files, ACK/NACK for UDP, detects END.</td><td>Handles multiple sources; END detection via e7 00/d7.</td><td>Capture Ruida traffic for analysis.</td></tr>
+      <tr><td>reference/RuidaProxy.py</td><td>Ruida proxy/forwarder</td><td>UDP proxy/forwarder with ACK/NACK handling and stream timeout.</td><td>Companion to novaprox scripts; forwards between controller/client.</td><td>Forward Ruida traffic between hosts.</td></tr>
+      <tr><td>reference/dummylaser.py</td><td>UDP dummy Ruida</td><td>Loopback UDP server using RuidaParser; simulates Ruida on 127.0.0.123:50200.</td><td>Includes sample IPs for different labs.</td><td>Test senders without hardware.</td></tr>
+      <tr><td>reference/device(1).py</td><td>MeerK40t Ruida device</td><td>MeerK40t device integration wrapping RuidaDriver/Session, spooler, status.</td><td>Defines operations/effects; relies on MeerK40t core modules.</td><td>Reference device abstraction.</td></tr>
+      <tr><td>reference/laser-nova35-rdworks.md</td><td>RDWorks import workflow</td><td>Steps to move Inkscape/CorelDraw PDFs into RDWorks; troubleshooting hidden dialogs.</td><td>German notes; mentions filled shapes needing strokes.</td><td>Preparing art for Nova35 via RDWorks.</td></tr>
+      <tr><td>reference/stepper-details.txt</td><td>NEMA23 motor specs</td><td>23HS45-4204D-E1000 specs: torque, current, resistance, inductance, encoder.</td><td>Closed-loop motor, 1000 PPR encoder; wiring pinout.</td><td>Motor electrical/mechanical reference.</td></tr>
+      <tr><td>reference/23HS45-4204D-E1000_Full_Datasheet.pdf</td><td>23HS45 datasheet</td><td>OEM PDF for the above motor.</td><td>Use for authoritative values and curves.</td><td>Detailed motor reference.</td></tr>
+      <tr><td>reference/23HS45-4204D-E1000_Full_Datasheet.md</td><td>23HS45 datasheet (text)</td><td>Text extracted from the motor datasheet PDF.</td><td>Auto-extracted; layout/images omitted.</td><td>Searchable quick lookup of specs.</td></tr>
+      <tr><td>reference/23HS45-4204D-E1000_Full_Datasheet_images/</td><td>23HS45 datasheet images</td><td>Images extracted from the motor datasheet (if any).</td><td>Generated via pdf_to_md.py (none currently).</td><td>Use if images are present in future versions.</td></tr>
+      <tr><td>reference/CL57T_V4.0.pdf</td><td>CL57T driver manual (PDF)</td><td>Stepper driver documentation: wiring, DIP tables, specs.</td><td>Full manual; hardware authoritative.</td><td>Driver wiring/config reference.</td></tr>
+      <tr><td>reference/CL57T_V4.0.txt</td><td>CL57T driver manual (text)</td><td>Text export of CL57T V4.0 manual.</td><td>Readable without PDF.</td><td>Quick lookup of driver settings.</td></tr>
+      <tr><td>reference/CL57T_V4.0.md</td><td>CL57T driver manual (markdown)</td><td>Markdown text extracted from the CL57T PDF.</td><td>Auto-extracted; formatting may be rough.</td><td>Searchable driver details without PDF.</td></tr>
+      <tr><td>reference/CL57T_V4.0_images/</td><td>CL57T driver images</td><td>Images extracted from the CL57T driver manual (body images, headers/footers filtered).</td><td>Generated via pdf_to_md.py.</td><td>Use for wiring diagrams and tables.</td></tr>
+      <tr><td>reference/Diskussion_Nova 35 – FabLab Region Nuernberg.html</td><td>Nova35 discussion</td><td>Community thread on Nova35 usage/setup.</td><td>German HTML.</td><td>Anecdotal setup/usage notes.</td></tr>
+      <tr><td>reference/Diskussion_Nova 35 – FabLab Region Nürnberg.html</td><td>Nova35 discussion (accented path)</td><td>Same thread with accented filename.</td><td>German HTML.</td><td>Use if filesystem keeps the accented name.</td></tr>
+      <tr><td>reference/Manual-for-RDC6442G.pdf</td><td>RDC6442G manual</td><td>Official Ruida controller manual.</td><td>Binary PDF.</td><td>Controller wiring/UI reference.</td></tr>
+      <tr><td>reference/Manual-for-RDC6442G.md</td><td>RDC6442G manual (markdown)</td><td>Markdown text extracted from RDC6442G PDF.</td><td>Auto-extracted; diagrams not preserved.</td><td>Quick text search of controller manual.</td></tr>
+      <tr><td>reference/Manual-for-RDC6442G_images/</td><td>RDC6442G manual images</td><td>Images extracted from RDC6442G manual (body images, headers/footers filtered).</td><td>Generated via pdf_to_md.py.</td><td>View controller diagrams/figures.</td></tr>
+      <tr><td>reference/RDC6442GU-DFM-RD-Control-System-V1.3-Manual.pdf</td><td>RDC6442GU manual</td><td>Ruida controller documentation.</td><td>Binary PDF.</td><td>Alternate controller reference.</td></tr>
+      <tr><td>reference/RDC6442GU-DFM-RD-Control-System-V1.3-Manual.md</td><td>RDC6442GU manual (markdown)</td><td>Markdown text extracted from RDC6442GU PDF.</td><td>Auto-extracted; diagrams lost.</td><td>Searchable alt-controller manual.</td></tr>
+      <tr><td>reference/RDC6442GU-DFM-RD-Control-System-V1.3-Manual_images/</td><td>RDC6442GU manual images</td><td>Images extracted from RDC6442GU manual (body images, headers/footers filtered).</td><td>Generated via pdf_to_md.py.</td><td>View controller diagrams/figures.</td></tr>
+      <tr><td>reference/RDV6442G-Control-System-manual-V1.3.pdf</td><td>RDV6442G manual</td><td>Controller documentation.</td><td>Binary PDF.</td><td>Consult for RDV6442G specifics.</td></tr>
+      <tr><td>reference/RDV6442G-Control-System-manual-V1.3.md</td><td>RDV6442G manual (markdown)</td><td>Markdown text extracted from RDV6442G PDF.</td><td>Auto-extracted; formatting may be rough.</td><td>Searchable RDV6442G reference.</td></tr>
+      <tr><td>reference/RDV6442G-Control-System-manual-V1.3_images/</td><td>RDV6442G manual images</td><td>Images extracted from RDV6442G manual (body images, headers/footers filtered).</td><td>Generated via pdf_to_md.py.</td><td>View diagrams/figures from the manual.</td></tr>
+      <tr><td>reference/nova_plus_series_unified_user's_manual.pdf</td><td>Nova Plus manual</td><td>Thunder Nova Plus series user manual.</td><td>Binary PDF.</td><td>Machine operation reference.</td></tr>
+      <tr><td>reference/nova_plus_series_unified_user's_manual.md</td><td>Nova Plus manual (markdown)</td><td>Markdown text extracted from Nova Plus PDF.</td><td>Auto-extracted; diagrams not preserved.</td><td>Searchable Nova Plus guide.</td></tr>
+      <tr><td>reference/nova_plus_series_unified_user's_manual_images/</td><td>Nova Plus manual images</td><td>Images extracted from Nova Plus manual (body images, headers/footers filtered).</td><td>Generated via pdf_to_md.py.</td><td>Use for visual references from the manual.</td></tr>
+      <tr><td>reference/Ruida - EduTech Wiki.html</td><td>EduTech Ruida notes</td><td>Consolidated protocol/controller notes (ports, swizzle keys, framing).</td><td>Browser-readable research.</td><td>Protocol research reference.</td></tr>
+      <tr><td>reference/Ruida RDC6442S_G _ Best Co2 Laser Controller.html</td><td>RDC6442S/G overview</td><td>Product review/feature overview.</td><td>Marketing context.</td><td>High-level controller capabilities.</td></tr>
+      <tr><td>reference/Network aware laser cutter security – Roger Clark.html</td><td>Laser security article</td><td>Network/attack-surface discussion for networked lasers.</td><td>Highlights security risks.</td><td>Plan mitigations when exposing controllers.</td></tr>
+      <tr><td>reference/Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software.html</td><td>Reverse engineering notes</td><td>Article on Ruida/RDCAM protocol reverse engineering.</td><td>Covers scrambling, framing, RD structure.</td><td>Deep dive on protocol behavior.</td></tr>
+      <tr><td>reference/Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software-linux.html</td><td>Reverse engineering notes (Linux)</td><td>Linux-focused variant of the above article.</td><td>Platform-specific steps.</td><td>Linux tooling approaches.</td></tr>
+      <tr><td>reference/Reverse Engineering of Laser Cutter Controller RDLxxx and RDCAM Software-messages.html</td><td>Reverse engineering messages</td><td>Captured message examples linked to the reverse engineering article.</td><td>Useful for pattern matching.</td><td>Compare against observed traffic.</td></tr>
+      <tr><td>reference/Ruida.java</td><td>Ruida Java driver</td><td>LibLaserCut Ruida driver implementing RD export/upload over IP/USB/serial.</td><td>Includes power/speed settings, bounding boxes, offsets.</td><td>Alternate language implementation reference.</td></tr>
+      <tr><td>reference/calibration-file.rd</td><td>Calibration RD job</td><td>Sample RD file used for calibration.</td><td>Binary; decode with parser tools.</td><td>Known-good RD example.</td></tr>
+      <tr><td>reference/z-offset-layers.rd</td><td>Z-offset RD job</td><td>RD file containing Z offset commands/layers.</td><td>Inspect to see Z encoding (0x80 0x03).</td><td>Example for Z-offset handling.</td></tr>
+      <tr><td>reference/calibration-layers.png</td><td>Calibration layers screenshot</td><td>Image of calibration layer setup.</td><td>Visual target for layer arrangement.</td><td>Match settings to sample.</td></tr>
+      <tr><td>reference/calibration-gradient-layer-settings.png</td><td>Gradient layer settings</td><td>Image of gradient layer configuration.</td><td>Shows expected gradient parameters.</td><td>Reference when tuning gradients.</td></tr>
+      <tr><td>reference/current-simulator-screenshot.png</td><td>Simulator screenshot</td><td>Image of simulator output.</td><td>Depicts expected visual layout.</td><td>Compare simulation appearance.</td></tr>
+      <tr><td>reference/laser-nova35-rdworks.md</td><td>RDWorks workflow</td><td>Steps to import PDFs into RDWorks and resolve errors.</td><td>German notes; repeated entry kept for visibility.</td><td>Prepare RDWorks jobs.</td></tr>
+      <tr><td>reference/meerk40t/README.md</td><td>MeerK40t Ruida README</td><td>Overview of MeerK40t Ruida classes, tested controllers, notes (Flip X, overscan).</td><td>Context for upstream driver.</td><td>Starting point for MeerK40t stack.</td></tr>
+      <tr><td>reference/meerk40t/control.py</td><td>Ruida control</td><td>Interplay between active device and emulator; device state reporting.</td><td>Uses RuidaEmulator.</td><td>Understand emulator/control linkage.</td></tr>
+      <tr><td>reference/meerk40t/controller.py</td><td>MeerK40t controller</td><td>Handles interactions between MeerK40t and Ruida devices.</td><td>Core controller logic.</td><td>Reference for controller flow.</td></tr>
+      <tr><td>reference/meerk40t/device.py</td><td>MeerK40t device wrapper</td><td>Defines RuidaDevice, operations, spooler hookups.</td><td>Uses RuidaDriver/Session.</td><td>Device abstraction reference.</td></tr>
+      <tr><td>reference/meerk40t/driver.py</td><td>Ruida driver</td><td>Implements driver commands and cutcode handling.</td><td>Uses MeerK40t cutcode classes.</td><td>Driver command set reference.</td></tr>
+      <tr><td>reference/meerk40t/emulator.py</td><td>Ruida emulator</td><td>Emulates Ruida controller behavior.</td><td>Testing without hardware.</td><td>Inspect emulation logic.</td></tr>
+      <tr><td>reference/meerk40t/exceptions.py</td><td>MeerK40t exceptions</td><td>Custom exceptions for Ruida transport/control.</td><td>Defines TransportError etc.</td><td>Error taxonomy reference.</td></tr>
+      <tr><td>reference/meerk40t/loader.py</td><td>MeerK40t loader</td><td>Loads Ruida plugin into MeerK40t kernel.</td><td>Integration glue.</td><td>See plugin registration.</td></tr>
+      <tr><td>reference/meerk40t/mock_connection.py</td><td>Mock connection</td><td>Mock transport for testing Ruida comms.</td><td>Simulated I/O.</td><td>Pattern for test doubles.</td></tr>
+      <tr><td>reference/meerk40t/plugin.py</td><td>MeerK40t plugin</td><td>Plugin entry defining service registration.</td><td>Hooks into MeerK40t kernel.</td><td>Plugin structure reference.</td></tr>
+      <tr><td>reference/meerk40t/rdjob.py</td><td>RD job</td><td>Builds/sends RD command buffers; defines swizzle LUTs and job framing.</td><td>Core RD job logic.</td><td>Compare RD building approaches.</td></tr>
+      <tr><td>reference/meerk40t/ruidatransport.py</td><td>Ruida transport</td><td>Transport layer for Ruida (socket handling).</td><td>Part of MeerK40t stack.</td><td>Review transport behaviors.</td></tr>
+      <tr><td>reference/meerk40t/ruidasession.py</td><td>Ruida session</td><td>Session/emulation glue for Ruida devices.</td><td>Works with emulator/driver.</td><td>Understand session state handling.</td></tr>
+      <tr><td>reference/meerk40t/serial_connection.py</td><td>Serial connection</td><td>Serial transport for Ruida via USB.</td><td>Configures FTDI serial settings.</td><td>USB comm reference.</td></tr>
+      <tr><td>reference/meerk40t/tcp_connection.py</td><td>TCP connection</td><td>TCP transport implementation.</td><td>Alternative to UDP.</td><td>Reference when adding TCP support.</td></tr>
+      <tr><td>reference/meerk40t/udp_connection.py</td><td>UDP connection</td><td>UDP transport handling for Ruida.</td><td>Handles swizzle/timeout/ack.</td><td>Compare to laserdove RuidaUDPClient.</td></tr>
+      <tr><td>reference/meerk40t/udp_transport.py</td><td>UDP transport</td><td>Higher-level UDP transport wrapper.</td><td>Supports MeerK40t driver.</td><td>Transport behavior reference.</td></tr>
+      <tr><td>reference/meerk40t/usb_transport.py</td><td>USB transport</td><td>FTDI-based transport for Ruida.</td><td>Documents FTDI IDs/settings.</td><td>Reference for USB comms.</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

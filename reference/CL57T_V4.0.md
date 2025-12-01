@@ -1,0 +1,809 @@
+# CL57T_V4.0.pdf
+
+## Page 1
+
+User Manual
+CL57T(V4.0)
+Closed Loop Stepper Driver
+Revision 4.0
+Record of Revisions
+Revision
+Date
+Description of Release
+1.00
+Aug, 2019
+Initial Release
+4.00
+Oct, 2020
+Add S1 rotating switch, 5/24V selector switch, brake output.
+
+![Page 1 image 1](CL57T_V4.0_images/img-001-001.png)
+
+![Page 1 image 2](CL57T_V4.0_images/img-001-002.png)
+
+## Page 2
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+Table of Content
+1. Features............................................................................................................................................................................ 1
+2. Specifications....................................................................................................................................................................1
+2.1 Electrical Specifications..........................................................................................................................................1
+2.2 Environment...........................................................................................................................................................1
+2.3 Mechanical Specifications......................................................................................................................................2
+3. Connections and LED Indication.......................................................................................................................................3
+3.1 P1 – Control and Digital Output Connections........................................................................................................3
+3.2 P2 - Encoder Signals Input Connector....................................................................................................................4
+3.3 P3 - Motor Connector............................................................................................................................................ 4
+3.4 P4 - Power Connector.............................................................................................................................................4
+3.5 LED Status Lights.................................................................................................................................................... 4
+3.6 Switches..................................................................................................................................................................4
+4. Power Supply Selection....................................................................................................................................................5
+4.1 Power Supply Sharing.............................................................................................................................................5
+4.2 Selecting Supply Voltage........................................................................................................................................ 5
+5.Switch Configurations........................................................................................................................................................6
+5.1 S1 - Rotating Switch Configurations.......................................................................................................................6
+5.2 S2 - DIP Switch Configurations...............................................................................................................................6
+5.2.1 Micro Step (SW1-SW4)................................................................................................................................6
+5.2.2 Mode Setting (SW5 - SW8)..........................................................................................................................7
+5.3 S3 - Selector Switch Configurations....................................................................................................................... 7
+6. Typical Connection........................................................................................................................................................... 8
+6.1 Digital Input Connection........................................................................................................................................ 8
+6.2 Fault Output Connection........................................................................................................................................9
+6.3 Brake Output Connection.......................................................................................................................................9
+7. Sequence Chart of Control Signals...................................................................................................................................9
+8. Fault Protections & Troubleshooting............................................................................................................................. 10
+
+## Page 3
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+1
+1. Features
+
+Input voltage 18-50VDC (recommended 24-48VDC)
+
+No loss of step, No tuning
+
+500 KHz max pulse input frequency
+
+16 microstep resolutions of 200-51,200 via DIP switches SW1 - SW4
+
+3 output current settings of 2.8A, 5.6A and 7.0A via S1 rotating switch
+
+Gain tuning via S1 rotating switch
+
+Auto-tuning to match wide-range NEMA 17, 23 and 24 closed-loop stepper motors
+
+Anti-Resonance for optimal torque, extra smooth motion, low motor heating and noise
+
+Soft-start with no “jump” when powered on
+
+Optically isolated inputs with 5V or 24V
+
+Fault and brake outputs
+
+Motor rotating direction setting by SW5
+
+Closed loop or open loop control setting by SW6
+
+Step&Direction or CW&CCW pulse type setting by SW7
+
+Position command filter setting by SW8
+
+Over-voltage, over-current protections, position following error, etc
+2. Specifications
+2.1 Electrical Specifications
+Parameters
+Min
+Typical
+Max
+Unit
+Peak Current
+2.4 (RMS 2A), 5.6 (RMS 4A), 7.0 (RMS 5A)
+A
+Operating Voltage
+18
+24, 36, 48
+50
+VDC
+Logic input signal current
+7
+10
+16
+mA
+Pulse input frequency
+0
+-
+500
+kHz
+Brake output signal current
+-
+-
+100
+mA
+Alarm output voltage
+-
+-
+24
+VDC
+Minimal pulse width
+1.0
+-
+-
+μS
+Minimal direction setup
+2.0
+-
+-
+μS
+Isolation resistance
+500
+MΩ
+2.2 Environment
+Cooling
+Natural Cooling or Forced Cooling
+Operating Environment
+Environment
+Avoid dust, oil fog and corrosive gases
+Humidity
+40%RH－90%RH
+Operating Temperature
+0°C －40°C (32°F - 102°F)
+Vibration
+10-50Hz / 0.15mm
+Storage Temperature
+-20°C －65°C (-4°F - 149°F)
+Weight
+Approx. 280 g (9.9 Oz)
+
+## Page 4
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+2
+2.3 Mechanical Specifications
+(unit: mm [1inch=25.4mm])
+Figure 1: Mechanical specifications
+2.4 Heat Dissipation
+
+CL57T(V4.0) reliable working temperature should be no more than 40℃(109°F)
+
+It is recommended to mount the drive vertically to maximize heat dissipation. Mount a cooling fan nearby if
+necessary.
+
+If multiple CL57T(V4.0) drives are installed, it is suggested to keep a minimal 30mm (1.2 inches) between two of
+them.
+
+![Page 4 image 3](CL57T_V4.0_images/img-004-003.png)
+
+![Page 4 image 4](CL57T_V4.0_images/img-004-004.png)
+
+## Page 5
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+3
+3. Connections and LED Indication
+A CL57T(V4.0) closed loop stepper drive has 4 connection blocks from P1 to P4 (see figure 2).
+Figure 2: CL57T(V4.0) connectors
+3.1 P1 – Control and Digital Output Connections
+The P1 connector in Figure 2 contains connections for control signals and 2 digital output.
+See the following table for details.
+PIN
+I/O
+Details
+PUL+
+(CW+)
+I
+Pulse and Direction Connection:
+(1) Optically isolated, high level 3.5-5V or 24V, low voltage 0-0.5V
+(2) Maximum 500 KHz input frequency
+(3) The width of PUL signal is at least 1.0μs, duty cycle is recommended 50%
+(4) Single pulse (step & direction) or double pulse (CW/CCW) is set by DIP Switch SW7
+(5) DIR signal requires advance PUL signal minimum 2 μs in single pulse mode
+(6) The factory setting of control signal voltage is 24V, must need to set S3 (figure 2) if it is
+5V
+PUL-
+(CW-)
+I
+DIR+ (CCW+)
+I
+DIR-
+(CCW-)
+I
+ENA+
+I
+Enable Signals: Optional.
+(1) Effective high level is 3.5-24V; Effective low level is 0-0.5V connection
+(2) ENA signal requires advance DIR signal minimum 200ms in single pulse mode, (default
+no connection)
+ENA-
+I
+ALM
+O
+Alarm :
+They takes a sinking or sourcing 100mA current at 5-24V. Max 30V
+Brake :
+Max. 24/100mA, connect with brake coil, relay and diode.
+Common connection of single-end output signals (common-cathode)
+BRK
+O
+COMO
+O
+
+![Page 5 image 5](CL57T_V4.0_images/img-005-005.png)
+
+## Page 6
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+4
+Notes: (1) Shielding control signal wires is suggested;
+(2) To avoid/reduce interference, don’t tie control signal cables and power wires together;
+(3) Brake output need to connect a relay and diode
+3.2 P2 - Encoder Signals Input Connector
+The P2 connector in Figure 2 is for encoder signals connection. Refer to the following table for details.
+Drive Pin Name
+Description
+EB+
+Encoder B+ input connection
+EB-
+Encoder B- input connection
+EA+
+Encoder A+ input connection
+EA-
+Encoder A- input connection
+VCC
+Encoder +5V voltage output connection
+EGND
+Power ground connection
+3.3 P3 - Motor Connector
+PIN
+Details
+A+
+Connect to motor A+ wire
+A-
+Connect to motor A- wire
+B+
+Connect to motor B+ wire
+B-
+Connect to motor B- wire
+3.4 P4 - Power Connector
+Pin
+Details
+GND
+Connect to power supply ground connection.
++VDC
+Connect to power supply positive connection. Suggest 24-48VDC power supply voltage
+!
+Warning
+Warning: Don’t plug/unplug P3 or P4 connector to avoid drive damage or injury while powered on.
+3.5 LED Status Lights
+There are two LED lights. The GREEN one is the power indicator which should be always on in normal circumstance.
+The RED one is a alarm status indication light, which will be OFF while working normally but ON and flash some times
+in a 3-second period in the case of enabled alarm protections.
+3.6 Switches
+The CL57T(V4.0) has one rotating switch, one 8-bit DIP switch and one 1-bit selector switch.
+
+## Page 7
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+5
+Switch
+Pic
+Details
+Rotating
+switch S1
+Drive Peak Current and Gain adjustment
+DIP
+switch S2
+Microstep resolution
+Rotation direction
+Pulse Mode
+Positional command filter
+Closed / Open Loop Mode
+Selector
+switch S3
+5V or 24V control signal voltage selector.
+The factory setting is 24V, must need to set S3 to 5V if the control
+signal voltage is 5V
+4. Power Supply Selection
+The CL57T(V4.0) can power medium and large size stepping motors (frame size from NEMA 17 to 24). To get good
+driving performances, it is important to select supply voltage and output current properly. Generally speaking, supply
+voltage determines the high speed performance of the motor, while output current determines the output torque of
+the driven motor (particularly at lower speed). Higher supply voltage will allow higher motor speed to be achieved, at
+the price of more noise and heating. If the motion speed requirement is low, it’s better to use lower supply voltage to
+decrease noise, heating and improve reliability.
+4.1 Power Supply Sharing
+Multiple CL57T(V4.0) drives can share one power supply to reduce cost, if that power supply has enough power
+capacity. To avoid cross interference, connect each stepper drive directly to the shared power supply separately. To
+avoid cross interference, DO NOT daisy-chain connect the power supply input pins of the Drivers. Instead connect
+them to power supply separately.
+4.2 Selecting Supply Voltage
+The CL57T(V4.0) is designed to operate within 18 - 50VDC voltage input. When selecting a power supply, besides
+voltage from the power supply power line voltage fluctuation and back EMF voltage generated during motor
+deceleration needs also to be taken into account. Please make sure leaving enough room for power line voltage
+fluctuation and back-EMF voltage charge back, it’s recommended 24 - 48VDC.
+Higher supply voltage can increase motor torque at higher speeds (>300 RPM), thus helpful for avoiding losing steps.
+However, higher voltage may cause bigger motor vibration at lower speed, and it may also cause over-voltage
+protection or even drive damage.
+
+## Page 8
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+6
+5. Switch Configurations
+5.1 S1 - Rotating Switch Configurations
+This rotating switch is used to set the peak current of the drive and motion gain, from the motor phase current and
+application requirements.
+Peak
+Current
+RMS
+Current
+Code
+Velocity
+loop Ki
+Position
+loop Kp
+Velocity
+loop Kp
+Remark
+2.8A
+2A
+0 (factory)
+0
+25
+25
+1) Velocity loop Ki Indicates the stop time
+and position accuracy , “0” indicates the
+stop time is long, but the position error is
+smaller.“16” means the stop time is short,
+but the position error is slightly larger.
+2) Position loop Kp and velocity loop Kp is a
+pair of composite parameters that represent
+rigidity. “25” and “25”composite parameters
+indicate the rigidity is weak, “100” and
+“5”composite parameters indicate the
+rigidity is strong. Sometimes if the motor
+will rotate after stopping, it can increase the
+value of position loop Kp, but if the value is
+too large, the motor will have noise.
+3) Usually keep factory settings
+1
+0
+50
+15
+2
+16
+25
+25
+3
+16
+50
+15
+5.6A
+4A
+4
+0
+25
+25
+5
+0
+50
+15
+6
+0
+100
+5
+7
+16
+25
+25
+8
+16
+50
+15
+9
+16
+100
+5
+7A
+5A
+A
+0
+25
+25
+B
+0
+50
+15
+C
+0
+100
+5
+D
+16
+25
+25
+E
+16
+50
+15
+F
+16
+100
+5
+5.2 S2 - DIP Switch Configurations
+The 8-bit is located on the side (DIP switch S2 in Figure 2) and used to configure settings of micro step resolution,
+output current, and motor standstill current as shown below
+SW1
+SW2
+SW3
+SW4
+SW5
+SW6
+SW7
+SW8
+Figure 3: DIP switches
+5.2.1 Micro Step (SW1-SW4)
+Each CL57T(V4.0) has 16 microstep settings which can be configured through DIP switches SW1, SW2, SW3 and SW4.
+See the following table for detail.
+Control mode
+Rotation direction
+Microstep
+Pulse mode
+Pulse filter time
+
+## Page 9
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+7
+Micro step
+Pulses/Rev. (for 1.8°motor)
+SW1
+SW2
+SW3
+SW4
+1
+200
+on
+on
+on
+on
+4
+800
+off
+on
+on
+on
+8
+1600
+on
+off
+on
+on
+16
+3200
+off
+off
+on
+on
+32
+6400
+on
+on
+off
+on
+64
+12800
+off
+on
+off
+on
+128
+25600
+on
+off
+off
+on
+256
+51200
+off
+off
+off
+on
+5
+1000
+on
+on
+on
+off
+10
+2000
+off
+on
+on
+off
+20
+4000
+on
+off
+on
+off
+25
+5000
+off
+off
+on
+off
+40
+8000
+on
+on
+off
+off
+50
+10000
+off
+on
+off
+off
+100
+20000
+on
+off
+off
+off
+200
+40000
+off
+off
+off
+off
+5.2.2 Mode Setting (SW5 - SW8)
+Function
+ON
+OFF
+SW5
+Rotation Direction
+CW (clockwise)
+CCW (counterclockwise)
+SW6
+Control Mode
+Open loop control
+Closed loop control
+SW7
+Pulse Mode
+CW/CCW (double pulse)
+PUL/DIR (single pulse)
+SW8
+Pulse Filter Time
+Yes (10ms)
+No (1.5ms)
+CL57T(V4.0) has an advanced feature called Pulse Filter Time to make the input pulse from pulse generator (controller,
+PLC, etc.) S-curve acceleration, to improve motion smoothness and high-speed start frequency in many
+circumstances.
+The Filter Time value must be set to the same for each CL57T(V4.0) in multi-axis applications
+5.3 S3 - Selector Switch Configurations
+The 1-bit selector is located on the top (S3 in figure 2), used to configure the voltage of control signals. For the safety
+of optically coupled, the factory setting is 24V, which no need to connect 2K resistors, making it easier to use. When
+the voltage of the control signal is 5V, the S3 must be set to 5V, otherwise, the motor won't work.
+
+## Page 10
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+8
+6. Typical Connection
+A complete closed loop stepper system should include a stepper motor with encoder, CL57T(V4.0) drive, power
+supply and controller (pulse generator). A typical connection is as below.
+Figure 4: Typical connection
+Notes: (1) Pulse and direction inputs level 5V or 24V selected by selector switch S3. When it is 24 V, the S3 selection
+of 5V will damage the input photo-coupling.
+(3) Enable (ENA) signal is 5V~24V compatible.
+6.1 Digital Input Connection
+The CL57T(V4.0) can accept can accept differential or single-ended control signals (pulse, direction, and enable) in
+open-collector or PNP connection through the P1 connector (figure 2). It is recommend to add an EMI line filter
+between the power supply and the drive to increase noise immunity for the drive in interference environments.
+Figure 5: Connections to open-collector signal
+Figure 6: Connections to PNP signal
+(common-anode)
+(common-cathode)
+Notes:
+(1) ENA signal is no-connected as default;
+(2) Control signal amplitude is 24 V as default. If it is 12 V, please set the S3 (Figure 2) selector switch to 5 V first, then
+connect 1KΩ resistor; If it is 5V, please set the S3 to 5V.
+Drive
+Controller
+VCC
+PUL-
+PUL+
+ENA-
+PUL
+DIR
+ENABLE
+DIR-
+DIR+
+ENA+
+Drive
+Controller
+VCC
+PUL-
+PUL+
+ENA-
+PUL
+DIR
+ENABLE
+DIR-
+DIR+
+ENA+
+
+![Page 10 image 6](CL57T_V4.0_images/img-010-006.png)
+
+## Page 11
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+9
+6.2 Fault Output Connection
+When over voltage or over current protection happens, CL57T(V4.0) red status LED light will blink and the impedance
+state between ALM and COM- will change (from low to high or high to low depending on configuration) and can thus
+be detected. Fault output connection is optional, and it can be connected either in sinking or sourcing.
+Figure 7 Sinking output
+Figure 8 Sourcing output
+6.3 Brake Output Connection
+This drive has a special brake output, it needs to drive the motor brake with a relay. The connection is below:
+Figure 9 Brake output connection
+7. Sequence Chart of Control Signals
+In order to avoid some fault operations and deviations, PUL, DIR and ENA should abide by some rules, shown as
+following diagram:
+
+![Page 11 image 7](CL57T_V4.0_images/img-011-007.png)
+
+![Page 11 image 8](CL57T_V4.0_images/img-011-008.png)
+
+![Page 11 image 9](CL57T_V4.0_images/img-011-009.png)
+
+## Page 12
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+10
+Figure 10: Sequence chart of control signals
+Remark:
+a)
+t1: ENA must be ahead of DIR by at least 200ms. Usually, ENA+ and ENA- are NC (not connected). See
+“Connector P1 Configurations” for more information.
+b)
+t2: DIR must be ahead of PUL effective edge by 2us to ensure correct direction;
+c)
+t3: Pulse width not less than 1us;
+d)
+t4: Low level width not less than 1us;
+e)
+Duty cycle of PUL signal is recommended 50%.
+8. Fault Protections & Troubleshooting
+To improve reliability, the drive incorporates some built-in protection features.
+Blink
+time(s)
+Sequence wave of red LED
+Description
+Trouble shooting
+1
+0.2S
+5S
+Over-current
+Turn off the power immediately.
+a) Check wiring is short-circuited or not;
+b) Check motor is short-circuited or not.
+2
+0.2S
+0.3S
+5S
+Over-voltage
+Turn off the power immediately.
+a) Check if the power voltage is higher
+than 90VDC
+3
+Chip error
+Restart the power supply, if the drive is
+still alarm, please contact after-sale
+4
+Fail to lock motor
+shaft
+a) The drive is not connected to a
+motor;
+b) If alarm is occurred when connect a
+motor, please check the motor power
+cable.
+5
+EEPROM error
+Restart the power supply, if the drive is
+still alarm, please contact after-sale
+
+![Page 12 image 10](CL57T_V4.0_images/img-012-010.png)
+
+![Page 12 image 11](CL57T_V4.0_images/img-012-011.png)
+
+## Page 13
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+11
+6
+Fail to auto tuning
+Restart the power supply, if the drive is
+still alarm, please contact after-sale
+7
+0.2S
+0.3S
+5S
+Position following
+error
+a) Set SW6 to “ON” to make motor run
+in open loop mode, If alarm disappears,
+it means encoder wiring error;
+b) Motor torque is not enough or motor
+speed is too high;
+Always
+-
+PCB board is
+burned out
+Restart the power supply, if the drive is
+still alarm, please contact after-sale
+When above protections are active, the motor shaft will be free or the red LED blinks. Reset the drive by repowering it
+to make it function properly after removing above problems.
+In the event that your drive doesn’t operate properly, the first step is to identify whether the problem is electrical or
+mechanical in nature. The next step is to isolate the system component that is causing the problem. As part of this
+process you may have to disconnect the individual components that make up your system and verify that they
+operate independently. It is important to document each step in the troubleshooting process. You may need this
+documentation to refer back to at a later date, and these details will greatly assist our Technical Support staff in
+determining the problem should you need assistance.
+Many of the problems that affect motion control systems can be traced to electrical noise, controller software errors,
+or mistake in wiring.
+Symptoms
+Possible Problems
+Solutions
+Motor is not rotating
+No power
+Connect power supply correctly
+Microstep resolution setting is wrong
+Setting appropriate microstep
+Fault condition exists
+Check wiring and restart power
+The drive is disabled
+Drive restore factory setting, and keep
+ENA+, ENA- input signals unconnected.
+Wrong motor rotation direction
+The Direction signal level is reverse
+Toggling the SW5 DIP switch
+Erratic motor motion
+Control signal is too weak
+Ensure the current of control signal is
+within 7-16mA
+Control signal is interfered
+Don’t tie the control signal cable with
+power cable together
+Wrong motor connection
+Refer to user manual of drive and motor
+datasheet
+Something wrong with motor coil
+Check the motor is normal
+
+## Page 14
+
+CL57T(V4.0) Closed-Loop Stepper Driver
+12
+Motor stalls during acceleration
+Current setting is too small
+Choose another power supply with lager
+power or increase the output current of
+drive
+Motor is undersized for the application
+Choose another motor with higher torque
+Acceleration is set too high
+Reduce the acceleration
+Power supply voltage too low
+Choose another power supply with large
+voltage output
+Excessive motor & drive heating
+Inadequate heat sinking / cooling
+Refer to chapter 2.4
+Motor peak current setting is too high
+Reduce the current value refer to motor
+datasheet
+Motor vibration when power on
+Speed loop Kp is too high
+Reduce the speed loop Kp value
