@@ -633,15 +633,12 @@ class RuidaLaser:
             self.move(x=origin_x, y=origin_y, speed=move_speed)
             cursor_x, cursor_y = origin_x, origin_y
 
-        def flush_block(block_moves: List[RDMove]) -> None:
+        def flush_block(block_moves: List[RDMove], block_index: int) -> None:
             if not block_moves:
                 return
             nonlocal block_start_z
             _ensure_at_job_origin()
-            needs_origin_move = not (
-                math.isclose(block_moves[0].x_mm, origin_x, abs_tol=1e-6)
-                and math.isclose(block_moves[0].y_mm, origin_y, abs_tol=1e-6)
-            )
+            needs_origin_move = block_index > 0
             origin_move_speed = origin_speed or current_speed or self.z_speed_mm_s
             payload_moves = (
                 [
@@ -667,15 +664,17 @@ class RuidaLaser:
 
         block: List[RDMove] = []
         block_start_z: float | None = current_z
+        block_index = 0
 
         try:
             for cmd in commands:
                 if cmd.type.name == "ROTATE":
                     if park_speed is None and cmd.speed_mm_s is not None:
                         park_speed = cmd.speed_mm_s
-                    flush_block(block)
+                    flush_block(block, block_index)
                     block = []
                     block_start_z = current_z
+                    block_index += 1
                     park_head_before_rotary()
                     # After parking, cursor/last_set_z reflect parked position.
                     current_z = last_set_z
@@ -757,7 +756,7 @@ class RuidaLaser:
                     cursor_x, cursor_y = x, y
                     continue
 
-            flush_block(block)
+            flush_block(block, block_index)
         finally:
             if park_z is not None:
                 try:

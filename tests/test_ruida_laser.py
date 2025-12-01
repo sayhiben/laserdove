@@ -41,11 +41,8 @@ def test_run_sequence_inserts_origin_move_between_blocks(monkeypatch):
 
     assert len(recorded_blocks) >= 2
 
-    first_block = recorded_blocks[0]
     second_block = recorded_blocks[1]
 
-    # Both blocks should start by returning to the original job origin (100, 200).
-    assert first_block[0].x_mm == 100.0
-    assert first_block[0].y_mm == 200.0
+    # Subsequent blocks should start by returning to the original job origin (100, 200).
     assert second_block[0].x_mm == 100.0
     assert second_block[0].y_mm == 200.0
