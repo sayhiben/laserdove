@@ -318,12 +318,19 @@ def plan_pin_board(
 
     for rotation_deg, sides in sides_by_angle.items():
         # Project board Y coordinates into machine Y with foreshortening at this angle.
-        delta_angle_deg = abs(rotation_deg - jig_params.rotation_zero_deg)
-        cos_theta = math.cos(math.radians(delta_angle_deg))
+        delta_angle_signed = rotation_deg - jig_params.rotation_zero_deg
+        delta_angle_mag = abs(delta_angle_signed)
+        cos_theta = math.cos(math.radians(delta_angle_mag))
+        sin_theta = math.sin(math.radians(delta_angle_signed))
 
         def project_y(y_board: float) -> float:
-            """Apply orthographic foreshortening about the board midline."""
-            return y_center + (y_board - y_center) * cos_theta
+            """
+            Apply orthographic foreshortening about the board midline and include
+            the translation caused by the rotary axis being offset from the board
+            surface. A positive rotation tilts the board so the top surface moves
+            toward negative Y by h*sin(theta); negative rotation shifts positive.
+            """
+            return y_center + (y_board - y_center) * cos_theta - jig_params.axis_to_origin_mm * sin_theta
 
         # Nearest-neighbor ordering from current_y to reduce travel swings.
         remaining = sides[:]
