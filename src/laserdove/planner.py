@@ -330,7 +330,11 @@ def plan_pin_board(
             surface. A positive rotation tilts the board so the top surface moves
             toward negative Y by h*sin(theta); negative rotation shifts positive.
             """
-            return y_center + (y_board - y_center) * cos_theta - jig_params.axis_to_origin_mm * sin_theta
+            return (
+                y_center
+                + (y_board - y_center) * cos_theta
+                - jig_params.axis_to_origin_mm * sin_theta
+            )
 
         # Nearest-neighbor ordering from current_y to reduce travel swings.
         remaining = sides[:]

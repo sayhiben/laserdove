@@ -638,6 +638,15 @@ class RuidaLaser:
                 return False
             nonlocal block_start_z
             _ensure_at_job_origin()
+            # Refresh Z from the controller in case it changed between RD jobs.
+            start_z_mm = block_start_z
+            try:
+                state = self._read_machine_state(read_positions=True)
+                if state and state.z_mm is not None:
+                    start_z_mm = state.z_mm
+                    self.z = state.z_mm
+            except Exception:
+                pass
             needs_origin_move = block_index > 0
             origin_move_speed = origin_speed or current_speed or self.z_speed_mm_s
             payload_moves = (
@@ -658,9 +667,9 @@ class RuidaLaser:
                 payload_moves,
                 job_z_mm=None,
                 require_busy_transition=True,
-                start_z_mm=block_start_z,
+                start_z_mm=start_z_mm,
             )
-            block_start_z = current_z
+            block_start_z = current_z if current_z is not None else start_z_mm
             return True
 
         block: List[RDMove] = []

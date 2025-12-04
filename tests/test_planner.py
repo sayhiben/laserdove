@@ -104,8 +104,10 @@ def test_pin_y_positions_are_projected_for_rotation():
         half_gap_by_side[(side.pin_index, side.side)] = gap / 2.0
 
     y_center = joint_params.edge_length_mm / 2.0
-    rotation_deg = jig_params.rotation_zero_deg + joint_params.dovetail_angle_deg
-    cos_theta = math.cos(math.radians(abs(rotation_deg - jig_params.rotation_zero_deg)))
+    rotation_deg = next(s.rotation_deg for s in pin_plan.sides if s.side == Side.RIGHT)
+    delta_angle = rotation_deg - jig_params.rotation_zero_deg
+    cos_theta = math.cos(math.radians(abs(delta_angle)))
+    sin_theta = math.sin(math.radians(delta_angle))
 
     # Pick a right side to verify projection math.
     side = next(s for s in pin_plan.sides if s.side == Side.RIGHT)
@@ -121,7 +123,9 @@ def test_pin_y_positions_are_projected_for_rotation():
     y_far_board = y_cut_board + half_gap
 
     def project_y(y_board: float) -> float:
-        return y_center + (y_board - y_center) * cos_theta
+        return (
+            y_center + (y_board - y_center) * cos_theta - jig_params.axis_to_origin_mm * sin_theta
+        )
 
     expected_y_move = project_y(y_cut_board)
     expected_y_span = project_y(y_far_board)
@@ -158,9 +162,6 @@ def test_pin_projection_varies_with_angle(angle_deg: float):
     commands = plan_pin_board(joint_params, jig_params, machine_params, pin_plan)
 
     y_center = joint_params.edge_length_mm / 2.0
-    target_rotation = jig_params.rotation_zero_deg + angle_deg
-    cos_theta = math.cos(math.radians(abs(target_rotation - jig_params.rotation_zero_deg)))
-
     sides = [s for s in pin_plan.sides if s.side in (Side.LEFT, Side.RIGHT)]
     half_gap_by_side = {}
     unique_boundaries = sorted({side.y_boundary_mm for side in pin_plan.sides})
@@ -194,8 +195,16 @@ def test_pin_projection_varies_with_angle(angle_deg: float):
         waste_sign = -1.0 if side.side == Side.LEFT else 1.0
         y_far_board = y_cut_board + waste_sign * half_gap
 
+        delta_angle = side.rotation_deg - jig_params.rotation_zero_deg
+        cos_theta = math.cos(math.radians(abs(delta_angle)))
+        sin_theta = math.sin(math.radians(delta_angle))
+
         def project_y(y_board: float) -> float:
-            return y_center + (y_board - y_center) * cos_theta
+            return (
+                y_center
+                + (y_board - y_center) * cos_theta
+                - jig_params.axis_to_origin_mm * sin_theta
+            )
 
         expected_move = project_y(y_cut_board)
         expected_span = project_y(y_far_board)
