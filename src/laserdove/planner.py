@@ -315,6 +315,11 @@ def plan_pin_board(
 
     current_y = 0.0  # track last projected Y to order cuts and reduce long travel moves
     y_center = joint_params.edge_length_mm / 2.0
+    edge_length = joint_params.edge_length_mm
+
+    def clamp_board_y(y_val: float) -> float:
+        """Limit board-space Y to the material span to avoid overcutting past the ends."""
+        return max(0.0, min(edge_length, y_val))
 
     for rotation_deg, sides in sides_by_angle.items():
         # Project board Y coordinates into machine Y with foreshortening at this angle.
@@ -376,6 +381,7 @@ def plan_pin_board(
                 keep_on_positive_side=keep_on_positive_side[side.side],
                 is_tail_board=False,
             )
+            y_cut = clamp_board_y(y_cut)
             y_cut_projected = project_y(y_cut)
 
             commands.append(
@@ -398,8 +404,21 @@ def plan_pin_board(
 
             cut_depth = side.x_depth_mm
             half_gap = half_gap_by_side[(side.pin_index, side.side)]
+            boundary_y = side.y_boundary_mm
+            at_left_edge = math.isclose(boundary_y, 0.0, abs_tol=1e-9)
+            at_right_edge = math.isclose(boundary_y, edge_length, abs_tol=1e-9)
             waste_sign = -1.0 if keep_on_positive_side[side.side] else 1.0
-            y_far = y_cut + waste_sign * half_gap
+            # Edge half-pins should pocket toward the material, not off the board.
+            if at_left_edge:
+                waste_sign = 1.0
+            elif at_right_edge:
+                waste_sign = -1.0
+
+            y_far = clamp_board_y(y_cut + waste_sign * half_gap)
+            if math.isclose(y_far, y_cut, abs_tol=1e-9):
+                # If clamping collapsed the span, nudge toward the interior so the pocket exists.
+                epsilon = min(half_gap, edge_length * 0.01)
+                y_far = clamp_board_y(y_cut + waste_sign * epsilon)
             y_far_projected = project_y(y_far)
 
             commands.append(

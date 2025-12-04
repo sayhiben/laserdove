@@ -505,9 +505,7 @@ class RuidaLaser:
             initial_z_mm=start_z,
             air_assist=self.air_assist,
         )
-        z_moves = [
-            f"#{idx}:{mv.z_mm:+.3f}" for idx, mv in enumerate(moves) if mv.z_mm is not None
-        ]
+        z_moves = [f"#{idx}:{mv.z_mm:+.3f}" for idx, mv in enumerate(moves) if mv.z_mm is not None]
         log.info(
             "[RUIDA UDP] RD Z context: start_z=%s header_z=%s z_moves=%s",
             f"{start_z:.3f}" if start_z is not None else "unset",
@@ -693,9 +691,7 @@ class RuidaLaser:
                 else block_moves
             )
             start_z_display = f"{start_z_mm:.3f}" if start_z_mm is not None else "unknown"
-            block_start_display = (
-                f"{block_start_z:.3f}" if block_start_z is not None else "unknown"
-            )
+            block_start_display = f"{block_start_z:.3f}" if block_start_z is not None else "unknown"
             log.info(
                 "[RUIDA UDP] Flushing RD block %d: start_z=%s block_start_z=%s moves=%d",
                 block_index,
