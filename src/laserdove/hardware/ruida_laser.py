@@ -199,6 +199,11 @@ class RuidaLaser:
         raw_z_mm = decode_abscoord_mm(z_payload) if z_payload else None
         if raw_z_mm is not None and self._z_origin_mm is None:
             self._z_origin_mm = raw_z_mm
+            log.info(
+                "[RUIDA UDP] Captured Z origin from controller: raw=%.3fmm (z+ moves bed %s)",
+                raw_z_mm,
+                "up" if self.z_positive_moves_bed_up else "down",
+            )
         z_rel = (
             raw_z_mm - self._z_origin_mm
             if raw_z_mm is not None and self._z_origin_mm is not None
@@ -500,6 +505,15 @@ class RuidaLaser:
             initial_z_mm=start_z,
             air_assist=self.air_assist,
         )
+        z_moves = [
+            f"#{idx}:{mv.z_mm:+.3f}" for idx, mv in enumerate(moves) if mv.z_mm is not None
+        ]
+        log.info(
+            "[RUIDA UDP] RD Z context: start_z=%s header_z=%s z_moves=%s",
+            f"{start_z:.3f}" if start_z is not None else "unset",
+            f"{job_z_offset_mm:+.3f}" if job_z_offset_mm is not None else "none",
+            ", ".join(z_moves) if z_moves else "none",
+        )
         if self.save_rd_dir:
             self.save_rd_dir.mkdir(parents=True, exist_ok=True)
             self._rd_job_counter += 1
@@ -576,6 +590,17 @@ class RuidaLaser:
             job_origin_z = 0.0  # treat as logical zero if origin captured but no absolute read
         if job_origin_z is not None:
             self.z = job_origin_z
+        job_origin_z_str = f"{job_origin_z:.3f}" if job_origin_z is not None else "unknown"
+        cached_z_origin_str = (
+            f"{self._z_origin_mm:.3f}" if self._z_origin_mm is not None else "unset"
+        )
+        log.info(
+            "[RUIDA UDP] Job origin snapshot x=%.3f y=%.3f z=%s (cached_z_origin=%s)",
+            job_origin_x,
+            job_origin_y,
+            job_origin_z_str,
+            cached_z_origin_str,
+        )
         y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
         # movement_only is the preferred name; travel_only is accepted for backward compatibility.
@@ -645,6 +670,10 @@ class RuidaLaser:
                 if state and state.z_mm is not None:
                     start_z_mm = state.z_mm
                     self.z = state.z_mm
+                    log.info(
+                        "[RUIDA UDP] Updated RD block start Z from controller: %.3fmm",
+                        start_z_mm,
+                    )
             except Exception:
                 pass
             needs_origin_move = block_index > 0
@@ -662,6 +691,17 @@ class RuidaLaser:
                 + block_moves
                 if needs_origin_move
                 else block_moves
+            )
+            start_z_display = f"{start_z_mm:.3f}" if start_z_mm is not None else "unknown"
+            block_start_display = (
+                f"{block_start_z:.3f}" if block_start_z is not None else "unknown"
+            )
+            log.info(
+                "[RUIDA UDP] Flushing RD block %d: start_z=%s block_start_z=%s moves=%d",
+                block_index,
+                start_z_display,
+                block_start_display,
+                len(payload_moves),
             )
             self.send_rd_job(
                 payload_moves,
@@ -706,6 +746,13 @@ class RuidaLaser:
                         current_z = cmd.z
                         last_set_z = current_z
                         self.z = current_z
+                        log.info(
+                            "[RUIDA UDP] Command requests Z=%.3f at x=%.3f y=%.3f (block=%d)",
+                            current_z,
+                            x,
+                            y,
+                            block_index,
+                        )
                         block.append(
                             RDMove(
                                 x_mm=x,
@@ -741,6 +788,13 @@ class RuidaLaser:
                         current_z = cmd.z
                         last_set_z = current_z
                         self.z = current_z
+                        log.info(
+                            "[RUIDA UDP] Command requests Z=%.3f at x=%.3f y=%.3f (block=%d)",
+                            current_z,
+                            x,
+                            y,
+                            block_index,
+                        )
                         block.append(
                             RDMove(
                                 x_mm=x,

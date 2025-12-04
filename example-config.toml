@@ -12,7 +12,7 @@ kerf_tail_mm        = 0.15
 kerf_pin_mm         = 0.15
 
 [jig]
-axis_to_origin_mm   = 30.0
+axis_to_origin_mm   = 32.5
 rotation_zero_deg   = 0.0
 rotation_speed_dps  = 30.0
 
