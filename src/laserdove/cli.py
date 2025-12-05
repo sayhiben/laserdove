@@ -49,7 +49,7 @@ def _build_reset_commands(run_config) -> List[Command]:
     ]
 
 
-def _plan_commands(run_config) -> List[Command]:
+def plan_commands(run_config) -> List[Command]:
     """Generate motion commands for the selected mode."""
     if run_config.reset_only:
         return _build_reset_commands(run_config)
@@ -217,7 +217,7 @@ def main() -> None:
     if run_config.reset_only:
         run_config.movement_only = True
 
-    commands = _plan_commands(run_config)
+    commands = plan_commands(run_config)
 
     if run_config.dry_run and not run_config.simulate and run_config.laser_backend != "ruida":
         for command in commands:

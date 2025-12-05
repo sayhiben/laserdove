@@ -166,7 +166,8 @@ def compute_pin_plan(
     Compute pin flank rotations, Z offsets, and boundaries.
 
     Pins are the gaps between tails (plus half-pins at ends). Each pin has two
-    sides: LEFT at rotation_zero_deg - β and RIGHT at rotation_zero_deg + β.
+    sides: LEFT at rotation_zero_deg + β and RIGHT at rotation_zero_deg - β
+    so the pin widens toward the bottom of the mounted board.
 
     Args:
         joint_params: Joint geometry and kerf/clearance parameters.
@@ -201,8 +202,8 @@ def compute_pin_plan(
     dovetail_angle_deg = joint_params.dovetail_angle_deg
 
     rotation_for_side: Dict[Side, float] = {
-        Side.LEFT: jig_params.rotation_zero_deg - dovetail_angle_deg,
-        Side.RIGHT: jig_params.rotation_zero_deg + dovetail_angle_deg,
+        Side.LEFT: jig_params.rotation_zero_deg + dovetail_angle_deg,
+        Side.RIGHT: jig_params.rotation_zero_deg - dovetail_angle_deg,
     }
 
     for pin_index, center_y in enumerate(pin_centers_y):
@@ -424,19 +425,19 @@ def plan_pin_board(
             commands.append(
                 Command(
                     type=CommandType.CUT_LINE,
-                    x=cut_depth,
+                    x=cut_depth + machine_params.cut_overtravel_mm,
                     y=y_cut_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
-                    comment="Pin: plunge to depth",
+                    comment="Pin: plunge to depth (with overtravel)",
                 )
             )
             commands.append(
                 Command(
                     type=CommandType.CUT_LINE,
-                    x=cut_depth,
+                    x=cut_depth + machine_params.cut_overtravel_mm,
                     y=y_far_projected,
                     speed_mm_s=machine_params.cut_speed_pin_mm_s,
-                    comment="Pin: pocket span",
+                    comment="Pin: pocket span (with overtravel)",
                 )
             )
             commands.append(

@@ -33,6 +33,8 @@ source .venv/bin/activate
 pip install -e .          # runtime
 # For dev/lint/tests
 pip install -e ".[dev]"
+# For 3D visualization (optional)
+# pip install panda3d
 ```
 
 ## Quick start
@@ -42,6 +44,8 @@ cp example-config.toml config.toml   # adjust to your jig/laser
 python -m laserdove.main --config config.toml --mode both --dry-run  # plan only
 
 python -m laserdove.main --config config.toml --simulate  # Tk sim
+
+python -m tools.panda3d_sim --config config.toml --mode both  # 3D Panda3D sim (install panda3d first)
 
 python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out --movement-only  # build RD safely
 ```
@@ -75,6 +79,7 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--kerf-tail-mm` | `0.15` | float | Kerf for tail board cuts. |
 | `--kerf-pin-mm` | `0.15` | float | Kerf for pin board cuts. |
 | `--axis-offset-mm` | `30.0` | float | Axis-to-surface distance for rotary focus. |
+| `--cut-overtravel-mm` | `0.5` | float | Extra X depth to extend pin cuts past the edge for through/finger joints. |
 
 ### Hardware/backends
 | Option | Default (config) | Values | Description |
@@ -113,6 +118,9 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 - Visualization/tools: `simulation_viewer.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
 - Validation: `validation.py` checks geometry, jig, and machine limits before execution.
 
+## Pin cutting orientation
+- Pin flanks rotate to +β on the left and -β on the right so pins end up wider at the bottom of the mounted board and narrower at the top (helps reduce burning on the narrow faces).
+
 To extend: add new motion types in `planner.py`/`model.py`, new hardware backends under `hardware/`, or new CLI/config fields in `config.py` plus `example-config.toml`.
 
 ## Development
@@ -124,6 +132,7 @@ To extend: add new motion types in `planner.py`/`model.py`, new hardware backend
 - Save RD jobs: `--save-rd-dir rd_out/` then inspect with `tools/rd_parser.py path/to.rd`.
 - Ruida status probe: `python -m tools.ruida_status_probe --host <ruida-ip>` to poll status bits with movement-only jobs.
 - Simulation: `--simulate` to visualize paths with pacing based on commanded speeds.
+- 3D visualization: `python -m tools.panda3d_sim --config config.toml --mode both` to replay plans in Panda3D (install optional dependency `panda3d`).
 
 ## Credits and references
 - Community and research work informed this tooling, including:

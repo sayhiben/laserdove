@@ -47,6 +47,7 @@ class MachineParams:
     cut_power_tail_pct: float
     cut_power_pin_pct: float
     travel_power_pct: float
+    cut_overtravel_mm: float
 
     # Z locations when the user focuses and zeros for each board
     z_zero_tail_mm: float  # focus at top of tail board

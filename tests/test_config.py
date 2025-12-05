@@ -24,6 +24,7 @@ def make_args(**overrides) -> argparse.Namespace:
         kerf_tail_mm=None,
         kerf_pin_mm=None,
         axis_offset_mm=None,
+        cut_overtravel_mm=None,
         log_level="INFO",
         ruida_timeout_s=None,
         ruida_source_port=None,

@@ -124,6 +124,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--kerf-tail-mm", type=float)
     p.add_argument("--kerf-pin-mm", type=float)
     p.add_argument("--axis-offset-mm", type=float)
+    p.add_argument(
+        "--cut-overtravel-mm",
+        type=float,
+        help="Extend X cuts past the edge by this amount (mm) for through/finger joints.",
+    )
     # Ruida UDP tuning
     p.add_argument("--ruida-timeout-s", type=float, help="UDP ACK timeout seconds for Ruida")
     p.add_argument("--ruida-source-port", type=int, help="Local UDP source port (default 40200)")
@@ -291,6 +296,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         cut_power_tail_pct=_dict_get_nested(cfg_data, "machine.cut_power_tail_pct", 60.0),
         cut_power_pin_pct=_dict_get_nested(cfg_data, "machine.cut_power_pin_pct", 65.0),
         travel_power_pct=_dict_get_nested(cfg_data, "machine.travel_power_pct", 0.0),
+        cut_overtravel_mm=_dict_get_nested(cfg_data, "machine.cut_overtravel_mm", 0.5),
         air_assist=bool(_dict_get_nested(cfg_data, "machine.air_assist", True)),
         z_positive_moves_bed_up=bool(
             _dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)
@@ -319,6 +325,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         joint_params.kerf_pin_mm = args.kerf_pin_mm
     if args.axis_offset_mm is not None:
         jig_params.axis_to_origin_mm = args.axis_offset_mm
+    if args.cut_overtravel_mm is not None:
+        machine_params.cut_overtravel_mm = args.cut_overtravel_mm
     if getattr(args, "air_assist", None) is not None:
         machine_params.air_assist = bool(args.air_assist)
     if getattr(args, "z_positive_moves_bed_up", None) is not None:

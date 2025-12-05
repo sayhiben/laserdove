@@ -25,6 +25,7 @@ def make_joint_and_machine() -> tuple[JointParams, MachineParams, TailLayout]:
         cut_power_tail_pct=60.0,
         cut_power_pin_pct=65.0,
         travel_power_pct=0.0,
+        cut_overtravel_mm=0.5,
         z_zero_tail_mm=0.0,
         z_zero_pin_mm=0.0,
     )
