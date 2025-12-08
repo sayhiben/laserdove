@@ -84,7 +84,8 @@ def plan_commands(run_config) -> List[Command]:
 def _build_sim_backends(run_config):
     from .hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
 
-    sim_kwargs = {"real_time": True}
+    use_pygame = run_config.simulate_viewer == "pygame"
+    sim_kwargs = {"real_time": False if use_pygame else True}
     sim_opts = {
         "origin_x": 0.0,
         "origin_y": 0.0,
@@ -98,8 +99,9 @@ def _build_sim_backends(run_config):
             sim_kwargs[name] = val
 
     laser = SimulatedLaser(**sim_kwargs)
-    rotary = SimulatedRotary(laser, real_time=True)
-    laser.setup_viewer()  # Open the window before execution to show progress.
+    rotary = SimulatedRotary(laser, real_time=not use_pygame)
+    if run_config.simulate_viewer == "tk":
+        laser.setup_viewer()  # Open the window before execution to show progress.
     return laser, rotary
 
 
@@ -195,8 +197,16 @@ def _execute(commands: List[Command], laser, rotary, run_config) -> None:
         else:
             execute_commands(commands, laser, rotary)
 
-        if run_config.simulate and hasattr(laser, "show"):
-            laser.show()
+        if run_config.simulate:
+            if run_config.simulate_viewer == "pygame":
+                try:
+                    from .pygame_simulator import run_pygame_viewer
+
+                    run_pygame_viewer(commands, run_config, time_scale=6.0)
+                except Exception:  # pragma: no cover - UI best-effort path
+                    log.error("Pygame viewer failed", exc_info=True)
+            elif hasattr(laser, "show"):
+                laser.show()
     finally:
         for dev in (laser, rotary):
             if hasattr(dev, "cleanup"):

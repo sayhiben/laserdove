@@ -59,6 +59,7 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--mode` | `both` | `tails` \| `pins` \| `both` | Which board to plan. |
 | `--dry-run` | `false` | flag | Print commands; skip hardware. |
 | `--simulate` | `false` | flag | Use Tk viewer + simulated backends. |
+| `--simulate-viewer` | `tk` | `tk` \| `pygame` | Choose Tk or the pygame dual-view simulator when `--simulate` is set. |
 | `--reset` | `false` | flag | Skip planning; rotate to zero and park head at pin Z0 (laser off). |
 | `--movement-only` | `false` | flag | Force laser power to 0 while moving (also set by `--reset`). |
 | `--dry-run-rd` | `false` | flag | Build/log RD jobs without talking to Ruida. |
@@ -116,6 +117,7 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
   - `ruida_*` + `rd_builder.py` UDP transport and RD payloads,
   - `rotary.py` GPIO/logging rotary drivers.
 - Visualization/tools: `simulation_viewer.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
+- Optional simulators: Tk viewer (`--simulate` + `--simulate-viewer tk`) and pygame dual-view (`--simulate-viewer pygame`, requires `pygame`).
 - Validation: `validation.py` checks geometry, jig, and machine limits before execution.
 
 ## Pin cutting orientation

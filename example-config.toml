@@ -52,3 +52,4 @@ rotary_dir_pin_pos  = 13  # DIR+ (physical pin 13; DIR- tied to GND)
 rotary_invert_dir = false
 ruida_host = "10.0.3.3"
 ruida_port = 50200
+# simulate_viewer = "tk"   # or "pygame" for the 2D pygame simulator when --simulate

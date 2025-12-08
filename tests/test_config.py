@@ -12,6 +12,7 @@ def make_args(**overrides) -> argparse.Namespace:
         mode="both",
         dry_run=False,
         simulate=False,
+        simulate_viewer="tk",
         movement_only=False,
         dry_run_rd=False,
         reset=False,
@@ -75,6 +76,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert rc.rotary_pin_numbering == "board"
     assert rc.movement_only is False
     assert rc.save_rd_dir is None
+    assert rc.simulate_viewer == "tk"
 
 
 def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
@@ -96,6 +98,7 @@ def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
     assert rc.joint_params.edge_length_mm == 42.0
     assert rc.laser_backend == "ruida"
     assert rc.rotary_backend == "real"
+    assert rc.simulate_viewer == "tk"
 
 
 def test_load_config_missing_explicit_path_raises(tmp_path):
