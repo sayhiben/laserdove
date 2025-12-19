@@ -47,6 +47,8 @@ python -m laserdove.main --config config.toml --simulate  # Tk sim
 
 python -m tools.panda3d_sim --config config.toml --mode both  # 3D Panda3D sim (install panda3d first)
 
+python -m laserdove.main --config config.toml --mode both --simulate-viewer pygame --simulate-screenshots-dir sim_frames --simulate-screenshots-every-s 2  # capture pygame frames
+
 python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out --movement-only  # build RD safely
 ```
 
@@ -60,6 +62,8 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--dry-run` | `false` | flag | Print commands; skip hardware. |
 | `--simulate` | `false` | flag | Use Tk viewer + simulated backends. |
 | `--simulate-viewer` | `tk` | `tk` \| `pygame` | Choose Tk or the pygame dual-view simulator when `--simulate` is set. |
+| `--simulate-screenshots-dir` | none | path | When using the pygame viewer, write periodic PNG frames + `index.json` to this directory and exit. |
+| `--simulate-screenshots-every-s` | `2.0` | float | Interval (seconds) between saved frames (used with `--simulate-screenshots-dir`). |
 | `--reset` | `false` | flag | Skip planning; rotate to zero and park head at pin Z0 (laser off). |
 | `--movement-only` | `false` | flag | Force laser power to 0 while moving (also set by `--reset`). |
 | `--dry-run-rd` | `false` | flag | Build/log RD jobs without talking to Ruida. |
@@ -117,7 +121,7 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
   - `ruida_*` + `rd_builder.py` UDP transport and RD payloads,
   - `rotary.py` GPIO/logging rotary drivers.
 - Visualization/tools: `simulation_viewer.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
-- Optional simulators: Tk viewer (`--simulate` + `--simulate-viewer tk`) and pygame dual-view (`--simulate-viewer pygame`, requires `pygame`).
+- Optional simulators: Tk viewer (`--simulate` + `--simulate-viewer tk`) and pygame dual-view (`--simulate-viewer pygame`, requires `pygame`) with rotary + Z-aware edge view.
 - Validation: `validation.py` checks geometry, jig, and machine limits before execution.
 
 ## Pin cutting orientation

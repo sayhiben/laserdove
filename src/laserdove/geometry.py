@@ -92,15 +92,16 @@ def z_offset_for_angle(y_b_mm: float, angle_deg: float, axis_to_origin_mm: float
 
     Args:
         y_b_mm: Board Y coordinate from the mid-edge origin (mm).
-        angle_deg: Absolute rotary angle in degrees.
+        angle_deg: Rotary angle in degrees relative to the focus reference (typically
+            ``rotation_deg - rotation_zero_deg``).
         axis_to_origin_mm: Radius from rotary axis to the top surface at 0° (mm).
 
     Returns:
         Signed Z delta (mm) to move the bed; positive means bed-up when Z+ is bed-up.
     """
-    # Use the magnitude of the tilt; the sign of y_b already encodes which edge
-    # is farther/closer to the head at a given rotation.
-    angle_rad = math.radians(abs(angle_deg))
+    # Use the signed tilt so y_b*sin(theta) correctly flips when rotating the
+    # opposite direction.
+    angle_rad = math.radians(angle_deg)
     z_physical = y_b_mm * math.sin(angle_rad) + axis_to_origin_mm * math.cos(angle_rad)
     z_physical_at_origin = axis_to_origin_mm
     delta_physical = z_physical - z_physical_at_origin

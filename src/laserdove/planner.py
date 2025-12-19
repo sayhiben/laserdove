@@ -227,13 +227,11 @@ def compute_pin_plan(
 
         for side in (Side.LEFT, Side.RIGHT):
             rotation_deg = rotation_for_side[side]
-            # Flip Y across 0° so Z offsets keep a consistent sign convention per tilt.
+            delta_angle_signed = rotation_deg - jig_params.rotation_zero_deg
             y_b_centered = y_for_side_centered[side]
-            if rotation_deg > 0:
-                y_b_centered = -y_b_centered
             z_offset = z_offset_for_angle(
                 y_b_mm=y_b_centered,
-                angle_deg=rotation_deg,
+                angle_deg=delta_angle_signed,
                 axis_to_origin_mm=jig_params.axis_to_origin_mm,
             )
             sides.append(
@@ -315,8 +313,8 @@ def plan_pin_board(
     }
 
     current_y = 0.0  # track last projected Y to order cuts and reduce long travel moves
-    y_center = joint_params.edge_length_mm / 2.0
     edge_length = joint_params.edge_length_mm
+    y_center = edge_length / 2.0
 
     def clamp_board_y(y_val: float) -> float:
         """Limit board-space Y to the material span to avoid overcutting past the ends."""
@@ -325,16 +323,16 @@ def plan_pin_board(
     for rotation_deg, sides in sides_by_angle.items():
         # Project board Y coordinates into machine Y with foreshortening at this angle.
         delta_angle_signed = rotation_deg - jig_params.rotation_zero_deg
-        delta_angle_mag = abs(delta_angle_signed)
-        cos_theta = math.cos(math.radians(delta_angle_mag))
-        sin_theta = math.sin(math.radians(delta_angle_signed))
+        angle_rad = math.radians(delta_angle_signed)
+        cos_theta = math.cos(angle_rad)
+        sin_theta = math.sin(angle_rad)
 
         def project_y(y_board: float) -> float:
             """
-            Apply orthographic foreshortening about the board midline and include
-            the translation caused by the rotary axis being offset from the board
-            surface. A positive rotation tilts the board so the top surface moves
-            toward negative Y by h*sin(theta); negative rotation shifts positive.
+            Apply orthographic foreshortening plus the translation caused by the rotary
+            axis being offset from the board surface. A positive rotation tilts the
+            board so the top surface moves toward negative Y by h*sin(theta); negative
+            rotation shifts positive.
             """
             return (
                 y_center

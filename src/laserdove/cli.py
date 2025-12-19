@@ -229,6 +229,19 @@ def main() -> None:
 
     commands = plan_commands(run_config)
 
+    if run_config.simulate_screenshots_dir is not None:
+        if run_config.simulate_viewer != "pygame":
+            raise SystemExit("--simulate-screenshots-dir requires --simulate-viewer pygame")
+        from .pygame_simulator import run_pygame_viewer
+
+        run_pygame_viewer(
+            commands,
+            run_config,
+            screenshot_dir=run_config.simulate_screenshots_dir,
+            screenshot_every_s=run_config.simulate_screenshots_every_s,
+        )
+        return
+
     if run_config.dry_run and not run_config.simulate and run_config.laser_backend != "ruida":
         for command in commands:
             print(command)

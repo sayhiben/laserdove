@@ -9,3 +9,4 @@ build/
 dist/
 rd_out/
 config.toml
+sim_frames*/

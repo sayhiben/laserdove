@@ -23,6 +23,8 @@ class PlaybackSegment:
     end_world: tuple[float, float, float]
     start_rotation_deg: float
     end_rotation_deg: float
+    start_z_offset_mm: float
+    end_z_offset_mm: float
     board: str
     is_cut: bool
     duration: float
@@ -150,7 +152,8 @@ class CutMesh:
         y_coords = {-self.y_center, self.y_center}
         hole_shear: dict[tuple[int, int], float] = {}
         for hole, rot in self.holes:
-            y_shift = -self.height_z * math.sin(rot)
+            # Vertical beam: bottom intersection shifts by thickness * tan(theta).
+            y_shift = -self.height_z * math.tan(rot)
             for x, y in hole:
                 x_coords.add(x)
                 y_coords.add(y)
@@ -182,7 +185,7 @@ class CutMesh:
                 in_hole = False
                 shear_val = 0.0
                 for hole, rot in self.holes:
-                    y_shift = -self.height_z * math.sin(rot)
+                    y_shift = -self.height_z * math.tan(rot)
                     if point_in_poly((xc, yc), hole) or point_in_poly(
                         (xc, yc), [(x, y + y_shift) for x, y in hole]
                     ):
@@ -431,7 +434,7 @@ def invert_projected_y(
     Recover board-space Y from a projected machine-space Y at a given rotation.
     """
     delta = rotation_deg - rotation_zero_deg
-    cos_t = math.cos(math.radians(abs(delta)))
+    cos_t = math.cos(math.radians(delta))
     if abs(cos_t) < 1e-6:
         return y_center
     sin_t = math.sin(math.radians(delta))
@@ -453,8 +456,8 @@ def board_to_world_local(
     into world space for a given rotary angle.
     """
     delta = rotation_deg - rotation_zero_deg
-    angle_rad = math.radians(abs(delta))
-    sin_t = math.sin(math.radians(delta))
+    angle_rad = math.radians(delta)
+    sin_t = math.sin(angle_rad)
     cos_t = math.cos(angle_rad)
     y_rot = y_local * cos_t - (axis_to_origin_mm + z_local) * sin_t
     z_rot = y_local * sin_t + (axis_to_origin_mm + z_local) * cos_t
@@ -491,17 +494,18 @@ def capture_segments_from_commands(
     segments: List[PlaybackSegment] = []
 
     y_local = y - y_center
-    z_local = z - z_ref
-    board_local = (x, y_local, z_local)
-    world_pos = board_to_world_local(
+    z_offset = z - z_ref
+    board_local = (x, y_local, 0.0)
+    world_base = board_to_world_local(
         x,
         y_local,
-        z_local,
+        0.0,
         rotation,
         axis_to_origin_mm=axis_to_origin_mm,
         y_center=y_center,
         rotation_zero_deg=rotation_zero_deg,
     )
+    world_pos = (world_base[0], world_base[1], world_base[2] + z_offset)
 
     for command in commands:
         if command.type == CommandType.SET_LASER_POWER:
@@ -509,30 +513,16 @@ def capture_segments_from_commands(
             continue
 
         if command.type == CommandType.ROTATE:
+            # Rotary motion always targets the pin-board setup.
+            if board != "pin":
+                board = "pin"
+                z_ref = _current_z_reference(board, z_zero_tail_mm, z_zero_pin_mm)
             target_rotation = rotation if command.angle_deg is None else command.angle_deg
             delta_angle = abs(target_rotation - rotation)
             speed = command.speed_mm_s or 0.0
             duration = delta_angle / speed if speed > 0 else 0.0
-            segments.append(
-                PlaybackSegment(
-                    start_board=board_local,
-                    end_board=board_local,
-                    start_world=world_pos,
-                    end_world=world_pos,
-                    start_rotation_deg=rotation,
-                    end_rotation_deg=target_rotation,
-                    board=board,
-                    is_cut=False,
-                    duration=duration,
-                    power_pct=power_pct,
-                    air_assist=air_assist,
-                    source="plan",
-                )
-            )
-            rotation = target_rotation
-            if board != "pin":
-                board = "pin"
-            z_ref = _current_z_reference(board, z_zero_tail_mm, z_zero_pin_mm)
+            z_offset = z - z_ref
+
             board_y_abs = (
                 invert_projected_y(
                     y,
@@ -544,16 +534,61 @@ def capture_segments_from_commands(
                 if board == "pin" and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
                 else y
             )
-            board_local = (x, board_y_abs - y_center, z - z_ref)
-            world_pos = board_to_world_local(
-                board_local[0],
-                board_local[1],
-                board_local[2],
+            y_local = board_y_abs - y_center
+            board_local = (x, y_local, 0.0)
+            world_base = board_to_world_local(
+                x,
+                y_local,
+                0.0,
                 rotation,
                 axis_to_origin_mm=axis_to_origin_mm,
                 y_center=y_center,
                 rotation_zero_deg=rotation_zero_deg,
             )
+            world_pos = (world_base[0], world_base[1], world_base[2] + z_offset)
+
+            segments.append(
+                PlaybackSegment(
+                    start_board=board_local,
+                    end_board=board_local,
+                    start_world=world_pos,
+                    end_world=world_pos,
+                    start_rotation_deg=rotation,
+                    end_rotation_deg=target_rotation,
+                    start_z_offset_mm=z_offset,
+                    end_z_offset_mm=z_offset,
+                    board=board,
+                    is_cut=False,
+                    duration=duration,
+                    power_pct=power_pct,
+                    air_assist=air_assist,
+                    source="plan",
+                )
+            )
+            rotation = target_rotation
+            board_y_abs = (
+                invert_projected_y(
+                    y,
+                    rotation,
+                    axis_to_origin_mm=axis_to_origin_mm,
+                    y_center=y_center,
+                    rotation_zero_deg=rotation_zero_deg,
+                )
+                if board == "pin" and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
+                else y
+            )
+            y_local = board_y_abs - y_center
+            board_local = (x, y_local, 0.0)
+            world_base = board_to_world_local(
+                x,
+                y_local,
+                0.0,
+                rotation,
+                axis_to_origin_mm=axis_to_origin_mm,
+                y_center=y_center,
+                rotation_zero_deg=rotation_zero_deg,
+            )
+            world_pos = (world_base[0], world_base[1], world_base[2] + z_offset)
             continue
 
         if command.type not in (CommandType.MOVE, CommandType.CUT_LINE):
@@ -576,17 +611,18 @@ def capture_segments_from_commands(
             else target_y_machine
         )
         y_target_local = y_board_abs - y_center
-        z_target_local = target_z - z_ref
+        target_z_offset = target_z - z_ref
 
-        end_world = board_to_world_local(
+        world_end_base = board_to_world_local(
             target_x,
             y_target_local,
-            z_target_local,
+            0.0,
             rotation,
             axis_to_origin_mm=axis_to_origin_mm,
             y_center=y_center,
             rotation_zero_deg=rotation_zero_deg,
         )
+        end_world = (world_end_base[0], world_end_base[1], world_end_base[2] + target_z_offset)
 
         dx = target_x - x
         dy = target_y_machine - y
@@ -598,13 +634,16 @@ def capture_segments_from_commands(
         duration = distance / speed if speed > 0 else 0.0
 
         is_cut = command.type == CommandType.CUT_LINE and (not movement_only) and power_pct > 0.0
+        z_offset = z - z_ref
         segment = PlaybackSegment(
             start_board=board_local,
-            end_board=(target_x, y_target_local, z_target_local),
+            end_board=(target_x, y_target_local, 0.0),
             start_world=world_pos,
             end_world=end_world,
             start_rotation_deg=rotation,
             end_rotation_deg=rotation,
+            start_z_offset_mm=z_offset,
+            end_z_offset_mm=target_z_offset,
             board=board,
             is_cut=is_cut,
             duration=duration,
@@ -615,7 +654,7 @@ def capture_segments_from_commands(
         segments.append(segment)
 
         x, y, z = target_x, target_y_machine, target_z
-        board_local = (target_x, y_target_local, z_target_local)
+        board_local = (target_x, y_target_local, 0.0)
         world_pos = end_world
 
     return segments
@@ -684,32 +723,41 @@ def overlay_segments_from_rd(
             if board == "pin" and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
             else y1
         )
-        start_board = (x0, y0_board - y_center, z_seg - z_ref)
-        end_board = (x1, y1_board - y_center, z_seg - z_ref)
+        z_offset = z_seg - z_ref
+        start_board = (x0, y0_board - y_center, 0.0)
+        end_board = (x1, y1_board - y_center, 0.0)
+        start_world_base = board_to_world_local(
+            start_board[0],
+            start_board[1],
+            0.0,
+            rotation_deg,
+            axis_to_origin_mm=axis_to_origin_mm,
+            y_center=y_center,
+            rotation_zero_deg=rotation_zero_deg,
+        )
+        end_world_base = board_to_world_local(
+            end_board[0],
+            end_board[1],
+            0.0,
+            rotation_deg,
+            axis_to_origin_mm=axis_to_origin_mm,
+            y_center=y_center,
+            rotation_zero_deg=rotation_zero_deg,
+        )
         overlays.append(
             PlaybackSegment(
                 start_board=start_board,
                 end_board=end_board,
-                start_world=board_to_world_local(
-                    start_board[0],
-                    start_board[1],
-                    start_board[2],
-                    rotation_deg,
-                    axis_to_origin_mm=axis_to_origin_mm,
-                    y_center=y_center,
-                    rotation_zero_deg=rotation_zero_deg,
+                start_world=(
+                    start_world_base[0],
+                    start_world_base[1],
+                    start_world_base[2] + z_offset,
                 ),
-                end_world=board_to_world_local(
-                    end_board[0],
-                    end_board[1],
-                    end_board[2],
-                    rotation_deg,
-                    axis_to_origin_mm=axis_to_origin_mm,
-                    y_center=y_center,
-                    rotation_zero_deg=rotation_zero_deg,
-                ),
+                end_world=(end_world_base[0], end_world_base[1], end_world_base[2] + z_offset),
                 start_rotation_deg=rotation_deg,
                 end_rotation_deg=rotation_deg,
+                start_z_offset_mm=z_offset,
+                end_z_offset_mm=z_offset,
                 board=board,
                 is_cut=bool(seg.get("is_cut")),
                 duration=0.0,
@@ -1243,7 +1291,7 @@ class Panda3DViewer:
             return
         log.debug("Render surface overlay on %s (%d pts)", board, len(path))
         rot_rad = math.radians(rotation_deg - self.rotation_zero_deg)
-        y_shift = -self.board_thickness_mm * math.sin(rot_rad)
+        y_shift = -self.board_thickness_mm * math.tan(rot_rad)
         overlay_node = self._ensure_overlay_node(board)
         path_closed = path if _distance(path[0], path[-1]) < 1e-6 else (path + [path[0]])
         top_ls = self._LineSegs()
@@ -1356,10 +1404,13 @@ class Panda3DViewer:
         interp_rot = (
             seg.start_rotation_deg + (seg.end_rotation_deg - seg.start_rotation_deg) * progress
         )
+        interp_z = seg.start_z_offset_mm + (seg.end_z_offset_mm - seg.start_z_offset_mm) * progress
         if seg.board == "pin" and self.pin_pivot is not None:
             self.pin_pivot.setP(interp_rot - self.rotation_zero_deg)
+            self.pin_pivot.setZ(interp_z)
         if seg.board == "tail" and self.tail_pivot is not None:
             self.tail_pivot.setP(interp_rot - self.rotation_zero_deg)
+            self.tail_pivot.setZ(interp_z)
 
         start_vec = self._Vec3(*seg.start_world)
         end_vec = self._Vec3(*seg.end_world)

@@ -50,6 +50,8 @@ class RunConfig:
     save_rd_dir: Optional[Path]
     reset_only: bool
     simulate_viewer: str
+    simulate_screenshots_dir: Optional[Path]
+    simulate_screenshots_every_s: float
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -87,7 +89,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--simulate-viewer",
         choices=["tk", "pygame"],
         default="tk",
-        help="Viewer to use when --simulate is set (tk or pygame)",
+        help="Viewer to use when --simulate is set (tk or pygame); also used by --simulate-screenshots-dir",
+    )
+    p.add_argument(
+        "--simulate-screenshots-dir",
+        type=Path,
+        help="When using the pygame viewer, write periodic PNG frames to this directory and exit",
+    )
+    p.add_argument(
+        "--simulate-screenshots-every-s",
+        type=float,
+        default=2.0,
+        help="Interval (seconds) between saved pygame frames (default: 2.0)",
     )
     p.add_argument(
         "--movement-only",
@@ -365,6 +378,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
     simulate_viewer = _dict_get_nested(cfg_data, "backend.simulate_viewer", "tk").lower()
+    simulate_screenshots_dir = getattr(args, "simulate_screenshots_dir", None)
+    simulate_screenshots_every_s = float(getattr(args, "simulate_screenshots_every_s", 2.0))
     if args.ruida_timeout_s is not None:
         ruida_timeout_s = args.ruida_timeout_s
     if args.ruida_source_port is not None:
@@ -424,6 +439,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         raise SystemExit(
             f"Invalid simulate_viewer '{simulate_viewer}'; expected one of {sorted(valid_sim_viewers)}"
         )
+    if simulate_screenshots_every_s <= 0.0:
+        raise SystemExit("--simulate-screenshots-every-s must be > 0")
     if rotary_pin_numbering not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
 
@@ -465,4 +482,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         save_rd_dir=save_rd_dir,
         reset_only=reset_only,
         simulate_viewer=simulate_viewer,
+        simulate_screenshots_dir=simulate_screenshots_dir,
+        simulate_screenshots_every_s=simulate_screenshots_every_s,
     )
