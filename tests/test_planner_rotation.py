@@ -48,6 +48,14 @@ def _find_edge_move(commands, pin_index: int, side: Side) -> float:
     raise AssertionError(f"Edge move for pin {pin_index} {side.name} not found")
 
 
+def _has_edge_move(commands, pin_index: int, side: Side) -> bool:
+    target = f"Move to pin {pin_index} {side.name} at edge"
+    return any(
+        cmd.type == CommandType.MOVE and cmd.y is not None and cmd.comment.startswith(target)
+        for cmd in commands
+    )
+
+
 def _expected_projected_y(
     y_board: float, jig: JigParams, rotation_deg: float, *, edge_length_mm: float
 ) -> float:
@@ -59,7 +67,7 @@ def _expected_projected_y(
     return y_center + (y_board - y_center) * cos_theta - jig.axis_to_origin_mm * sin_theta
 
 
-def test_pin_edge_projection_keeps_origin_aligned():
+def test_pin_edge_boundaries_are_skipped():
     joint = _make_joint()
     jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
     machine = _make_machine()
@@ -68,15 +76,23 @@ def test_pin_edge_projection_keeps_origin_aligned():
     pin_plan = compute_pin_plan(joint, jig, layout)
     commands = plan_pin_board(joint, jig, machine, pin_plan)
 
-    # Left flank of the first half-pin sits at Y=0 in board space.
-    expected = _expected_projected_y(
-        y_board=0.0,
-        jig=jig,
-        rotation_deg=pin_plan.sides[0].rotation_deg,
-        edge_length_mm=joint.edge_length_mm,
+    edge_sides = [
+        (side.pin_index, side.side)
+        for side in pin_plan.sides
+        if math.isclose(side.y_boundary_mm, 0.0, abs_tol=1e-9)
+        or math.isclose(side.y_boundary_mm, joint.edge_length_mm, abs_tol=1e-9)
+    ]
+    assert edge_sides, "Expected edge boundary sides for half-pins"
+
+    for pin_index, side in edge_sides:
+        assert not _has_edge_move(commands, pin_index=pin_index, side=side)
+
+    inner_side = next(
+        side
+        for side in pin_plan.sides
+        if 0.0 < side.y_boundary_mm < joint.edge_length_mm and side.side == Side.RIGHT
     )
-    actual = _find_edge_move(commands, pin_index=0, side=Side.LEFT)
-    assert math.isclose(actual, expected, abs_tol=1e-6)
+    assert _has_edge_move(commands, pin_index=inner_side.pin_index, side=inner_side.side)
 
 
 def test_pin_edge_projection_handles_negative_rotation():
@@ -88,9 +104,16 @@ def test_pin_edge_projection_handles_negative_rotation():
     pin_plan = compute_pin_plan(joint, jig, layout)
     commands = plan_pin_board(joint, jig, machine, pin_plan)
 
-    # Right flank of the trailing half-pin sits at Y=edge_length in board space and uses the
-    # negative-angle rotation.
-    right_side = max(pin_plan.sides, key=lambda side: side.y_boundary_mm)
+    # Right flank of the leading half-pin sits at Y=half_pin_width and uses the negative angle.
+    right_side = min(
+        (
+            side
+            for side in pin_plan.sides
+            if side.side == Side.RIGHT
+            and not math.isclose(side.y_boundary_mm, joint.edge_length_mm, abs_tol=1e-9)
+        ),
+        key=lambda side: side.y_boundary_mm,
+    )
     expected = _expected_projected_y(
         y_board=right_side.y_boundary_mm,
         jig=jig,

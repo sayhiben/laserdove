@@ -48,6 +48,10 @@ def plan_tail_board(
     tail_angle_rad = math.radians(joint_params.dovetail_angle_deg)
     tail_widen_mm = tail_depth_mm * math.tan(tail_angle_rad)
 
+    def clamp_board_y(y_val: float) -> float:
+        """Limit board-space Y to the material span to avoid overcutting past the ends."""
+        return max(0.0, min(edge_length_mm, y_val))
+
     pockets: List[tuple[float, float]] = []
 
     # Left edge half-pin pocket
@@ -80,6 +84,10 @@ def plan_tail_board(
         )
         y_left_bottom = y_left_top - tail_widen_mm
         y_right_bottom = y_right_top + tail_widen_mm
+        y_left_top = clamp_board_y(y_left_top)
+        y_right_top = clamp_board_y(y_right_top)
+        y_left_bottom = clamp_board_y(y_left_bottom)
+        y_right_bottom = clamp_board_y(y_right_bottom)
 
         commands.append(
             Command(
@@ -316,11 +324,20 @@ def plan_pin_board(
     edge_length = joint_params.edge_length_mm
     y_center = edge_length / 2.0
 
+    def is_edge_boundary(y_val: float) -> bool:
+        return math.isclose(y_val, 0.0, abs_tol=1e-9) or math.isclose(
+            y_val, edge_length, abs_tol=1e-9
+        )
+
     def clamp_board_y(y_val: float) -> float:
         """Limit board-space Y to the material span to avoid overcutting past the ends."""
         return max(0.0, min(edge_length, y_val))
 
     for rotation_deg, sides in sides_by_angle.items():
+        # Skip board-edge boundaries so half-pins are bounded by the stock edge.
+        sides = [side for side in sides if not is_edge_boundary(side.y_boundary_mm)]
+        if not sides:
+            continue
         # Project board Y coordinates into machine Y with foreshortening at this angle.
         delta_angle_signed = rotation_deg - jig_params.rotation_zero_deg
         angle_rad = math.radians(delta_angle_signed)

@@ -1,7 +1,7 @@
 # tests/test_tail_trapezoid.py
 from laserdove.planner import plan_tail_board
 from laserdove.geometry import compute_tail_layout
-from laserdove.model import JointParams, MachineParams, TailLayout
+from laserdove.model import CommandType, JointParams, MachineParams, TailLayout
 
 
 def make_joint_and_machine() -> tuple[JointParams, MachineParams, TailLayout]:
@@ -37,12 +37,17 @@ def test_tail_pocket_widens_with_angle():
     joint, machine, layout = make_joint_and_machine()
     commands = plan_tail_board(joint, machine, layout)
 
-    # First pocket command sequence after MOVE and power on:
+    pocket_count = (len(commands) - 1) // 7
+    assert pocket_count >= 2
+    pocket_index = 1  # use interior pocket to avoid edge clipping
+    base = pocket_index * 7
+
+    # Pocket command sequence after MOVE and power on:
     # A (move) -> B -> C -> D -> A
-    move_cmd = commands[0]  # A: (0, y_left_top)
-    left_slope_cmd = commands[2]  # B: (tail_depth, y_left_bottom)
-    bottom_edge_cmd = commands[3]  # C: (tail_depth, y_right_bottom)
-    right_slope_cmd = commands[4]  # D: (0, y_right_top)
+    move_cmd = commands[base]  # A: (0, y_left_top)
+    left_slope_cmd = commands[base + 2]  # B: (tail_depth, y_left_bottom)
+    bottom_edge_cmd = commands[base + 3]  # C: (tail_depth, y_right_bottom)
+    right_slope_cmd = commands[base + 4]  # D: (0, y_right_top)
 
     top_width = right_slope_cmd.y - move_cmd.y
     bottom_width = bottom_edge_cmd.y - left_slope_cmd.y
@@ -56,3 +61,13 @@ def test_tail_pocket_widens_with_angle():
     tolerance = 1e-6
     assert abs(measured_delta_left - expected_delta) < tolerance
     assert abs(measured_delta_right - expected_delta) < tolerance
+
+
+def test_tail_pockets_clamp_to_board_extents():
+    joint, machine, layout = make_joint_and_machine()
+    commands = plan_tail_board(joint, machine, layout)
+
+    epsilon = 1e-9
+    for cmd in commands:
+        if cmd.type in (CommandType.MOVE, CommandType.CUT_LINE) and cmd.y is not None:
+            assert -epsilon <= cmd.y <= joint.edge_length_mm + epsilon
