@@ -58,6 +58,8 @@ class RuidaLaser:
         movement_only: bool = False,
         save_rd_dir: Path | None = None,
         air_assist: bool = True,
+        inline_fan_on: bool = False,
+        pre_cut_warmup_s: float = 0.0,
         z_positive_moves_bed_up: bool = True,
         z_speed_mm_s: float = 5.0,
         socket_factory=None,
@@ -76,6 +78,8 @@ class RuidaLaser:
             movement_only: Suppress power in generated jobs.
             save_rd_dir: Optional path to persist swizzled RD jobs.
             air_assist: Whether to enable air assist in RD jobs.
+            inline_fan_on: Whether to enable the inline fan (Ruida BLOW output).
+            pre_cut_warmup_s: Seconds to run air assist/inline fan before the first cut.
             z_positive_moves_bed_up: Interpret Z+ as bed-up (default).
             z_speed_mm_s: Speed to use for Z moves emitted in RD jobs.
             socket_factory: Optional socket factory for tests.
@@ -109,6 +113,8 @@ class RuidaLaser:
         self.save_rd_dir = Path(save_rd_dir) if save_rd_dir else None
         self._rd_job_counter = 0
         self.air_assist = air_assist
+        self.inline_fan_on = inline_fan_on
+        self.pre_cut_warmup_s = pre_cut_warmup_s
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
         self.z_speed_mm_s = z_speed_mm_s
         self.min_stable_s = min_stable_s
@@ -366,6 +372,47 @@ class RuidaLaser:
         log.info("[RUIDA UDP] SET_SPEED %.3f mm/s", speed_mm_s)
         self._udp.send_packets(payload)
 
+    def _set_aux_outputs(
+        self, *, air_assist: bool | None = None, blow_on: bool | None = None
+    ) -> None:
+        if air_assist is not None:
+            payload = b"\xCA\x01\x13" if air_assist else b"\xCA\x01\x12"
+            log.info("[RUIDA UDP] AIR_ASSIST %s", "ON" if air_assist else "OFF")
+            self._udp.send_packets(payload)
+        if blow_on is not None:
+            payload = b"\xCA\x13" if blow_on else b"\xCA\x12"
+            log.info("[RUIDA UDP] BLOW %s", "ON" if blow_on else "OFF")
+            self._udp.send_packets(payload)
+
+    def _pre_cut_warmup(self) -> None:
+        if self.pre_cut_warmup_s <= 0:
+            return
+        outputs = []
+        if self.air_assist:
+            outputs.append("air_assist")
+        if self.inline_fan_on:
+            outputs.append("inline_fan")
+        if not outputs:
+            log.info(
+                "[RUIDA UDP] Pre-cut warmup configured (%.1fs) but no outputs enabled",
+                self.pre_cut_warmup_s,
+            )
+            return
+        log.info(
+            "[RUIDA UDP] Pre-cut warmup: outputs=%s duration=%.1fs",
+            ", ".join(outputs),
+            self.pre_cut_warmup_s,
+        )
+        self._wait_for_ready()
+        self._set_aux_outputs(
+            air_assist=True if self.air_assist else None,
+            blow_on=True if self.inline_fan_on else None,
+        )
+        if self.dry_run:
+            log.info("[RUIDA UDP] Dry-run: skipping warmup delay")
+            return
+        time.sleep(self.pre_cut_warmup_s)
+
     def move(self, x=None, y=None, z=None, speed=None) -> None:
         """
         Move the head to an absolute XY position and optionally adjust Z.
@@ -504,6 +551,7 @@ class RuidaLaser:
             job_z_mm=job_z_offset_mm,
             initial_z_mm=start_z,
             air_assist=self.air_assist,
+            blow_on=self.inline_fan_on,
         )
         z_moves = [f"#{idx}:{mv.z_mm:+.3f}" for idx, mv in enumerate(moves) if mv.z_mm is not None]
         log.info(
@@ -562,6 +610,7 @@ class RuidaLaser:
             travel_only: Legacy alias for movement_only.
             edge_length_mm: Board edge length to compute Y midline for rotary centering.
         """
+        command_list = list(commands)
         park_angle = getattr(rotary, "angle", 0.0)
         park_speed: float | None = None
         # Log initial status before any commands.
@@ -609,6 +658,13 @@ class RuidaLaser:
 
         # movement_only is the preferred name; travel_only is accepted for backward compatibility.
         movement_only_mode = any(flag for flag in (movement_only, travel_only, self.movement_only))
+        has_cut = any(
+            cmd.type.name == "CUT_LINE"
+            or (cmd.type.name == "SET_LASER_POWER" and (cmd.power_pct or 0.0) > 0.0)
+            for cmd in command_list
+        )
+        if self.pre_cut_warmup_s > 0 and not movement_only_mode and has_cut:
+            self._pre_cut_warmup()
         current_power = 0.0
         current_speed: float | None = None
         cursor_x = job_origin_x
@@ -721,7 +777,7 @@ class RuidaLaser:
         block_index = 0
 
         try:
-            for cmd in commands:
+            for cmd in command_list:
                 if cmd.type.name == "ROTATE":
                     if park_speed is None and cmd.speed_mm_s is not None:
                         park_speed = cmd.speed_mm_s

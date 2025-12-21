@@ -103,6 +103,9 @@ def validate_machine_limits(machine_params: MachineParams) -> List[str]:
     if not (0 <= machine_params.cut_power_pin_pct <= 100):
         errors.append("cut_power_pin_pct must be in [0,100]")
 
+    if machine_params.pre_cut_warmup_s < 0:
+        errors.append("pre_cut_warmup_s must be >= 0")
+
     return errors
 
 

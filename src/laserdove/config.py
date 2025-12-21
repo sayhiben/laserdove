@@ -120,6 +120,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(air_assist=None)
     p.add_argument(
+        "--inline-fan-on",
+        dest="inline_fan_on",
+        action="store_true",
+        help="Enable inline fan output (Ruida BLOW)",
+    )
+    p.add_argument(
+        "--inline-fan-off",
+        dest="inline_fan_on",
+        action="store_false",
+        help="Disable inline fan output (Ruida BLOW)",
+    )
+    p.set_defaults(inline_fan_on=None)
+    p.add_argument(
+        "--pre-cut-warmup-s",
+        type=float,
+        help="Seconds to run air assist/inline fan before the first cut",
+    )
+    p.add_argument(
         "--z-positive-bed-up",
         dest="z_positive_moves_bed_up",
         action="store_true",
@@ -320,6 +338,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         z_positive_moves_bed_up=bool(
             _dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)
         ),
+        inline_fan_on=bool(_dict_get_nested(cfg_data, "machine.inline_fan_on", False)),
+        pre_cut_warmup_s=float(_dict_get_nested(cfg_data, "machine.pre_cut_warmup_s", 0.0)),
         z_zero_tail_mm=_dict_get_nested(cfg_data, "machine.z_zero_tail_mm", 0.0),
         z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
     )
@@ -348,6 +368,10 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         machine_params.cut_overtravel_mm = args.cut_overtravel_mm
     if getattr(args, "air_assist", None) is not None:
         machine_params.air_assist = bool(args.air_assist)
+    if getattr(args, "inline_fan_on", None) is not None:
+        machine_params.inline_fan_on = bool(args.inline_fan_on)
+    if getattr(args, "pre_cut_warmup_s", None) is not None:
+        machine_params.pre_cut_warmup_s = float(args.pre_cut_warmup_s)
     if getattr(args, "z_positive_moves_bed_up", None) is not None:
         machine_params.z_positive_moves_bed_up = bool(args.z_positive_moves_bed_up)
 

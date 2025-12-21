@@ -96,6 +96,8 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
             movement_only=run_config.movement_only,
             save_rd_dir=run_config.save_rd_dir,
             air_assist=run_config.machine_params.air_assist,
+            inline_fan_on=run_config.machine_params.inline_fan_on,
+            pre_cut_warmup_s=run_config.machine_params.pre_cut_warmup_s,
             z_positive_moves_bed_up=run_config.machine_params.z_positive_moves_bed_up,
             z_speed_mm_s=run_config.machine_params.z_speed_mm_s,
             min_stable_s=5.0,

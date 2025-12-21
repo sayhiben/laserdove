@@ -56,6 +56,8 @@ class MachineParams:
     # Aux outputs
     air_assist: bool = True
     z_positive_moves_bed_up: bool = True
+    inline_fan_on: bool = False
+    pre_cut_warmup_s: float = 0.0
 
     # Optional soft limits for validation
     x_min_mm: float = 0.0

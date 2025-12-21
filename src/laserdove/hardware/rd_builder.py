@@ -399,7 +399,12 @@ class _RDJobBuilder:
         return data
 
     def body(
-        self, layers: Sequence[_Layer], *, job_z_mm: float | None = None, air_assist: bool = True
+        self,
+        layers: Sequence[_Layer],
+        *,
+        job_z_mm: float | None = None,
+        air_assist: bool = True,
+        blow_on: bool = False,
     ) -> bytes:
         """
         Build the RD body (layer prologs and move/cut opcodes).
@@ -441,6 +446,8 @@ class _RDJobBuilder:
             """
             if air_assist:
                 prolog_flags += "                        ca 01 13\n"
+            if blow_on:
+                prolog_flags += "                        ca 13\n"
 
             data.extend(
                 self.enc(
@@ -653,6 +660,7 @@ def build_rd_job(
     *,
     filename: str = "LASERDOVE",
     air_assist: bool = True,
+    blow_on: bool = False,
 ) -> bytes:
     """
     Build an unswizzled RD payload for a sequence of moves.
@@ -665,6 +673,7 @@ def build_rd_job(
         initial_z_mm: Logical Z at job start; used to turn absolute targets into relative offsets.
         filename: Filename tag for the RD job.
         air_assist: Whether to enable air-assist flags.
+        blow_on: Whether to enable the BLOW output (inline fan) flag.
 
     Returns:
         Unscrambled RD job payload bytes.
@@ -729,6 +738,8 @@ def build_rd_job(
     prolog_flags = "ca 01 30\nca 01 10\n"
     if air_assist:
         prolog_flags += "ca 01 13\n"
+    if blow_on:
+        prolog_flags += "ca 13\n"
     data.extend(builder.enc("-b-", ["ca 01 00\nca 02", 0, prolog_flags]))
 
     SPEED_SET = "c9 02"

@@ -68,6 +68,8 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--save-rd-dir` | none | path | Save swizzled `.rd` jobs for inspection. |
 | `--log-level` | `INFO` | std logging levels | Verbosity. |
 | `--air-assist` / `--no-air-assist` | from config (default on) | flag | Toggle air assist in RD jobs. |
+| `--inline-fan-on` / `--inline-fan-off` | from config (default off) | flag | Toggle inline fan output (Ruida BLOW). |
+| `--pre-cut-warmup-s` | from config | float | Seconds to run air assist/inline fan before the first cut. |
 | `--z-positive-bed-up` / `--z-positive-bed-down` | from config (default bed-up) | flag | Z+ direction hint. |
 
 ### Geometry/Jig overrides
