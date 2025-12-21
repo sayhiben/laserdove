@@ -7,6 +7,6 @@ htmlcov/
 *.egg-info/
 build/
 dist/
-rd_out/
+rd_out*/
 config.toml
 sim_frames*/

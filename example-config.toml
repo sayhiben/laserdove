@@ -1,7 +1,7 @@
 # example-config.toml
 [joint]
 thickness_mm        = 6.0
-edge_length_mm      = 77.0
+edge_length_mm      = 77.5
 dovetail_angle_deg  = 8.0
 num_tails           = 3
 tail_outer_width_mm = 14.0
@@ -28,14 +28,14 @@ cut_overtravel_mm   = 0.5
 z_zero_tail_mm      = 0.0
 z_zero_pin_mm       = 0.0
 air_assist          = true
-z_positive_moves_bed_up = true  # set false if your controller treats Z+ as lowering the bed
+z_positive_moves_bed_up = false  # set false if your controller treats Z+ as lowering the bed
 
 [backend]
 # If use_dummy = true, laserdove.main will use DummyLaser/DummyRotary
 # regardless of ruida_host.
 use_dummy = false
-laser_backend = "dummy"  # "dummy" or "ruida"
-rotary_backend = "dummy" # "dummy" or "real"
+laser_backend = "ruida"  # "dummy" or "ruida"
+rotary_backend = "real" # "dummy" or "real"
 rotary_steps_per_rev = 4000.0  # pulses per rev from driver (CL57T default)
 rotary_microsteps = 1         # optional extra microstep multiplier
 rotary_pin_numbering = "board"  # "board" for physical pin numbers, "bcm" for BCM

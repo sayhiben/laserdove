@@ -358,10 +358,9 @@ def plan_pin_board(
             )
 
         # Start each rotation block with the maximum clearance position.
-        # If Z+ moves the bed up (toward the head), lower Z offsets are safer;
-        # otherwise higher Z offsets increase clearance.
+        # Lower Z offsets mean the bed is farther from the head (safer).
         def z_order(side: PinSide) -> float:
-            return side.z_offset_mm if machine_params.z_positive_moves_bed_up else -side.z_offset_mm
+            return side.z_offset_mm
 
         ordered_sides = sorted(sides, key=lambda side: (z_order(side), project_y(side.y_boundary_mm)))
 
@@ -375,7 +374,10 @@ def plan_pin_board(
         )
 
         for side in ordered_sides:
-            target_z = machine_params.z_zero_pin_mm + side.z_offset_mm
+            z_offset = side.z_offset_mm
+            if not machine_params.z_positive_moves_bed_up:
+                z_offset = -z_offset
+            target_z = machine_params.z_zero_pin_mm + z_offset
             commands.append(
                 Command(
                     type=CommandType.MOVE,

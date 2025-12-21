@@ -88,6 +88,22 @@ def _first_pin_move_for_angle(commands, rotation_deg: float) -> tuple[int, Side]
     raise AssertionError(f"No pin move found for rotation {rotation_deg}")
 
 
+def _first_pin_z_for_angle(commands, rotation_deg: float) -> float:
+    saw_angle = False
+    for cmd in commands:
+        if cmd.type == CommandType.ROTATE and cmd.angle_deg is not None and math.isclose(
+            cmd.angle_deg, rotation_deg, abs_tol=1e-9
+        ):
+            saw_angle = True
+            continue
+        if saw_angle and cmd.type == CommandType.MOVE and cmd.z is not None:
+            if cmd.comment.startswith("Set Z for pin"):
+                return cmd.z
+        if saw_angle and cmd.type == CommandType.ROTATE:
+            break
+    raise AssertionError(f"No pin Z move found for rotation {rotation_deg}")
+
+
 def test_pin_edge_boundaries_are_skipped():
     joint = _make_joint()
     jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
@@ -169,15 +185,11 @@ def test_pin_rotation_starts_with_max_clearance_surface():
 
         pin_index, side = _first_pin_move_for_angle(commands, rotation_deg)
         chosen = next(s for s in candidates if s.pin_index == pin_index and s.side == side)
-        expected = (
-            min(s.z_offset_mm for s in candidates)
-            if machine.z_positive_moves_bed_up
-            else max(s.z_offset_mm for s in candidates)
-        )
+        expected = min(s.z_offset_mm for s in candidates)
         assert math.isclose(chosen.z_offset_mm, expected, abs_tol=1e-9)
 
 
-def test_pin_rotation_starts_with_max_clearance_surface_bed_down():
+def test_pin_rotation_bed_down_inverts_z_offsets():
     joint = _make_joint()
     jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
     machine = _make_machine(z_positive_moves_bed_up=False)
@@ -191,6 +203,7 @@ def test_pin_rotation_starts_with_max_clearance_surface_bed_down():
         jig.rotation_zero_deg - joint.dovetail_angle_deg,
     }
     for rotation_deg in rotations:
+        z_cmd = _first_pin_z_for_angle(commands, rotation_deg)
         candidates = [
             side
             for side in pin_plan.sides
@@ -201,5 +214,8 @@ def test_pin_rotation_starts_with_max_clearance_surface_bed_down():
 
         pin_index, side = _first_pin_move_for_angle(commands, rotation_deg)
         chosen = next(s for s in candidates if s.pin_index == pin_index and s.side == side)
-        expected = max(s.z_offset_mm for s in candidates)
-        assert math.isclose(chosen.z_offset_mm, expected, abs_tol=1e-9)
+        expected = machine.z_zero_pin_mm - chosen.z_offset_mm
+        assert math.isclose(z_cmd, expected, abs_tol=1e-9)
+        assert math.isclose(
+            chosen.z_offset_mm, min(s.z_offset_mm for s in candidates), abs_tol=1e-9
+        )
