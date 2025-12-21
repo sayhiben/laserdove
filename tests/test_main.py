@@ -71,7 +71,6 @@ def make_run_config(**overrides) -> RunConfig:
         movement_only=False,
         save_rd_dir=None,
         reset_only=False,
-        simulate_viewer="tk",
         simulate_screenshots_dir=None,
         simulate_screenshots_every_s=2.0,
         simulate_rd_dir=None,
@@ -140,7 +139,6 @@ def test_main_exits_on_validation_error(monkeypatch):
         movement_only=False,
         save_rd_dir=None,
         reset_only=False,
-        simulate_viewer="tk",
         simulate_screenshots_dir=None,
         simulate_screenshots_every_s=2.0,
         simulate_rd_dir=None,
@@ -190,44 +188,28 @@ def test_main_runs_both_boards_and_executes(monkeypatch):
     assert CommandType.CUT_LINE in types
 
 
-def test_main_simulate_uses_simulated_backends_and_cleans_up(monkeypatch):
-    created = {}
+def test_main_simulate_runs_pygame_viewer(monkeypatch):
+    called = {}
 
-    class FakeLaser:
-        def __init__(self, real_time=True):
-            self.setup_called = False
-            self.cleanup_called = False
-            created["laser"] = self
+    def fake_viewer(commands, run_config, **_kwargs):
+        called["commands"] = list(commands)
+        called["config"] = run_config
 
-        def setup_viewer(self):
-            self.setup_called = True
-
-        def cleanup(self):
-            self.cleanup_called = True
-
-    class FakeRotary:
-        def __init__(self, _laser=None, real_time=True):
-            self.cleanup_called = False
-            created["rotary"] = self
-
-        def cleanup(self):
-            self.cleanup_called = True
+    def unexpected_execute(*_args, **_kwargs):
+        raise AssertionError("execute_commands should not run during simulate")
 
     rc = make_run_config(mode="tails", simulate=True)
     monkeypatch.setattr("laserdove.cli.load_config_and_args", lambda args: rc)
-    monkeypatch.setattr("laserdove.hardware.SimulatedLaser", FakeLaser)
-    monkeypatch.setattr("laserdove.hardware.SimulatedRotary", FakeRotary)
     monkeypatch.setattr(
         "laserdove.cli.plan_tail_board",
         lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
     )
-    monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
+    monkeypatch.setattr("laserdove.pygame_simulator.run_pygame_viewer", fake_viewer)
+    monkeypatch.setattr("laserdove.cli.execute_commands", unexpected_execute)
     monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails", "--simulate"])
 
     main()
-    assert created["laser"].setup_called is True
-    assert created["laser"].cleanup_called is True
-    assert created["rotary"].cleanup_called is True
+    assert called["commands"]
 
 
 def test_main_ruida_respects_dry_run_rd_and_cleans(monkeypatch):
@@ -300,45 +282,6 @@ def test_main_real_rotary_without_pins(monkeypatch):
     monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
     monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails"])
     main()  # Should not raise even with missing step/dir pins
-
-
-def test_main_simulate_calls_show(monkeypatch):
-    created = {}
-
-    class FakeLaser:
-        def __init__(self, real_time=True):
-            created["laser"] = self
-            self.shown = False
-            self.cleanup_called = False
-
-        def setup_viewer(self):
-            pass
-
-        def show(self):
-            self.shown = True
-
-        def cleanup(self):
-            self.cleanup_called = True
-
-    class FakeRotary:
-        def __init__(self, laser=None, real_time=True):
-            self.cleanup_called = False
-
-        def cleanup(self):
-            self.cleanup_called = True
-
-    rc = make_run_config(mode="tails", simulate=True)
-    monkeypatch.setattr("laserdove.cli.load_config_and_args", lambda args: rc)
-    monkeypatch.setattr("laserdove.hardware.SimulatedLaser", FakeLaser)
-    monkeypatch.setattr("laserdove.hardware.SimulatedRotary", FakeRotary)
-    monkeypatch.setattr(
-        "laserdove.cli.plan_tail_board",
-        lambda jp, mp, tl: [Command(type=CommandType.MOVE, x=0, y=0, speed_mm_s=1.0)],
-    )
-    monkeypatch.setattr("laserdove.cli.execute_commands", lambda cmds, laser, rotary: None)
-    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "tails", "--simulate"])
-    main()
-    assert created["laser"].shown is True
 
 
 def test_main_reset_only(monkeypatch):

@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
 from .model import Command, CommandType
-from .panda3d_simulator import (
+from .sim_kinematics import (
+    PlaybackSegment,
     board_to_world_local,
     capture_segments_from_commands,
     invert_projected_y,
     overlay_segments_from_rd,
-    PlaybackSegment,
 )
 from .rd_parser import RuidaParser
 

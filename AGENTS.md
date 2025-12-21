@@ -3,11 +3,11 @@
 ## Project Structure & Module Organization
 - Source code lives under `src/laserdove/`; run with `python -m laserdove.main`.
 - Runtime code must not import from `reference/`; treat that directory as read-only background.
-- Keep optional UI deps (Tk) and hardware deps lazy-imported within simulation/hardware paths so headless/dummy runs keep working.
+- Keep optional UI deps (pygame) and hardware deps lazy-imported so headless/dummy runs keep working.
 - CLI entrypoint `cli.py` (python -m laserdove.cli or -m laserdove.main) wires config, validation, planning, and hardware backends.
 - Config parsing and CLI overrides are in `config.py`; reference config lives in `example-config.toml`. Per-setup config should be `config.toml` (git-ignored).
 - Core math in `geometry.py`; plans and command sequencing in `planner.py`; shared dataclasses in `model.py`.
-- Hardware abstractions live under `src/laserdove/hardware/`: `base.py` (interfaces/dummy/executor), `sim.py` (Tk viewer backends), `ruida_*` + `rd_builder.py` (UDP transport + RD job builder), and `rotary.py` (logging/GPIO rotary drivers). `simulation_viewer.py` powers the Tk view; logging helpers stay in `logging_utils.py`.
+- Hardware abstractions live under `src/laserdove/hardware/`: `base.py` (interfaces/dummy/executor), `ruida_*` + `rd_builder.py` (UDP transport + RD job builder), and `rotary.py` (logging/GPIO rotary drivers). Simulation visuals live in `pygame_simulator.py`; shared projection math lives in `sim_kinematics.py`.
 - RD opcode table is centralized in `src/laserdove/hardware/rd_commands.py` (shared by runtime and parser); avoid defining command labels elsewhere.
 - Tests live under `tests/` (currently `tests/test_geometry.py`); add new suites alongside the module under test.
 
@@ -17,7 +17,7 @@
 - Copy the sample config when starting: `cp example-config.toml config.toml`, then adjust to your jig and machine; CLI flags override TOML values.
 - Dry-run the planner to inspect generated commands without touching hardware:  
   `python3 -m laserdove.main --config example-config.toml --mode both --dry-run`
-- Tk simulation (visual, real-time pacing):  
+- pygame simulation (visual, real-time pacing; install pygame):  
   `python3 -m laserdove.main --config example-config.toml --simulate`
 - Save swizzled RD jobs for inspection: add `--save-rd-dir rd_out/` (works with dry-run or live Ruida).
 - Reset-only to park the machine with the beam off: `python3 -m laserdove.main --reset`
@@ -32,7 +32,7 @@
 - Follow existing Python style: 4-space indents, snake_case functions/variables, CamelCase classes/dataclasses, and concise docstrings that explain “why”.
 - Planner/geometry outputs must remain deterministic; if randomness is introduced, seed explicitly and test it.
 - When adding config or CLI flags, update argparse help, defaults in `config.py`, validation coverage, and docs (README/index/AGENTS).
-- Guard GPIO/Tk/UDP imports so non-hardware environments remain usable; provide clear fallbacks/logs on import failure.
+- Guard GPIO/UDP imports so non-hardware environments remain usable; keep pygame imports lazy with clear fallbacks/logs.
 
 ## Testing Guidelines
 - Add pytest cases for new geometry, planning branches, and validation edge cases; cover both happy path and common misconfigurations.
@@ -58,7 +58,7 @@
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
 - RD File Inspection
   - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
-  - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or visualize with `tools/rd_visualize.py` to compare the emitted Ruida commands against the planned moves.
+  - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or replay with `--simulate --simulate-rd-dir rd_out` to compare the emitted Ruida commands against the planned moves.
 - When modifying rotary/pin mappings, default to safe (logging/dummy) drivers if pins are unspecified or imports fail; log loudly.
 - Never ship real machine credentials or IPs; keep Ruida host/port placeholders. Test dangerous changes with `--dry-run` first.
 
@@ -91,10 +91,10 @@
     - Java reference: `Ruida.java` (LibLaserCut driver) – implements Ruida cutter over IP/USB/serial; supports RD export/upload, power/speed settings, bounding box calc, vector/raster property classes, and FTP/serial comms scaffolding. Use as conceptual reference only.
 
 ## Project Understanding (Codex)
-- Purpose: plan dovetail joints and drive a laser/rotary jig; supports dry-runs, Tk simulation, RD save/inspect, and Ruida UDP control with rotary-aware Z offsets.
-- Flow: CLI (`cli.py`/`main.py`) loads config (`config.py` → `RunConfig`), computes layout (`geometry.py`), validates (`validation.py`), plans tails/pins (`planner.py`), then executes via chosen backends (dummy/sim/Ruida + rotary).
+- Purpose: plan dovetail joints and drive a laser/rotary jig; supports dry-runs, pygame simulation, RD save/inspect, and Ruida UDP control with rotary-aware Z offsets.
+- Flow: CLI (`cli.py`/`main.py`) loads config (`config.py` → `RunConfig`), computes layout (`geometry.py`), validates (`validation.py`), plans tails/pins (`planner.py`), then executes via chosen backends (dummy/Ruida + rotary) or visualizes with pygame.
 - Data/models: `model.py` holds params/layout/commands; geometry stays pure; planners emit `Command` list (MOVE/CUT_LINE/SET_LASER_POWER/ROTATE).
-- Hardware layer: `hardware/` supplies dummy/sim backends, GPIO/logging rotary, Ruida UDP (`ruida_laser.py` + `ruida_transport.py`/`ruida_common.py`), RD builder (`rd_builder.py`, opcodes in `rd_commands.py`), panel helper (`ruida_panel.py`), and Tk viewer (`simulation_viewer.py`).
+- Hardware layer: `hardware/` supplies dummy backends, GPIO/logging rotary, Ruida UDP (`ruida_laser.py` + `ruida_transport.py`/`ruida_common.py`), RD builder (`rd_builder.py`, opcodes in `rd_commands.py`), and panel helper (`ruida_panel.py`). Pygame simulation lives in `pygame_simulator.py`.
 - Safety defaults: dummy/movement-only friendly; capture current machine origin before RD, poll ready, park axes/rotary; air assist configurable (default on); validation gates runs.
-- Config/run: copy `example-config.toml` → `config.toml`; common commands: `python -m laserdove.main --mode both --dry-run`, `--simulate`, `--save-rd-dir rd_out --movement-only`, `--simulate --simulate-viewer pygame --simulate-rd-dir rd_out`, `--reset`. CLI flags override TOML for geometry, backends, speeds/power, air/Z direction.
-- Tooling/tests: inspection via `tools/rd_parser.py`/`rd_visualize.py`/`ruida_status_probe.py`; pytest in `tests/` (geometry); lint/test via `make` or `pytest`.
+- Config/run: copy `example-config.toml` → `config.toml`; common commands: `python -m laserdove.main --mode both --dry-run`, `--simulate`, `--save-rd-dir rd_out --movement-only`, `--simulate --simulate-rd-dir rd_out`, `--reset`. CLI flags override TOML for geometry, backends, speeds/power, air/Z direction.
+- Tooling/tests: inspection via `tools/rd_parser.py`/`ruida_status_probe.py`; pytest in `tests/` (geometry); lint/test via `make` or `pytest`.

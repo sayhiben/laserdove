@@ -81,30 +81,6 @@ def plan_commands(run_config) -> List[Command]:
     return commands
 
 
-def _build_sim_backends(run_config):
-    from .hardware import SimulatedLaser, SimulatedRotary  # local import to keep tk optional
-
-    use_pygame = run_config.simulate_viewer == "pygame"
-    sim_kwargs = {"real_time": False if use_pygame else True}
-    sim_opts = {
-        "origin_x": 0.0,
-        "origin_y": 0.0,
-        "edge_length_mm": run_config.joint_params.edge_length_mm,
-        "movement_only": run_config.movement_only or run_config.reset_only,
-        "z_positive_moves_bed_up": run_config.machine_params.z_positive_moves_bed_up,
-        "air_assist": run_config.machine_params.air_assist,
-    }
-    for name, val in sim_opts.items():
-        if name in inspect.signature(SimulatedLaser).parameters:
-            sim_kwargs[name] = val
-
-    laser = SimulatedLaser(**sim_kwargs)
-    rotary = SimulatedRotary(laser, real_time=not use_pygame)
-    if run_config.simulate_viewer == "tk":
-        laser.setup_viewer()  # Open the window before execution to show progress.
-    return laser, rotary
-
-
 def _build_real_backends(run_config) -> Tuple[object, object]:
     if run_config.laser_backend == "dummy":
         laser = DummyLaser()
@@ -197,21 +173,6 @@ def _execute(commands: List[Command], laser, rotary, run_config) -> None:
         else:
             execute_commands(commands, laser, rotary)
 
-        if run_config.simulate:
-            if run_config.simulate_viewer == "pygame":
-                try:
-                    from .pygame_simulator import run_pygame_viewer
-
-                    run_pygame_viewer(
-                        commands,
-                        run_config,
-                        time_scale=6.0,
-                        rd_dir=run_config.simulate_rd_dir,
-                    )
-                except Exception:  # pragma: no cover - UI best-effort path
-                    log.error("Pygame viewer failed", exc_info=True)
-            elif hasattr(laser, "show"):
-                laser.show()
     finally:
         for dev in (laser, rotary):
             if hasattr(dev, "cleanup"):
@@ -235,8 +196,6 @@ def main() -> None:
     commands = plan_commands(run_config)
 
     if run_config.simulate_screenshots_dir is not None:
-        if run_config.simulate_viewer != "pygame":
-            raise SystemExit("--simulate-screenshots-dir requires --simulate-viewer pygame")
         from .pygame_simulator import run_pygame_viewer
 
         run_pygame_viewer(
@@ -248,14 +207,26 @@ def main() -> None:
         )
         return
 
-    if run_config.dry_run and not run_config.simulate and run_config.laser_backend != "ruida":
+    if run_config.simulate:
+        try:
+            from .pygame_simulator import run_pygame_viewer
+
+            run_pygame_viewer(
+                commands,
+                run_config,
+                time_scale=6.0,
+                rd_dir=run_config.simulate_rd_dir,
+            )
+        except Exception:  # pragma: no cover - UI best-effort path
+            log.error("Pygame viewer failed", exc_info=True)
+        return
+
+    if run_config.dry_run and run_config.laser_backend != "ruida":
         for command in commands:
             print(command)
         return
 
-    laser, rotary = (
-        _build_sim_backends(run_config) if run_config.simulate else _build_real_backends(run_config)
-    )
+    laser, rotary = _build_real_backends(run_config)
     _prepend_rotate_zero(commands, run_config)
     _execute(commands, laser, rotary, run_config)
 

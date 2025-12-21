@@ -49,7 +49,6 @@ class RunConfig:
     movement_only: bool
     save_rd_dir: Optional[Path]
     reset_only: bool
-    simulate_viewer: str
     simulate_screenshots_dir: Optional[Path]
     simulate_screenshots_every_s: float
     simulate_rd_dir: Optional[Path]
@@ -84,18 +83,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--simulate",
         action="store_true",
-        help="Run commands against the simulated backend (Tk or pygame viewer)",
-    )
-    p.add_argument(
-        "--simulate-viewer",
-        choices=["tk", "pygame"],
-        default="tk",
-        help="Viewer to use when --simulate is set (tk or pygame); also used by --simulate-screenshots-dir",
+        help="Visualize the plan with the pygame simulator",
     )
     p.add_argument(
         "--simulate-screenshots-dir",
         type=Path,
-        help="When using the pygame viewer, write periodic PNG frames to this directory and exit",
+        help="Write periodic PNG frames from the pygame viewer to this directory and exit",
     )
     p.add_argument(
         "--simulate-screenshots-every-s",
@@ -106,7 +99,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--simulate-rd-dir",
         type=Path,
-        help="When using the pygame viewer, load .rd files from this directory instead of planner commands",
+        help="Load .rd files from this directory instead of planner commands in the pygame viewer",
     )
     p.add_argument(
         "--movement-only",
@@ -384,7 +377,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
-    simulate_viewer = _dict_get_nested(cfg_data, "backend.simulate_viewer", "tk").lower()
     simulate_screenshots_dir = getattr(args, "simulate_screenshots_dir", None)
     simulate_screenshots_every_s = float(getattr(args, "simulate_screenshots_every_s", 2.0))
     if args.ruida_timeout_s is not None:
@@ -419,8 +411,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         laser_backend = args.laser_backend
     if args.rotary_backend is not None:
         rotary_backend = args.rotary_backend
-    if getattr(args, "simulate_viewer", None) is not None:
-        simulate_viewer = args.simulate_viewer.lower()
     if getattr(args, "simulate_rd_dir", None) is not None:
         simulate_rd_dir = args.simulate_rd_dir
     movement_only = movement_only or args.movement_only
@@ -437,7 +427,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
 
     valid_laser_backends = {"dummy", "ruida"}
     valid_rotary_backends = {"dummy", "real"}
-    valid_sim_viewers = {"tk", "pygame"}
     if laser_backend not in valid_laser_backends:
         raise SystemExit(
             f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}"
@@ -446,12 +435,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         raise SystemExit(
             f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}"
         )
-    if simulate_viewer not in valid_sim_viewers:
-        raise SystemExit(
-            f"Invalid simulate_viewer '{simulate_viewer}'; expected one of {sorted(valid_sim_viewers)}"
-        )
-    if simulate_rd_dir is not None and simulate_viewer != "pygame":
-        raise SystemExit("--simulate-rd-dir requires --simulate-viewer pygame")
     if simulate_screenshots_every_s <= 0.0:
         raise SystemExit("--simulate-screenshots-every-s must be > 0")
     if rotary_pin_numbering not in ("bcm", "board"):
@@ -494,7 +477,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         movement_only=movement_only,
         save_rd_dir=save_rd_dir,
         reset_only=reset_only,
-        simulate_viewer=simulate_viewer,
         simulate_screenshots_dir=simulate_screenshots_dir,
         simulate_screenshots_every_s=simulate_screenshots_every_s,
         simulate_rd_dir=simulate_rd_dir,

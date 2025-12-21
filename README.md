@@ -17,7 +17,7 @@ Experimental Python tooling to plan and drive dovetail joints on laser cutting m
 
 ## What it does
 - Plans tail/pin layouts and emits motion/laser commands for Ruida controllers.
-- Supports dry-run, Tk simulation, and RD job saving for inspection.
+- Supports dry-run, pygame simulation, and RD job saving for inspection.
 - Rotary-aware Z offsets and origin capture to align with the controller’s current position.
 - Dummy backends for safe development; GPIO-driven rotary for Raspberry Pi setups.
 
@@ -33,8 +33,8 @@ source .venv/bin/activate
 pip install -e .          # runtime
 # For dev/lint/tests
 pip install -e ".[dev]"
-# For 3D visualization (optional)
-# pip install panda3d
+# For simulation (optional)
+# pip install pygame
 ```
 
 ## Quick start
@@ -43,11 +43,9 @@ cp example-config.toml config.toml   # adjust to your jig/laser
 
 python -m laserdove.main --config config.toml --mode both --dry-run  # plan only
 
-python -m laserdove.main --config config.toml --simulate  # Tk sim
+python -m laserdove.main --config config.toml --simulate  # pygame sim (install pygame first)
 
-python -m tools.panda3d_sim --config config.toml --mode both  # 3D Panda3D sim (install panda3d first)
-
-python -m laserdove.main --config config.toml --mode both --simulate-viewer pygame --simulate-screenshots-dir sim_frames --simulate-screenshots-every-s 2  # capture pygame frames
+python -m laserdove.main --config config.toml --mode both --simulate --simulate-screenshots-dir sim_frames --simulate-screenshots-every-s 2  # capture pygame frames
 
 python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out --movement-only  # build RD safely
 ```
@@ -60,11 +58,10 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--config` | `config.toml` if present | path | TOML config file to load. |
 | `--mode` | `both` | `tails` \| `pins` \| `both` | Which board to plan. |
 | `--dry-run` | `false` | flag | Print commands; skip hardware. |
-| `--simulate` | `false` | flag | Use Tk viewer + simulated backends. |
-| `--simulate-viewer` | `tk` | `tk` \| `pygame` | Choose Tk or the pygame dual-view simulator when `--simulate` is set. |
-| `--simulate-screenshots-dir` | none | path | When using the pygame viewer, write periodic PNG frames + `index.json` to this directory and exit. |
+| `--simulate` | `false` | flag | Run the pygame viewer to visualize the plan. |
+| `--simulate-screenshots-dir` | none | path | Write periodic PNG frames + `index.json` from the pygame viewer to this directory and exit. |
 | `--simulate-screenshots-every-s` | `2.0` | float | Interval (seconds) between saved frames (used with `--simulate-screenshots-dir`). |
-| `--simulate-rd-dir` | none | path | When using the pygame viewer, load `.rd` files from this directory instead of planner commands. |
+| `--simulate-rd-dir` | none | path | Load `.rd` files from this directory instead of planner commands in the pygame viewer. |
 | `--reset` | `false` | flag | Skip planning; rotate to zero and park head at pin Z0 (laser off). |
 | `--movement-only` | `false` | flag | Force laser power to 0 while moving (also set by `--reset`). |
 | `--dry-run-rd` | `false` | flag | Build/log RD jobs without talking to Ruida. |
@@ -118,11 +115,10 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 - Planning: `planner.py` + `model.py` build command sequences for tails/pins and rotary Z offsets.
 - Hardware abstraction: `hardware/`:
   - `base.py` interfaces + dummy executor,
-  - `sim.py` Tk simulation,
   - `ruida_*` + `rd_builder.py` UDP transport and RD payloads,
   - `rotary.py` GPIO/logging rotary drivers.
-- Visualization/tools: `simulation_viewer.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
-- Optional simulators: Tk viewer (`--simulate` + `--simulate-viewer tk`) and pygame dual-view (`--simulate-viewer pygame`, requires `pygame`) with rotary + Z-aware edge view.
+- Visualization/tools: `pygame_simulator.py`, `sim_kinematics.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
+- Simulator: pygame dual-view (`--simulate`, requires `pygame`) with rotary + Z-aware edge view.
 - Validation: `validation.py` checks geometry, jig, and machine limits before execution.
 
 ## Pin cutting orientation
@@ -138,8 +134,7 @@ To extend: add new motion types in `planner.py`/`model.py`, new hardware backend
 ## Diagnostics and inspection
 - Save RD jobs: `--save-rd-dir rd_out/` then inspect with `tools/rd_parser.py path/to.rd`.
 - Ruida status probe: `python -m tools.ruida_status_probe --host <ruida-ip>` to poll status bits with movement-only jobs.
-- Simulation: `--simulate` to visualize paths with pacing based on commanded speeds.
-- 3D visualization: `python -m tools.panda3d_sim --config config.toml --mode both` to replay plans in Panda3D (install optional dependency `panda3d`).
+- Simulation: `--simulate` to visualize paths with pacing based on commanded speeds (pygame).
 
 ## Credits and references
 - Community and research work informed this tooling, including:

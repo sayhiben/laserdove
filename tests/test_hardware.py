@@ -2,7 +2,7 @@ import pytest
 
 from laserdove.hardware import DummyLaser, DummyRotary, execute_commands
 from laserdove.model import Command, CommandType
-from laserdove.hardware import SimulatedLaser, SimulatedRotary, RuidaLaser, RealRotary
+from laserdove.hardware import RuidaLaser, RealRotary
 
 
 def test_execute_commands_updates_state():
@@ -35,27 +35,6 @@ def test_execute_commands_missing_required_fields_raise(command):
     rotary = DummyRotary()
     with pytest.raises(ValueError):
         execute_commands([command], laser, rotary)
-
-
-def test_simulated_laser_records_segments_and_rotation(monkeypatch):
-    laser = SimulatedLaser(real_time=False)
-    laser.set_laser_power(10)
-    laser.move(x=1, y=0, speed=10)
-    laser.cut_line(x=2, y=0, speed=10)
-    laser.set_rotation(5.0)
-    laser.move(x=2, y=1, speed=10)
-
-    assert laser.segments  # segments recorded
-    assert laser.rotation_deg == 5.0
-    assert laser.current_board == "pin"
-
-
-def test_simulated_rotary_respects_real_time(monkeypatch):
-    laser = SimulatedLaser(real_time=True, time_scale=1000.0)
-    rotary = SimulatedRotary(visualizer=laser, real_time=True, time_scale=1000.0)
-    rotary.rotate_to(10.0, speed_dps=1000.0)
-    assert abs(rotary.angle - 10.0) < 1e-9
-    assert abs(laser.rotation_deg - 10.0) < 1e-9
 
 
 def test_skeleton_backends_accept_calls():
