@@ -581,9 +581,15 @@ class RuidaLaser:
         job_origin_y = (
             initial_state.y_mm if initial_state and initial_state.y_mm is not None else 0.0
         )
+
+        def _state_z_to_command(z_mm: float | None) -> float | None:
+            if z_mm is None:
+                return None
+            return z_mm if self.z_positive_moves_bed_up else -z_mm
+
         job_origin_z: float | None = None
         if initial_state and initial_state.z_mm is not None:
-            job_origin_z = initial_state.z_mm
+            job_origin_z = _state_z_to_command(initial_state.z_mm)
         elif self._z_origin_mm is not None:
             job_origin_z = 0.0  # treat as logical zero if origin captured but no absolute read
         if job_origin_z is not None:
@@ -666,8 +672,10 @@ class RuidaLaser:
             try:
                 state = self._read_machine_state(read_positions=True)
                 if state and state.z_mm is not None:
-                    start_z_mm = state.z_mm
-                    self.z = state.z_mm
+                    state_z = _state_z_to_command(state.z_mm)
+                    if state_z is not None:
+                        start_z_mm = state_z
+                        self.z = state_z
                     log.info(
                         "[RUIDA UDP] Updated RD block start Z from controller: %.3fmm",
                         start_z_mm,
@@ -821,13 +829,21 @@ class RuidaLaser:
             if sent:
                 block_index += 1
         finally:
-            if park_z is not None:
-                try:
-                    needs_park = last_set_z is None or not math.isclose(
+            parked_via_rd = False
+            try:
+                needs_park_z = False
+                if park_z is not None:
+                    needs_park_z = last_set_z is None or not math.isclose(
                         last_set_z, park_z, abs_tol=1e-6
                     )
-                    if needs_park:
-                        park_moves = [
+                needs_park_xy = not math.isclose(
+                    cursor_x, origin_x, abs_tol=1e-6
+                ) or not math.isclose(cursor_y, origin_y, abs_tol=1e-6)
+
+                if needs_park_z or needs_park_xy:
+                    park_moves: List[RDMove] = []
+                    if needs_park_z and park_z is not None:
+                        park_moves.append(
                             RDMove(
                                 x_mm=cursor_x,
                                 y_mm=cursor_y,
@@ -836,17 +852,46 @@ class RuidaLaser:
                                 is_cut=False,
                                 z_mm=park_z,
                             )
-                        ]
+                        )
+                    if needs_park_xy:
+                        move_speed = origin_speed or current_speed or self.z_speed_mm_s
+                        park_moves.append(
+                            RDMove(
+                                x_mm=origin_x,
+                                y_mm=origin_y,
+                                speed_mm_s=move_speed,
+                                power_pct=0.0,
+                                is_cut=False,
+                            )
+                        )
+                    if park_moves:
+                        park_start_z = current_z
+                        if needs_park_z and park_start_z is None:
+                            try:
+                                state = self._read_machine_state(read_positions=True)
+                            except TypeError:
+                                state = self._read_machine_state()
+                            if state and state.z_mm is not None:
+                                state_z = _state_z_to_command(state.z_mm)
+                                if state_z is not None:
+                                    park_start_z = state_z
+                                    self.z = state_z
                         self.send_rd_job(
                             park_moves,
                             job_z_mm=None,
                             require_busy_transition=True,
-                            start_z_mm=current_z,
+                            start_z_mm=park_start_z,
                         )
-                        last_set_z = park_z
-                        current_z = park_z
-                except Exception:
-                    log.debug("Z park via RD failed", exc_info=True)
+                        parked_via_rd = True
+                        if needs_park_z and park_z is not None:
+                            last_set_z = park_z
+                            current_z = park_z
+                            self.z = park_z
+                        if needs_park_xy:
+                            cursor_x, cursor_y = origin_x, origin_y
+                            self.x, self.y = origin_x, origin_y
+            except Exception:
+                log.debug("Final park via RD failed", exc_info=True)
             try:
                 if park_angle is not None and hasattr(rotary, "rotate_to"):
                     target_speed = park_speed if park_speed is not None else 30.0
@@ -856,22 +901,23 @@ class RuidaLaser:
             except Exception:
                 log.debug("Rotary park failed", exc_info=True)
             try:
-                origin_x = (
-                    initial_state.x_mm
-                    if initial_state and initial_state.x_mm is not None
-                    else job_origin_x
-                )
-                origin_y = (
-                    initial_state.y_mm
-                    if initial_state and initial_state.y_mm is not None
-                    else job_origin_y
-                )
-                if origin_x is not None and origin_y is not None:
-                    if not (
-                        math.isclose(self.x, origin_x, abs_tol=1e-6)
-                        and math.isclose(self.y, origin_y, abs_tol=1e-6)
-                    ):
-                        self.move(x=origin_x, y=origin_y, speed=self.z_speed_mm_s)
+                if not parked_via_rd:
+                    origin_x = (
+                        initial_state.x_mm
+                        if initial_state and initial_state.x_mm is not None
+                        else job_origin_x
+                    )
+                    origin_y = (
+                        initial_state.y_mm
+                        if initial_state and initial_state.y_mm is not None
+                        else job_origin_y
+                    )
+                    if origin_x is not None and origin_y is not None:
+                        if not (
+                            math.isclose(self.x, origin_x, abs_tol=1e-6)
+                            and math.isclose(self.y, origin_y, abs_tol=1e-6)
+                        ):
+                            self.move(x=origin_x, y=origin_y, speed=self.z_speed_mm_s)
             except Exception:
                 log.debug("XY park failed", exc_info=True)
 
