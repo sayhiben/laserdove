@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from laserdove.simulation_viewer import SimulationViewer  # noqa: E402
-from tools.rd_parser import RuidaParser  # noqa: E402
+from laserdove.rd_parser import RuidaParser  # noqa: E402
 
 
 def rd_segments(

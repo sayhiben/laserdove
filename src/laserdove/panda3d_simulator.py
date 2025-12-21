@@ -697,9 +697,9 @@ def overlay_segments_from_rd(
 
     for seg in rd_segments:
         x0 = float(seg["x0"])
-        y0 = float(seg["y0"])
+        y0 = float(seg["y0"]) + y_center
         x1 = float(seg["x1"])
-        y1 = float(seg["y1"])
+        y1 = float(seg["y1"]) + y_center
         z_seg = float(seg.get("z") or seg.get("logical_z") or 0.0)
         y0_board = (
             invert_projected_y(

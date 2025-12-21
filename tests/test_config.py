@@ -16,6 +16,7 @@ def make_args(**overrides) -> argparse.Namespace:
         movement_only=False,
         dry_run_rd=False,
         reset=False,
+        simulate_rd_dir=None,
         edge_length_mm=None,
         thickness_mm=None,
         num_tails=None,
@@ -77,6 +78,7 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert rc.movement_only is False
     assert rc.save_rd_dir is None
     assert rc.simulate_viewer == "tk"
+    assert rc.simulate_rd_dir is None
 
 
 def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
@@ -235,6 +237,8 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
         rotary_dir_pin=10,
         save_rd_dir=tmp_path / "rd",
         dry_run_rd=True,
+        simulate_viewer="pygame",
+        simulate_rd_dir=tmp_path / "rd_sim",
     )
     rc = load_config_and_args(args)
     assert rc.joint_params.edge_length_mm == 10.0
@@ -254,3 +258,11 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
     assert rc.rotary_dir_pin == 10
     assert rc.save_rd_dir == tmp_path / "rd"
     assert rc.dry_run_rd is True
+    assert rc.simulate_viewer == "pygame"
+    assert rc.simulate_rd_dir == tmp_path / "rd_sim"
+
+
+def test_simulate_rd_dir_requires_pygame(tmp_path):
+    args = make_args(simulate_rd_dir=tmp_path / "rd", simulate_viewer="tk")
+    with pytest.raises(SystemExit):
+        load_config_and_args(args)

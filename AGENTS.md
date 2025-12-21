@@ -96,5 +96,5 @@
 - Data/models: `model.py` holds params/layout/commands; geometry stays pure; planners emit `Command` list (MOVE/CUT_LINE/SET_LASER_POWER/ROTATE).
 - Hardware layer: `hardware/` supplies dummy/sim backends, GPIO/logging rotary, Ruida UDP (`ruida_laser.py` + `ruida_transport.py`/`ruida_common.py`), RD builder (`rd_builder.py`, opcodes in `rd_commands.py`), panel helper (`ruida_panel.py`), and Tk viewer (`simulation_viewer.py`).
 - Safety defaults: dummy/movement-only friendly; capture current machine origin before RD, poll ready, park axes/rotary; air assist configurable (default on); validation gates runs.
-- Config/run: copy `example-config.toml` → `config.toml`; common commands: `python -m laserdove.main --mode both --dry-run`, `--simulate`, `--save-rd-dir rd_out --movement-only`, `--reset`. CLI flags override TOML for geometry, backends, speeds/power, air/Z direction.
+- Config/run: copy `example-config.toml` → `config.toml`; common commands: `python -m laserdove.main --mode both --dry-run`, `--simulate`, `--save-rd-dir rd_out --movement-only`, `--simulate --simulate-viewer pygame --simulate-rd-dir rd_out`, `--reset`. CLI flags override TOML for geometry, backends, speeds/power, air/Z direction.
 - Tooling/tests: inspection via `tools/rd_parser.py`/`rd_visualize.py`/`ruida_status_probe.py`; pytest in `tests/` (geometry); lint/test via `make` or `pytest`.

@@ -52,6 +52,7 @@ class RunConfig:
     simulate_viewer: str
     simulate_screenshots_dir: Optional[Path]
     simulate_screenshots_every_s: float
+    simulate_rd_dir: Optional[Path]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -101,6 +102,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=2.0,
         help="Interval (seconds) between saved pygame frames (default: 2.0)",
+    )
+    p.add_argument(
+        "--simulate-rd-dir",
+        type=Path,
+        help="When using the pygame viewer, load .rd files from this directory instead of planner commands",
     )
     p.add_argument(
         "--movement-only",
@@ -374,6 +380,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
     rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 500.0)
     save_rd_dir = _dict_get_nested(cfg_data, "backend.save_rd_dir", None)
+    simulate_rd_dir = _dict_get_nested(cfg_data, "backend.simulate_rd_dir", None)
     laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
@@ -414,9 +421,13 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         rotary_backend = args.rotary_backend
     if getattr(args, "simulate_viewer", None) is not None:
         simulate_viewer = args.simulate_viewer.lower()
+    if getattr(args, "simulate_rd_dir", None) is not None:
+        simulate_rd_dir = args.simulate_rd_dir
     movement_only = movement_only or args.movement_only
     if save_rd_dir is not None and not isinstance(save_rd_dir, Path):
         save_rd_dir = Path(save_rd_dir)
+    if simulate_rd_dir is not None and not isinstance(simulate_rd_dir, Path):
+        simulate_rd_dir = Path(simulate_rd_dir)
 
     # Default backend selection preserves legacy use_dummy behavior.
     if laser_backend is None:
@@ -439,6 +450,8 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         raise SystemExit(
             f"Invalid simulate_viewer '{simulate_viewer}'; expected one of {sorted(valid_sim_viewers)}"
         )
+    if simulate_rd_dir is not None and simulate_viewer != "pygame":
+        raise SystemExit("--simulate-rd-dir requires --simulate-viewer pygame")
     if simulate_screenshots_every_s <= 0.0:
         raise SystemExit("--simulate-screenshots-every-s must be > 0")
     if rotary_pin_numbering not in ("bcm", "board"):
@@ -484,4 +497,5 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         simulate_viewer=simulate_viewer,
         simulate_screenshots_dir=simulate_screenshots_dir,
         simulate_screenshots_every_s=simulate_screenshots_every_s,
+        simulate_rd_dir=simulate_rd_dir,
     )

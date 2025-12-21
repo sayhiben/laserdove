@@ -22,7 +22,7 @@ def _make_joint() -> JointParams:
     )
 
 
-def _make_machine() -> MachineParams:
+def _make_machine(*, z_positive_moves_bed_up: bool = True) -> MachineParams:
     return MachineParams(
         cut_speed_tail_mm_s=10.0,
         cut_speed_pin_mm_s=8.0,
@@ -34,6 +34,7 @@ def _make_machine() -> MachineParams:
         cut_overtravel_mm=0.5,
         z_zero_tail_mm=0.0,
         z_zero_pin_mm=0.0,
+        z_positive_moves_bed_up=z_positive_moves_bed_up,
     )
 
 
@@ -65,6 +66,26 @@ def _expected_projected_y(
     sin_theta = math.sin(angle_rad)
     y_center = edge_length_mm / 2.0
     return y_center + (y_board - y_center) * cos_theta - jig.axis_to_origin_mm * sin_theta
+
+
+def _first_pin_move_for_angle(commands, rotation_deg: float) -> tuple[int, Side]:
+    saw_angle = False
+    for cmd in commands:
+        if cmd.type == CommandType.ROTATE and cmd.angle_deg is not None and math.isclose(
+            cmd.angle_deg, rotation_deg, abs_tol=1e-9
+        ):
+            saw_angle = True
+            continue
+        if saw_angle and cmd.type == CommandType.MOVE and cmd.comment and cmd.comment.startswith(
+            "Move to pin "
+        ):
+            parts = cmd.comment.split()
+            pin_index = int(parts[3])
+            side = Side[parts[4]]
+            return pin_index, side
+        if saw_angle and cmd.type == CommandType.ROTATE:
+            break
+    raise AssertionError(f"No pin move found for rotation {rotation_deg}")
 
 
 def test_pin_edge_boundaries_are_skipped():
@@ -122,3 +143,63 @@ def test_pin_edge_projection_handles_negative_rotation():
     )
     actual = _find_edge_move(commands, pin_index=right_side.pin_index, side=Side.RIGHT)
     assert math.isclose(actual, expected, abs_tol=1e-6)
+
+
+def test_pin_rotation_starts_with_max_clearance_surface():
+    joint = _make_joint()
+    jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
+    machine = _make_machine()
+
+    layout = compute_tail_layout(joint)
+    pin_plan = compute_pin_plan(joint, jig, layout)
+    commands = plan_pin_board(joint, jig, machine, pin_plan)
+
+    rotations = {
+        jig.rotation_zero_deg + joint.dovetail_angle_deg,
+        jig.rotation_zero_deg - joint.dovetail_angle_deg,
+    }
+    for rotation_deg in rotations:
+        candidates = [
+            side
+            for side in pin_plan.sides
+            if math.isclose(side.rotation_deg, rotation_deg, abs_tol=1e-9)
+            and 0.0 < side.y_boundary_mm < joint.edge_length_mm
+        ]
+        assert candidates
+
+        pin_index, side = _first_pin_move_for_angle(commands, rotation_deg)
+        chosen = next(s for s in candidates if s.pin_index == pin_index and s.side == side)
+        expected = (
+            min(s.z_offset_mm for s in candidates)
+            if machine.z_positive_moves_bed_up
+            else max(s.z_offset_mm for s in candidates)
+        )
+        assert math.isclose(chosen.z_offset_mm, expected, abs_tol=1e-9)
+
+
+def test_pin_rotation_starts_with_max_clearance_surface_bed_down():
+    joint = _make_joint()
+    jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
+    machine = _make_machine(z_positive_moves_bed_up=False)
+
+    layout = compute_tail_layout(joint)
+    pin_plan = compute_pin_plan(joint, jig, layout)
+    commands = plan_pin_board(joint, jig, machine, pin_plan)
+
+    rotations = {
+        jig.rotation_zero_deg + joint.dovetail_angle_deg,
+        jig.rotation_zero_deg - joint.dovetail_angle_deg,
+    }
+    for rotation_deg in rotations:
+        candidates = [
+            side
+            for side in pin_plan.sides
+            if math.isclose(side.rotation_deg, rotation_deg, abs_tol=1e-9)
+            and 0.0 < side.y_boundary_mm < joint.edge_length_mm
+        ]
+        assert candidates
+
+        pin_index, side = _first_pin_move_for_angle(commands, rotation_deg)
+        chosen = next(s for s in candidates if s.pin_index == pin_index and s.side == side)
+        expected = max(s.z_offset_mm for s in candidates)
+        assert math.isclose(chosen.z_offset_mm, expected, abs_tol=1e-9)

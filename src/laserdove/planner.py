@@ -320,7 +320,6 @@ def plan_pin_board(
         Side.RIGHT: False,  # pin material at Y < boundary; keep negative side
     }
 
-    current_y = 0.0  # track last projected Y to order cuts and reduce long travel moves
     edge_length = joint_params.edge_length_mm
     y_center = edge_length / 2.0
 
@@ -343,6 +342,7 @@ def plan_pin_board(
         angle_rad = math.radians(delta_angle_signed)
         cos_theta = math.cos(angle_rad)
         sin_theta = math.sin(angle_rad)
+        shear_overlap = abs(joint_params.thickness_mm * math.tan(angle_rad)) if angle_rad else 0.0
 
         def project_y(y_board: float) -> float:
             """
@@ -357,18 +357,13 @@ def plan_pin_board(
                 - jig_params.axis_to_origin_mm * sin_theta
             )
 
-        # Nearest-neighbor ordering from current_y to reduce travel swings.
-        remaining = sides[:]
-        ordered_sides: List[PinSide] = []
-        cursor = current_y
-        while remaining:
-            next_index = min(
-                range(len(remaining)),
-                key=lambda i: abs(project_y(remaining[i].y_boundary_mm) - cursor),
-            )
-            next_side = remaining.pop(next_index)
-            ordered_sides.append(next_side)
-            cursor = project_y(next_side.y_boundary_mm)
+        # Start each rotation block with the maximum clearance position.
+        # If Z+ moves the bed up (toward the head), lower Z offsets are safer;
+        # otherwise higher Z offsets increase clearance.
+        def z_order(side: PinSide) -> float:
+            return side.z_offset_mm if machine_params.z_positive_moves_bed_up else -side.z_offset_mm
+
+        ordered_sides = sorted(sides, key=lambda side: (z_order(side), project_y(side.y_boundary_mm)))
 
         commands.append(
             Command(
@@ -419,7 +414,10 @@ def plan_pin_board(
             )
 
             cut_depth = side.x_depth_mm
-            half_gap = half_gap_by_side[(side.pin_index, side.side)]
+            half_gap_base = half_gap_by_side[(side.pin_index, side.side)]
+            # Expand half-gap so opposing rotations overlap through the stock thickness.
+            gap_mm = half_gap_base * 2.0
+            half_gap = min(half_gap_base + shear_overlap, gap_mm)
             boundary_y = side.y_boundary_mm
             at_left_edge = math.isclose(boundary_y, 0.0, abs_tol=1e-9)
             at_right_edge = math.isclose(boundary_y, edge_length, abs_tol=1e-9)
@@ -481,7 +479,6 @@ def plan_pin_board(
                     comment="Pin: laser off",
                 )
             )
-            current_y = y_cut_projected
 
     # Return rotary and head to zeroed positions after pins.
     commands.append(

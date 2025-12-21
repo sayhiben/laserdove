@@ -66,6 +66,23 @@ def _find_move_y(commands, pin_index: int, side: Side) -> float:
     raise AssertionError(f"Command with comment '{target_comment}' not found")
 
 
+def _find_pocket_span_y(commands, pin_index: int, side: Side) -> float:
+    target_comment = f"Move to pin {pin_index} {side.name} at edge"
+    saw_target = False
+    for cmd in commands:
+        if cmd.comment == target_comment and cmd.type == CommandType.MOVE:
+            saw_target = True
+            continue
+        if (
+            saw_target
+            and cmd.comment == "Pin: pocket span (with overtravel)"
+            and cmd.type == CommandType.CUT_LINE
+            and cmd.y is not None
+        ):
+            return cmd.y
+    raise AssertionError(f"Pocket span for pin {pin_index} {side.name} not found")
+
+
 def test_pin_rotation_orientation_widens_at_bottom():
     joint = make_joint()
     jig = make_jig()
@@ -163,6 +180,59 @@ def test_pin_projection_foreshortens_spans_about_midline():
     machine_delta = move_y_high - move_y_low
 
     assert machine_delta == pytest.approx(expected_machine_delta, rel=1e-9, abs=1e-9)
+
+
+def test_pin_pocket_span_compensates_for_shear_overlap():
+    joint = make_joint()
+    jig = make_jig()
+    machine = make_machine()
+    layout = compute_tail_layout(joint)
+    pin_plan = compute_pin_plan(joint, jig, layout)
+    commands = plan_pin_board(joint, jig, machine, pin_plan)
+
+    right_side = next(s for s in pin_plan.sides if s.pin_index == 0 and s.side == Side.RIGHT)
+    left_side = next(s for s in pin_plan.sides if s.pin_index == 1 and s.side == Side.LEFT)
+
+    y_cut_right = kerf_offset_boundary(
+        y_geo=right_side.y_boundary_mm,
+        kerf_mm=joint.kerf_pin_mm,
+        clearance_mm=joint.clearance_mm,
+        keep_on_positive_side=False,
+        is_tail_board=False,
+    )
+    y_cut_left = kerf_offset_boundary(
+        y_geo=left_side.y_boundary_mm,
+        kerf_mm=joint.kerf_pin_mm,
+        clearance_mm=joint.clearance_mm,
+        keep_on_positive_side=True,
+        is_tail_board=False,
+    )
+
+    gap = left_side.y_boundary_mm - right_side.y_boundary_mm
+    shear = joint.thickness_mm * math.tan(math.radians(joint.dovetail_angle_deg))
+    half_gap = gap / 2.0 + shear
+
+    y_far_right = y_cut_right + half_gap
+    y_far_left = y_cut_left - half_gap
+
+    expected_right = _projected_y(
+        y_cut=y_far_right,
+        rotation_deg=right_side.rotation_deg,
+        jig=jig,
+        edge_length=joint.edge_length_mm,
+    )
+    expected_left = _projected_y(
+        y_cut=y_far_left,
+        rotation_deg=left_side.rotation_deg,
+        jig=jig,
+        edge_length=joint.edge_length_mm,
+    )
+
+    actual_right = _find_pocket_span_y(commands, right_side.pin_index, Side.RIGHT)
+    actual_left = _find_pocket_span_y(commands, left_side.pin_index, Side.LEFT)
+
+    assert actual_right == pytest.approx(expected_right, rel=1e-9, abs=1e-9)
+    assert actual_left == pytest.approx(expected_left, rel=1e-9, abs=1e-9)
 
 
 @pytest.mark.parametrize(

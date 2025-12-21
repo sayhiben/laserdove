@@ -1,15 +1,15 @@
 # example-config.toml
 [joint]
-thickness_mm        = 6.35
-edge_length_mm      = 100.0
+thickness_mm        = 6.0
+edge_length_mm      = 77.0
 dovetail_angle_deg  = 8.0
 num_tails           = 3
-tail_outer_width_mm = 20.0
-tail_depth_mm       = 6.35
-socket_depth_mm     = 6.60
+tail_outer_width_mm = 14.0
+tail_depth_mm       = 6.0
+socket_depth_mm     = 6.0
 clearance_mm        = 0.05
-kerf_tail_mm        = 0.15
-kerf_pin_mm         = 0.15
+kerf_tail_mm        = 0.075
+kerf_pin_mm         = 0.075
 
 [jig]
 axis_to_origin_mm   = 32.5
@@ -53,3 +53,4 @@ rotary_invert_dir = false
 ruida_host = "10.0.3.3"
 ruida_port = 50200
 # simulate_viewer = "tk"   # or "pygame" for the 2D pygame simulator when --simulate
+# simulate_rd_dir = "rd_out" # replay saved .rd jobs in pygame when --simulate

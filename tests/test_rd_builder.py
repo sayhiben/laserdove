@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
-# Allow importing the RD parser helper from tools/ for round-trip checks.
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT / "tools"))
-
 from laserdove.hardware.rd_builder import RDMove, build_rd_job  # noqa: E402
-from tools.rd_parser import RuidaParser  # type: ignore # noqa: E402
+from laserdove.rd_parser import RuidaParser  # noqa: E402
 
 
 def test_build_rd_job_preserves_negative_coords_and_z_offsets() -> None:
@@ -19,6 +12,7 @@ def test_build_rd_job_preserves_negative_coords_and_z_offsets() -> None:
         RDMove(x_mm=0.0, y_mm=-10.0, speed_mm_s=5.0, power_pct=0.0, is_cut=False, z_mm=2.5),
         RDMove(x_mm=5.0, y_mm=10.0, speed_mm_s=20.0, power_pct=50.0, is_cut=True),
         RDMove(x_mm=5.0, y_mm=10.0, speed_mm_s=5.0, power_pct=0.0, is_cut=False, z_mm=-1.0),
+        RDMove(x_mm=4.0, y_mm=9.0, speed_mm_s=20.0, power_pct=50.0, is_cut=True),
     ]
 
     payload = build_rd_job(moves, job_z_mm=None, air_assist=True)
@@ -29,3 +23,6 @@ def test_build_rd_job_preserves_negative_coords_and_z_offsets() -> None:
     z_values = [round(val, 3) for _, val, _, _ in parser._z_offsets]
     assert 2.5 in z_values  # first move from 0 -> +2.5 mm
     assert -3.5 in z_values  # second move from +2.5 -> -1.0 mm
+    seg_z = [round(seg["z"], 3) for seg in parser._segments]
+    assert 2.5 in seg_z
+    assert -1.0 in seg_z

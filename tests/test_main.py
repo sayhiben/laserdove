@@ -74,6 +74,7 @@ def make_run_config(**overrides) -> RunConfig:
         simulate_viewer="tk",
         simulate_screenshots_dir=None,
         simulate_screenshots_every_s=2.0,
+        simulate_rd_dir=None,
     )
     defaults.update(overrides)
     return RunConfig(**defaults)
@@ -142,6 +143,7 @@ def test_main_exits_on_validation_error(monkeypatch):
         simulate_viewer="tk",
         simulate_screenshots_dir=None,
         simulate_screenshots_every_s=2.0,
+        simulate_rd_dir=None,
     )
     monkeypatch.setattr(
         "laserdove.cli.load_config_and_args",

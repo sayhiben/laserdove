@@ -32,7 +32,7 @@ try:
     from laserdove.hardware.rd_builder import RDMove, build_rd_job
     from laserdove.hardware.ruida_laser import RuidaLaser
     from laserdove.logging_utils import setup_logging
-    from tools.rd_parser import RuidaParser
+    from laserdove.rd_parser import RuidaParser
 except ImportError:
     # Allow running directly from the repository without editable install.
     REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -44,7 +44,7 @@ except ImportError:
     from laserdove.hardware.rd_builder import RDMove, build_rd_job
     from laserdove.hardware.ruida_laser import RuidaLaser
     from laserdove.logging_utils import setup_logging
-    from tools.rd_parser import RuidaParser
+    from laserdove.rd_parser import RuidaParser
 
 LOG = logging.getLogger("ruida_status_probe")
 

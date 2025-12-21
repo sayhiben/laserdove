@@ -9,12 +9,15 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
-from .model import Command
+from .model import Command, CommandType
 from .panda3d_simulator import (
     board_to_world_local,
     capture_segments_from_commands,
     invert_projected_y,
+    overlay_segments_from_rd,
+    PlaybackSegment,
 )
+from .rd_parser import RuidaParser
 
 log = logging.getLogger(__name__)
 
@@ -52,30 +55,16 @@ def _z_ref(board: str, z_zero_tail_mm: float, z_zero_pin_mm: float) -> float:
     return z_zero_tail_mm if board == "tail" else z_zero_pin_mm
 
 
-def build_beam_traces(
-    commands: Iterable[Command],
+def _beam_traces_from_playback(
+    playback: Sequence[PlaybackSegment],
     *,
     joint_params,
     jig_params,
     machine_params,
-    movement_only: bool = False,
-    air_assist: bool = True,
-    start_board: str = "tail",
 ) -> List[BeamTrace]:
     """
-    Expand planner commands into per-segment beam traces with top/bottom projections.
+    Convert playback segments into per-segment beam traces with top/bottom projections.
     """
-    playback = capture_segments_from_commands(
-        commands,
-        edge_length_mm=joint_params.edge_length_mm,
-        axis_to_origin_mm=jig_params.axis_to_origin_mm,
-        rotation_zero_deg=jig_params.rotation_zero_deg,
-        z_zero_tail_mm=machine_params.z_zero_tail_mm,
-        z_zero_pin_mm=machine_params.z_zero_pin_mm,
-        movement_only=movement_only,
-        air_assist=air_assist,
-        start_board=start_board,
-    )
 
     traces: List[BeamTrace] = []
     for seg in playback:
@@ -148,6 +137,21 @@ def build_beam_traces(
             and math.isclose(seg.start_world[2], seg.end_world[2], abs_tol=1e-9)
             and not math.isclose(seg.start_rotation_deg, seg.end_rotation_deg, abs_tol=1e-9)
         )
+        duration = seg.duration
+        if duration <= 0.0 and not is_rotation_only:
+            dx = seg.end_world[0] - seg.start_world[0]
+            dy = seg.end_world[1] - seg.start_world[1]
+            dz = seg.end_world[2] - seg.start_world[2]
+            distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if seg.is_cut:
+                speed = (
+                    machine_params.cut_speed_pin_mm_s
+                    if seg.board == "pin"
+                    else machine_params.cut_speed_tail_mm_s
+                )
+            else:
+                speed = machine_params.rapid_speed_mm_s
+            duration = distance / speed if speed > 0 else 0.0
 
         traces.append(
             BeamTrace(
@@ -165,7 +169,7 @@ def build_beam_traces(
                 end_board_local=seg.end_board,
                 rotation_deg=seg.start_rotation_deg,
                 rotation_end_deg=seg.end_rotation_deg,
-                duration=seg.duration,
+                duration=duration,
                 power_pct=seg.power_pct,
                 air_assist=seg.air_assist,
                 start_machine_z=start_machine_z,
@@ -178,6 +182,139 @@ def build_beam_traces(
     return traces
 
 
+def build_beam_traces(
+    commands: Iterable[Command],
+    *,
+    joint_params,
+    jig_params,
+    machine_params,
+    movement_only: bool = False,
+    air_assist: bool = True,
+    start_board: str = "tail",
+) -> List[BeamTrace]:
+    """
+    Expand planner commands into per-segment beam traces with top/bottom projections.
+    """
+    playback = capture_segments_from_commands(
+        commands,
+        edge_length_mm=joint_params.edge_length_mm,
+        axis_to_origin_mm=jig_params.axis_to_origin_mm,
+        rotation_zero_deg=jig_params.rotation_zero_deg,
+        z_zero_tail_mm=machine_params.z_zero_tail_mm,
+        z_zero_pin_mm=machine_params.z_zero_pin_mm,
+        movement_only=movement_only,
+        air_assist=air_assist,
+        start_board=start_board,
+    )
+    return _beam_traces_from_playback(
+        playback,
+        joint_params=joint_params,
+        jig_params=jig_params,
+        machine_params=machine_params,
+    )
+
+
+def _rd_job_contexts(
+    commands: Iterable[Command],
+    *,
+    rotation_zero_deg: float,
+) -> List[tuple[float, str]]:
+    rotation = rotation_zero_deg
+    board = "tail"
+    contexts: List[tuple[float, str]] = []
+    block_has_motion = False
+
+    for cmd in commands:
+        if cmd.type == CommandType.ROTATE:
+            if block_has_motion:
+                contexts.append((rotation, board))
+                block_has_motion = False
+            if cmd.angle_deg is not None:
+                rotation = cmd.angle_deg
+            board = "pin"
+            continue
+        if cmd.type in (CommandType.MOVE, CommandType.CUT_LINE):
+            block_has_motion = True
+
+    if block_has_motion:
+        contexts.append((rotation, board))
+
+    return contexts
+
+
+def _parse_rd_segments(rd_path: Path) -> List[dict]:
+    parser = RuidaParser(file=str(rd_path))
+    parser.decode(debug=False)
+    return list(parser._segments)
+
+
+def build_beam_traces_from_rd_segments(
+    rd_segments: Sequence[dict],
+    *,
+    rotation_deg: float,
+    board: str,
+    joint_params,
+    jig_params,
+    machine_params,
+) -> List[BeamTrace]:
+    playback = overlay_segments_from_rd(
+        rd_segments,
+        rotation_deg,
+        board,
+        edge_length_mm=joint_params.edge_length_mm,
+        axis_to_origin_mm=jig_params.axis_to_origin_mm,
+        rotation_zero_deg=jig_params.rotation_zero_deg,
+        z_zero_tail_mm=machine_params.z_zero_tail_mm,
+        z_zero_pin_mm=machine_params.z_zero_pin_mm,
+    )
+    return _beam_traces_from_playback(
+        playback,
+        joint_params=joint_params,
+        jig_params=jig_params,
+        machine_params=machine_params,
+    )
+
+
+def build_beam_traces_from_rd_files(
+    rd_paths: Sequence[Path],
+    commands: Iterable[Command],
+    *,
+    joint_params,
+    jig_params,
+    machine_params,
+) -> List[BeamTrace]:
+    contexts = _rd_job_contexts(commands, rotation_zero_deg=jig_params.rotation_zero_deg)
+    if not contexts:
+        contexts = [(jig_params.rotation_zero_deg, "tail")]
+    if len(rd_paths) != len(contexts):
+        log.warning(
+            "RD job count (%d) does not match rotation blocks (%d); reusing nearest context",
+            len(rd_paths),
+            len(contexts),
+        )
+
+    playback: List[PlaybackSegment] = []
+    for idx, rd_path in enumerate(rd_paths):
+        rotation_deg, board = contexts[min(idx, len(contexts) - 1)]
+        playback.extend(
+            overlay_segments_from_rd(
+                _parse_rd_segments(rd_path),
+                rotation_deg,
+                board,
+                edge_length_mm=joint_params.edge_length_mm,
+                axis_to_origin_mm=jig_params.axis_to_origin_mm,
+                rotation_zero_deg=jig_params.rotation_zero_deg,
+                z_zero_tail_mm=machine_params.z_zero_tail_mm,
+                z_zero_pin_mm=machine_params.z_zero_pin_mm,
+            )
+        )
+
+    return _beam_traces_from_playback(
+        playback,
+        joint_params=joint_params,
+        jig_params=jig_params,
+        machine_params=machine_params,
+    )
 class PygameSimulationViewer:
     """
     Dual orthographic (top + edge) viewer rendered with pygame.
@@ -303,8 +440,8 @@ class PygameSimulationViewer:
                 y_max = max(y_max, pt[1])
 
             for trace in traces:
-                for pt in (trace.start_top, trace.end_top, trace.start_bottom, trace.end_bottom):
-                    add_top(pt)
+                for pt in (trace.start_board_local, trace.end_board_local):
+                    add_top((pt[0], pt[1] + self.y_center, 0.0))
 
             if x_min == float("inf"):
                 x_min, x_max = 0.0, self.thickness_mm
@@ -882,8 +1019,7 @@ class PygameSimulationViewer:
         """
         Render a time series of frames to PNG files.
 
-        The edge view is board-local (Y vs thickness) and the top views are
-        machine/world XY.
+        The edge and top views are board-local (Y vs thickness on edge, X/Y on top).
         """
         try:
             import pygame
@@ -1028,9 +1164,9 @@ class PygameSimulationViewer:
         self._draw_grid_top(screen, top_rect_pos, self.top_bounds_pos)
         self._draw_grid_top(screen, top_rect_neg, self.top_bounds_neg)
 
-        # Left: tail board (unrotated). Middle: pin board (current rotation).
+        # Top panels render in board-local coordinates (no rotary foreshortening).
         draw_board(top_rect_pos, self.rotation_zero_deg, self.top_bounds_pos)
-        draw_board(top_rect_neg, rotation, self.top_bounds_neg)
+        draw_board(top_rect_neg, self.rotation_zero_deg, self.top_bounds_neg)
 
         # Edge view: board-local rectangle (Y vs thickness) so cuts don't "float"
         # when machine Z changes.
@@ -1065,12 +1201,18 @@ class PygameSimulationViewer:
             spot_world[0], spot_world[1], rotation, z_offset_mm=bed_offset
         )
 
+        spot_board = tuple(
+            trace.start_board_local[i]
+            + (trace.end_board_local[i] - trace.start_board_local[i]) * progress
+            for i in range(3)
+        )
+        spot_top = (spot_board[0], spot_board[1] + self.y_center, 0.0)
         spot_rect = top_rect_pos if current_board == "tail" else top_rect_neg
         spot_bounds = self.top_bounds_pos if current_board == "tail" else self.top_bounds_neg
         beam_color = (255, 214, 102)
 
         pygame.draw.circle(
-            screen, beam_color, self._to_screen_top(beam_top_world, spot_rect, spot_bounds), 5
+            screen, beam_color, self._to_screen_top(spot_top, spot_rect, spot_bounds), 5
         )
 
         # Draw the beam in board-local edge coordinates (shears with rotation).
@@ -1140,6 +1282,10 @@ class PygameSimulationViewer:
         edge_overlay = pygame.Surface(edge_rect.size, pygame.SRCALPHA)
         current_key = None
         current_points: list[tuple[int, int]] = []
+        y_center = self.y_center
+
+        def to_panel_from_board(pt_local: tuple[float, float, float], rect, bounds) -> tuple[int, int]:
+            return self._to_panel_top((pt_local[0], pt_local[1] + y_center, 0.0), rect, bounds)
 
         def flush_top_path() -> None:
             nonlocal current_key, current_points
@@ -1189,8 +1335,8 @@ class PygameSimulationViewer:
                     fill_color = self.pin_neg_fill
 
             key = (overlay_target, line_color, fill_color)
-            start_top_pt = self._to_panel_top(trace.start_world, top_rect, top_bounds)
-            end_top_pt = self._to_panel_top(trace.end_world, top_rect, top_bounds)
+            start_top_pt = to_panel_from_board(trace.start_board_local, top_rect, top_bounds)
+            end_top_pt = to_panel_from_board(trace.end_board_local, top_rect, top_bounds)
 
             if current_key != key or not current_points:
                 flush_top_path()
@@ -1322,19 +1468,36 @@ def run_pygame_viewer(
     time_scale: float = 1.0,
     screenshot_dir: Path | None = None,
     screenshot_every_s: float = 2.0,
+    rd_dir: Path | None = None,
 ) -> None:
     """
     Build beam traces from commands and launch the pygame viewer.
     """
-    traces = build_beam_traces(
-        commands,
-        joint_params=run_config.joint_params,
-        jig_params=run_config.jig_params,
-        machine_params=run_config.machine_params,
-        movement_only=run_config.movement_only or run_config.reset_only,
-        air_assist=run_config.machine_params.air_assist,
-        start_board="tail",
-    )
+    traces: List[BeamTrace] = []
+    if rd_dir is not None:
+        rd_path = Path(rd_dir)
+        if not rd_path.exists():
+            raise ValueError(f"RD directory not found: {rd_path}")
+        rd_files = sorted(rd_path.glob("*.rd"))
+        if not rd_files:
+            raise ValueError(f"No .rd files found in {rd_path}")
+        traces = build_beam_traces_from_rd_files(
+            rd_files,
+            commands,
+            joint_params=run_config.joint_params,
+            jig_params=run_config.jig_params,
+            machine_params=run_config.machine_params,
+        )
+    else:
+        traces = build_beam_traces(
+            commands,
+            joint_params=run_config.joint_params,
+            jig_params=run_config.jig_params,
+            machine_params=run_config.machine_params,
+            movement_only=run_config.movement_only or run_config.reset_only,
+            air_assist=run_config.machine_params.air_assist,
+            start_board="tail",
+        )
     if not traces:
         log.info("No segments to visualize in pygame viewer.")
         return

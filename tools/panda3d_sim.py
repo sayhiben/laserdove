@@ -26,7 +26,7 @@ from laserdove.panda3d_simulator import (  # noqa: E402
     capture_segments_from_commands,
     overlay_segments_from_rd,
 )
-from tools.rd_parser import RuidaParser  # noqa: E402
+from laserdove.rd_parser import RuidaParser  # noqa: E402
 
 
 def _parse_rd_arg(raw: str) -> tuple[Path, str, float]:

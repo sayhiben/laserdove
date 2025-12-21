@@ -202,7 +202,12 @@ def _execute(commands: List[Command], laser, rotary, run_config) -> None:
                 try:
                     from .pygame_simulator import run_pygame_viewer
 
-                    run_pygame_viewer(commands, run_config, time_scale=6.0)
+                    run_pygame_viewer(
+                        commands,
+                        run_config,
+                        time_scale=6.0,
+                        rd_dir=run_config.simulate_rd_dir,
+                    )
                 except Exception:  # pragma: no cover - UI best-effort path
                     log.error("Pygame viewer failed", exc_info=True)
             elif hasattr(laser, "show"):
@@ -239,6 +244,7 @@ def main() -> None:
             run_config,
             screenshot_dir=run_config.simulate_screenshots_dir,
             screenshot_every_s=run_config.simulate_screenshots_every_s,
+            rd_dir=run_config.simulate_rd_dir,
         )
         return
 

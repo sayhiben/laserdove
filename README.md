@@ -64,6 +64,7 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--simulate-viewer` | `tk` | `tk` \| `pygame` | Choose Tk or the pygame dual-view simulator when `--simulate` is set. |
 | `--simulate-screenshots-dir` | none | path | When using the pygame viewer, write periodic PNG frames + `index.json` to this directory and exit. |
 | `--simulate-screenshots-every-s` | `2.0` | float | Interval (seconds) between saved frames (used with `--simulate-screenshots-dir`). |
+| `--simulate-rd-dir` | none | path | When using the pygame viewer, load `.rd` files from this directory instead of planner commands. |
 | `--reset` | `false` | flag | Skip planning; rotate to zero and park head at pin Z0 (laser off). |
 | `--movement-only` | `false` | flag | Force laser power to 0 while moving (also set by `--reset`). |
 | `--dry-run-rd` | `false` | flag | Build/log RD jobs without talking to Ruida. |
