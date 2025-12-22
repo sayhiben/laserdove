@@ -362,7 +362,9 @@ def plan_pin_board(
         def z_order(side: PinSide) -> float:
             return side.z_offset_mm
 
-        ordered_sides = sorted(sides, key=lambda side: (z_order(side), project_y(side.y_boundary_mm)))
+        ordered_sides = sorted(
+            sides, key=lambda side: (z_order(side), project_y(side.y_boundary_mm))
+        )
 
         commands.append(
             Command(

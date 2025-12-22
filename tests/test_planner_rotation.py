@@ -71,13 +71,18 @@ def _expected_projected_y(
 def _first_pin_move_for_angle(commands, rotation_deg: float) -> tuple[int, Side]:
     saw_angle = False
     for cmd in commands:
-        if cmd.type == CommandType.ROTATE and cmd.angle_deg is not None and math.isclose(
-            cmd.angle_deg, rotation_deg, abs_tol=1e-9
+        if (
+            cmd.type == CommandType.ROTATE
+            and cmd.angle_deg is not None
+            and math.isclose(cmd.angle_deg, rotation_deg, abs_tol=1e-9)
         ):
             saw_angle = True
             continue
-        if saw_angle and cmd.type == CommandType.MOVE and cmd.comment and cmd.comment.startswith(
-            "Move to pin "
+        if (
+            saw_angle
+            and cmd.type == CommandType.MOVE
+            and cmd.comment
+            and cmd.comment.startswith("Move to pin ")
         ):
             parts = cmd.comment.split()
             pin_index = int(parts[3])
@@ -91,8 +96,10 @@ def _first_pin_move_for_angle(commands, rotation_deg: float) -> tuple[int, Side]
 def _first_pin_z_for_angle(commands, rotation_deg: float) -> float:
     saw_angle = False
     for cmd in commands:
-        if cmd.type == CommandType.ROTATE and cmd.angle_deg is not None and math.isclose(
-            cmd.angle_deg, rotation_deg, abs_tol=1e-9
+        if (
+            cmd.type == CommandType.ROTATE
+            and cmd.angle_deg is not None
+            and math.isclose(cmd.angle_deg, rotation_deg, abs_tol=1e-9)
         ):
             saw_angle = True
             continue

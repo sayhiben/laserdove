@@ -376,11 +376,11 @@ class RuidaLaser:
         self, *, air_assist: bool | None = None, blow_on: bool | None = None
     ) -> None:
         if air_assist is not None:
-            payload = b"\xCA\x01\x13" if air_assist else b"\xCA\x01\x12"
+            payload = b"\xca\x01\x13" if air_assist else b"\xca\x01\x12"
             log.info("[RUIDA UDP] AIR_ASSIST %s", "ON" if air_assist else "OFF")
             self._udp.send_packets(payload)
         if blow_on is not None:
-            payload = b"\xCA\x13" if blow_on else b"\xCA\x12"
+            payload = b"\xca\x13" if blow_on else b"\xca\x12"
             log.info("[RUIDA UDP] BLOW %s", "ON" if blow_on else "OFF")
             self._udp.send_packets(payload)
 

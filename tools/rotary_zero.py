@@ -285,9 +285,7 @@ def _resolve_settings(
     if speed_dps <= 0:
         raise SystemExit("--speed-dps must be > 0.")
     if rotary_backend not in ("dummy", "real"):
-        raise SystemExit(
-            f"Invalid rotary backend '{rotary_backend}'; expected 'dummy' or 'real'."
-        )
+        raise SystemExit(f"Invalid rotary backend '{rotary_backend}'; expected 'dummy' or 'real'.")
     if str(pin_numbering).lower() not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'.")
 
@@ -414,9 +412,7 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
         lines = [
             "Rotary zeroing (interactive)",
             f"Config: {cfg_label}  Backend: {settings.rotary_backend}  Dry-run: {settings.dry_run}",
-            (
-                "Speed: {:.2f} dps  Steps/rev: {}  Microsteps: {}  Step: {:.6f} deg"
-            ).format(
+            ("Speed: {:.2f} dps  Steps/rev: {}  Microsteps: {}  Step: {:.6f} deg").format(
                 settings.speed_dps,
                 settings.steps_per_rev,
                 settings.microsteps or 1,

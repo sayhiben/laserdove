@@ -167,6 +167,5 @@ def test_rd_segments_round_trip_to_traces() -> None:
         assert math.isclose(trace.start_world[1], seg["y0"] + y_center, abs_tol=1e-6)
         assert math.isclose(trace.end_world[1], seg["y1"] + y_center, abs_tol=1e-6)
     assert any(
-        trace.is_cut and math.isclose(trace.power_pct, 60.0, abs_tol=1e-6)
-        for trace in traces
+        trace.is_cut and math.isclose(trace.power_pct, 60.0, abs_tol=1e-6) for trace in traces
     )

@@ -456,9 +456,7 @@ class RuidaParser:
         delta = self.decode_number(raw)
         self._z_offsets.append((self._current_pos, delta, raw, self._prio))
         self._current_z += delta
-        return 5, (
-            f"Z_Offset_80_03({delta:+.3f}mm -> {self._current_z:+.3f}mm raw={raw.hex(' ')})"
-        )
+        return 5, (f"Z_Offset_80_03({delta:+.3f}mm -> {self._current_z:+.3f}mm raw={raw.hex(' ')})")
 
     def t_air_assist(self, n: int, desc=None):
         self._air_assist = bool(desc)

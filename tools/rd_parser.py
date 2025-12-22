@@ -19,7 +19,7 @@ for path in (SRC_ROOT, ROOT):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
-from laserdove.rd_parser import main
+from laserdove.rd_parser import main  # noqa: E402
 
 
 if __name__ == "__main__":

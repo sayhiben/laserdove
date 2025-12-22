@@ -315,6 +315,8 @@ def build_beam_traces_from_rd_files(
         jig_params=jig_params,
         machine_params=machine_params,
     )
+
+
 class PygameSimulationViewer:
     """
     Dual orthographic (top + edge) viewer rendered with pygame.
@@ -648,8 +650,6 @@ class PygameSimulationViewer:
 
         overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
         x_min, x_max, y_min, y_max = bounds
-        x_span = x_max - x_min
-        y_span = y_max - y_min
         scale, x_step, y_step = self._grid_steps(bounds, rect)
 
         # Vertical lines (X)
@@ -902,7 +902,11 @@ class PygameSimulationViewer:
         pygame.draw.circle(overlay, (240, 240, 240, 160), axis_pt, 10, width=1)
 
         # Fixed laser head height + beam line.
-        head_z = self.pose_head_z if self.pose_head_z is not None else (max(z for _, z in edge_poly) + 10.0)
+        head_z = (
+            self.pose_head_z
+            if self.pose_head_z is not None
+            else (max(z for _, z in edge_poly) + 10.0)
+        )
         beam_y = beam_top_world[1]
         head_pt = self._to_panel_pose((beam_y, head_z), rect)
         head_y_px = head_pt[1]
@@ -1232,7 +1236,9 @@ class PygameSimulationViewer:
             rotation_zero_deg=self.rotation_zero_deg,
         )
         beam_top_edge = self._to_screen_edge((y_abs_top - self.y_center, 0.0), edge_rect)
-        beam_bottom_edge = self._to_screen_edge((y_abs_bottom - self.y_center, -self.thickness_mm), edge_rect)
+        beam_bottom_edge = self._to_screen_edge(
+            (y_abs_bottom - self.y_center, -self.thickness_mm), edge_rect
+        )
         pygame.draw.line(screen, beam_color, beam_top_edge, beam_bottom_edge, 2)
 
         # Compact pose inset (machine frame) at the top of the edge panel:
@@ -1284,7 +1290,9 @@ class PygameSimulationViewer:
         current_points: list[tuple[int, int]] = []
         y_center = self.y_center
 
-        def to_panel_from_board(pt_local: tuple[float, float, float], rect, bounds) -> tuple[int, int]:
+        def to_panel_from_board(
+            pt_local: tuple[float, float, float], rect, bounds
+        ) -> tuple[int, int]:
             return self._to_panel_top((pt_local[0], pt_local[1] + y_center, 0.0), rect, bounds)
 
         def flush_top_path() -> None:
