@@ -12,7 +12,8 @@ kerf_tail_mm        = 0.075
 kerf_pin_mm         = 0.075
 
 [jig]
-axis_to_origin_mm   = 32.5
+# axis_to_origin_mm = 35.2  # axis center to top of board (optional override)
+axis_to_fence_mm    = 29.2  # axis center to fence top; adds thickness
 rotation_zero_deg   = 0.0
 rotation_speed_dps  = 30.0
 

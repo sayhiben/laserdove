@@ -162,6 +162,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--kerf-pin-mm", type=float)
     p.add_argument("--axis-offset-mm", type=float)
     p.add_argument(
+        "--axis-to-fence-mm",
+        type=float,
+        help="Rotary axis center to fence top (adds material thickness)",
+    )
+    p.add_argument(
         "--cut-overtravel-mm",
         type=float,
         help="Extend X cuts past the edge by this amount (mm) for through/finger joints.",
@@ -319,12 +324,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         kerf_pin_mm=_dict_get_nested(cfg_data, "joint.kerf_pin_mm", 0.15),
     )
 
-    jig_params = JigParams(
-        axis_to_origin_mm=_dict_get_nested(cfg_data, "jig.axis_to_origin_mm", 30.0),
-        rotation_zero_deg=_dict_get_nested(cfg_data, "jig.rotation_zero_deg", 0.0),
-        rotation_speed_dps=_dict_get_nested(cfg_data, "jig.rotation_speed_dps", 30.0),
-    )
-
     machine_params = MachineParams(
         cut_speed_tail_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_tail_mm_s", 10.0),
         cut_speed_pin_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_pin_mm_s", 8.0),
@@ -344,7 +343,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
     )
 
-    # CLI overrides
+    # CLI overrides (joint params)
     if args.edge_length_mm is not None:
         joint_params.edge_length_mm = args.edge_length_mm
     if args.thickness_mm is not None:
@@ -362,6 +361,29 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         joint_params.kerf_tail_mm = args.kerf_tail_mm
     if args.kerf_pin_mm is not None:
         joint_params.kerf_pin_mm = args.kerf_pin_mm
+
+    axis_to_origin_cfg = _dict_get_nested(cfg_data, "jig.axis_to_origin_mm", None)
+    axis_to_origin_explicit = axis_to_origin_cfg is not None
+    axis_to_fence_cfg = _dict_get_nested(cfg_data, "jig.axis_to_fence_mm", None)
+    if axis_to_origin_cfg is None:
+        axis_to_origin_cfg = 30.0
+    axis_to_origin_mm = axis_to_origin_cfg
+    if axis_to_fence_cfg is not None:
+        if axis_to_origin_explicit:
+            log.warning(
+                "Both jig.axis_to_origin_mm and jig.axis_to_fence_mm set; using axis_to_fence_mm + thickness"
+            )
+        axis_to_origin_mm = axis_to_fence_cfg + joint_params.thickness_mm
+
+    jig_params = JigParams(
+        axis_to_origin_mm=axis_to_origin_mm,
+        rotation_zero_deg=_dict_get_nested(cfg_data, "jig.rotation_zero_deg", 0.0),
+        rotation_speed_dps=_dict_get_nested(cfg_data, "jig.rotation_speed_dps", 30.0),
+    )
+
+    # CLI overrides (jig/machine params)
+    if args.axis_to_fence_mm is not None:
+        jig_params.axis_to_origin_mm = args.axis_to_fence_mm + joint_params.thickness_mm
     if args.axis_offset_mm is not None:
         jig_params.axis_to_origin_mm = args.axis_offset_mm
     if args.cut_overtravel_mm is not None:

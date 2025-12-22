@@ -83,7 +83,8 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | `--clearance-mm` | `0.05` | float | Socket minus tail clearance. |
 | `--kerf-tail-mm` | `0.15` | float | Kerf for tail board cuts. |
 | `--kerf-pin-mm` | `0.15` | float | Kerf for pin board cuts. |
-| `--axis-offset-mm` | `30.0` | float | Axis-to-surface distance for rotary focus. |
+| `--axis-to-fence-mm` | none | float | Axis center to fence top; adds thickness to derive `axis_to_origin_mm`. |
+| `--axis-offset-mm` | `30.0` | float | Axis center to top-of-board distance (`axis_to_origin_mm`). |
 | `--cut-overtravel-mm` | `0.5` | float | Extra X depth to extend pin cuts past the edge for through/finger joints. |
 
 ### Hardware/backends
@@ -106,8 +107,8 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 - Copy `example-config.toml` to `config.toml` and edit.
 - Sections:
   - `[joint]`: geometry inputs (length, tails, angle, kerf, clearance).
-  - `[jig]`: rotary geometry (axis distance, zero angle, rotation speed).
-  - `[machine]`: speeds, powers, Z zeros, air assist, Z direction.
+  - `[jig]`: rotary geometry (`axis_to_origin_mm` or `axis_to_fence_mm`, zero angle, rotation speed).
+  - `[machine]`: speeds, powers, Z zeros, air assist/inline fan, warmup, Z direction.
   - `[backend]`: hardware targets and GPIO pins (dummy vs Ruida/real rotary, host/port, RD save dir).
 - CLI flags override TOML values.
 

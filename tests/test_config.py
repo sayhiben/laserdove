@@ -12,6 +12,8 @@ def make_args(**overrides) -> argparse.Namespace:
         mode="both",
         dry_run=False,
         simulate=False,
+        simulate_screenshots_dir=None,
+        simulate_screenshots_every_s=2.0,
         movement_only=False,
         dry_run_rd=False,
         reset=False,
@@ -25,8 +27,13 @@ def make_args(**overrides) -> argparse.Namespace:
         kerf_tail_mm=None,
         kerf_pin_mm=None,
         axis_offset_mm=None,
+        axis_to_fence_mm=None,
         cut_overtravel_mm=None,
         log_level="INFO",
+        air_assist=None,
+        inline_fan_on=None,
+        pre_cut_warmup_s=None,
+        z_positive_moves_bed_up=None,
         ruida_timeout_s=None,
         ruida_source_port=None,
         rotary_steps_per_rev=None,
@@ -255,3 +262,19 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
     assert rc.save_rd_dir == tmp_path / "rd"
     assert rc.dry_run_rd is True
     assert rc.simulate_rd_dir == tmp_path / "rd_sim"
+
+
+def test_axis_to_fence_uses_current_thickness(tmp_path):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        """
+        [joint]
+        thickness_mm = 6.0
+        [jig]
+        axis_to_origin_mm = 40.0
+        axis_to_fence_mm = 20.0
+        """
+    )
+    args = make_args(config=cfg_path, thickness_mm=7.0)
+    rc = load_config_and_args(args)
+    assert rc.jig_params.axis_to_origin_mm == 27.0

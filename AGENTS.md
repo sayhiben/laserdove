@@ -56,6 +56,7 @@
 - Do not send jobs to real hardware until a dry-run, simulation, and at least one movement-only pass have completed cleanly with the intended config.
 - Use `--movement-only`/`--reset` to force travel-only RD jobs with power 0; `--save-rd-dir` is helpful for inspecting what would be sent.
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
+- Prefer `jig.axis_to_fence_mm` to auto-derive `axis_to_origin_mm` from thickness; set `axis_to_origin_mm` only when you need an explicit override.
 - RD File Inspection
   - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
   - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or replay with `--simulate --simulate-rd-dir rd_out` to compare the emitted Ruida commands against the planned moves.
