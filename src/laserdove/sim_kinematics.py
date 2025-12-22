@@ -281,6 +281,8 @@ def overlay_segments_from_rd(
     rotation_zero_deg: float,
     z_zero_tail_mm: float,
     z_zero_pin_mm: float,
+    z_base_mm: float | None = None,
+    z_speed_mm_s: float | None = None,
 ) -> List[PlaybackSegment]:
     """
     Convert RD parser segments into board/world coordinates for overlay rendering.
@@ -288,13 +290,15 @@ def overlay_segments_from_rd(
     y_center = edge_length_mm / 2.0
     z_ref = _current_z_reference(board, z_zero_tail_mm, z_zero_pin_mm)
     overlays: List[PlaybackSegment] = []
+    z_base = 0.0 if z_base_mm is None else z_base_mm
+    last_z_offset = z_base - z_ref
 
     for seg in rd_segments:
         x0 = float(seg["x0"])
         y0 = float(seg["y0"]) + y_center
         x1 = float(seg["x1"])
         y1 = float(seg["y1"]) + y_center
-        z_seg = float(seg.get("z") or seg.get("logical_z") or 0.0)
+        z_seg = float(seg.get("z", seg.get("logical_z", 0.0)))
         y0_board = (
             invert_projected_y(
                 y0,
@@ -317,7 +321,7 @@ def overlay_segments_from_rd(
             if board == "pin" and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
             else y1
         )
-        z_offset = z_seg - z_ref
+        z_offset = (z_base + z_seg) - z_ref
         start_board = (x0, y0_board - y_center, 0.0)
         end_board = (x1, y1_board - y_center, 0.0)
         start_world_base = board_to_world_local(
@@ -338,6 +342,37 @@ def overlay_segments_from_rd(
             y_center=y_center,
             rotation_zero_deg=rotation_zero_deg,
         )
+        if not math.isclose(z_offset, last_z_offset, abs_tol=1e-9):
+            z_duration = 0.0
+            if z_speed_mm_s is not None and z_speed_mm_s > 0:
+                z_duration = abs(z_offset - last_z_offset) / z_speed_mm_s
+            overlays.append(
+                PlaybackSegment(
+                    start_board=start_board,
+                    end_board=start_board,
+                    start_world=(
+                        start_world_base[0],
+                        start_world_base[1],
+                        start_world_base[2] + last_z_offset,
+                    ),
+                    end_world=(
+                        start_world_base[0],
+                        start_world_base[1],
+                        start_world_base[2] + z_offset,
+                    ),
+                    start_rotation_deg=rotation_deg,
+                    end_rotation_deg=rotation_deg,
+                    start_z_offset_mm=last_z_offset,
+                    end_z_offset_mm=z_offset,
+                    board=board,
+                    is_cut=False,
+                    duration=z_duration,
+                    power_pct=0.0,
+                    air_assist=bool(seg.get("air_assist", True)),
+                    source="rd",
+                )
+            )
+            last_z_offset = z_offset
         overlays.append(
             PlaybackSegment(
                 start_board=start_board,
@@ -360,5 +395,6 @@ def overlay_segments_from_rd(
                 source="rd",
             )
         )
+        last_z_offset = z_offset
 
     return overlays

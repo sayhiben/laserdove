@@ -169,3 +169,32 @@ def test_rd_segments_round_trip_to_traces() -> None:
     assert any(
         trace.is_cut and math.isclose(trace.power_pct, 60.0, abs_tol=1e-6) for trace in traces
     )
+
+
+def test_rd_z_offsets_animate_between_segments() -> None:
+    moves = [
+        RDMove(x_mm=0.0, y_mm=0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False, z_mm=2.0),
+        RDMove(x_mm=0.0, y_mm=10.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False),
+        RDMove(x_mm=0.0, y_mm=10.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False, z_mm=0.5),
+        RDMove(x_mm=0.0, y_mm=20.0, speed_mm_s=50.0, power_pct=60.0, is_cut=True),
+    ]
+    payload = build_rd_job(moves, job_z_mm=None, air_assist=True)
+    parser = RuidaParser(buf=payload)
+    parser.decode(debug=False)
+
+    joint = _joint_params(thickness_mm=10.0, edge_length_mm=100.0)
+    jig = JigParams(axis_to_origin_mm=30.0, rotation_zero_deg=0.0, rotation_speed_dps=30.0)
+    machine = _machine_params()
+
+    traces = build_beam_traces_from_rd_segments(
+        parser._segments,
+        rotation_deg=0.0,
+        board="tail",
+        joint_params=joint,
+        jig_params=jig,
+        machine_params=machine,
+    )
+    assert any(
+        not math.isclose(trace.start_machine_z, trace.end_machine_z, abs_tol=1e-9)
+        for trace in traces
+    )

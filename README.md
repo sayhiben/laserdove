@@ -138,7 +138,7 @@ To extend: add new motion types in `planner.py`/`model.py`, new hardware backend
 - Save RD jobs: `--save-rd-dir rd_out/` then inspect with `tools/rd_parser.py path/to.rd`.
 - Ruida status probe: `python -m tools.ruida_status_probe --host <ruida-ip>` to poll status bits with movement-only jobs.
 - Rotary zero/level helper: `python -m tools.rotary_zero --interactive` (use `[`/`]` for step nudges, `{`/`}` for 5x, `s` to save zero to `config.toml`) or `python -m tools.rotary_zero --degrees 1.0 --cw` for one-shot moves; pass `--rotary-backend real` to drive GPIO, `--dry-run` to log only.
-- Simulation: `--simulate` to visualize paths with pacing based on commanded speeds (pygame).
+- Simulation: `--simulate` to visualize paths with pacing based on commanded speeds (pygame). Use `[`/`]` to slow down/speed up playback.
 
 ## Credits and references
 - Community and research work informed this tooling, including:

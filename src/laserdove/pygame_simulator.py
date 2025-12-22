@@ -266,6 +266,7 @@ def build_beam_traces_from_rd_segments(
         rotation_zero_deg=jig_params.rotation_zero_deg,
         z_zero_tail_mm=machine_params.z_zero_tail_mm,
         z_zero_pin_mm=machine_params.z_zero_pin_mm,
+        z_speed_mm_s=machine_params.z_speed_mm_s,
     )
     return _beam_traces_from_playback(
         playback,
@@ -286,28 +287,201 @@ def build_beam_traces_from_rd_files(
     contexts = _rd_job_contexts(commands, rotation_zero_deg=jig_params.rotation_zero_deg)
     if not contexts:
         contexts = [(jig_params.rotation_zero_deg, "tail")]
+    rd_segments_list = [_parse_rd_segments(rd_path) for rd_path in rd_paths]
     if len(rd_paths) != len(contexts):
-        log.warning(
-            "RD job count (%d) does not match rotation blocks (%d); reusing nearest context",
-            len(rd_paths),
-            len(contexts),
+        if len(rd_paths) > len(contexts):
+            extra_segments = rd_segments_list[len(contexts) :]
+            # Extra RD jobs are often post-run travel-only parks; treat them as the last context.
+            extra_travel_only = all(
+                not any(segment.get("is_cut") for segment in segments)
+                for segments in extra_segments
+            )
+            if extra_travel_only:
+                contexts.extend([contexts[-1]] * len(extra_segments))
+            else:
+                log.warning(
+                    "RD job count (%d) does not match rotation blocks (%d); reusing nearest context",
+                    len(rd_paths),
+                    len(contexts),
+                )
+        else:
+            log.warning(
+                "RD job count (%d) does not match rotation blocks (%d); reusing nearest context",
+                len(rd_paths),
+                len(contexts),
+            )
+
+    def _z_ref_for_board(board: str) -> float:
+        return _z_ref(board, machine_params.z_zero_tail_mm, machine_params.z_zero_pin_mm)
+
+    def _board_local_from_machine(
+        x_machine: float, y_machine: float, rotation_deg: float, board: str
+    ) -> tuple[float, float, float]:
+        y_center = joint_params.edge_length_mm / 2.0
+        if board == "pin" and not math.isclose(rotation_deg, jig_params.rotation_zero_deg, abs_tol=1e-9):
+            y_abs = invert_projected_y(
+                y_machine,
+                rotation_deg,
+                axis_to_origin_mm=jig_params.axis_to_origin_mm,
+                y_center=y_center,
+                rotation_zero_deg=jig_params.rotation_zero_deg,
+            )
+        else:
+            y_abs = y_machine
+        return (x_machine, y_abs - y_center, 0.0)
+
+    def _world_from_machine(
+        x_machine: float,
+        y_machine: float,
+        rotation_deg: float,
+        board: str,
+        z_offset: float,
+    ) -> tuple[float, float, float]:
+        y_center = joint_params.edge_length_mm / 2.0
+        board_local = _board_local_from_machine(x_machine, y_machine, rotation_deg, board)
+        base = board_to_world_local(
+            board_local[0],
+            board_local[1],
+            0.0,
+            rotation_deg,
+            axis_to_origin_mm=jig_params.axis_to_origin_mm,
+            y_center=y_center,
+            rotation_zero_deg=jig_params.rotation_zero_deg,
+        )
+        return (base[0], base[1], base[2] + z_offset)
+
+    def _travel_segment_between(
+        last_seg: PlaybackSegment,
+        next_seg: PlaybackSegment,
+        rotation_deg: float,
+    ) -> PlaybackSegment | None:
+        start_x, start_y = last_seg.end_world[0], last_seg.end_world[1]
+        end_x, end_y = next_seg.start_world[0], next_seg.start_world[1]
+        if math.isclose(start_x, end_x, abs_tol=1e-9) and math.isclose(
+            start_y, end_y, abs_tol=1e-9
+        ):
+            return None
+        board = last_seg.board
+        z_offset = last_seg.end_z_offset_mm
+        start_board = _board_local_from_machine(start_x, start_y, rotation_deg, board)
+        end_board = _board_local_from_machine(end_x, end_y, rotation_deg, board)
+        end_world = _world_from_machine(end_x, end_y, rotation_deg, board, z_offset)
+        return PlaybackSegment(
+            start_board=start_board,
+            end_board=end_board,
+            start_world=last_seg.end_world,
+            end_world=end_world,
+            start_rotation_deg=rotation_deg,
+            end_rotation_deg=rotation_deg,
+            start_z_offset_mm=z_offset,
+            end_z_offset_mm=z_offset,
+            board=board,
+            is_cut=False,
+            duration=0.0,
+            power_pct=0.0,
+            air_assist=last_seg.air_assist,
+            source="rd",
+        )
+
+    def rotation_segment_between(
+        last_seg: PlaybackSegment | None,
+        prev_rotation: float,
+        next_rotation: float,
+        next_board: str,
+    ) -> PlaybackSegment | None:
+        if last_seg is None or math.isclose(prev_rotation, next_rotation, abs_tol=1e-9):
+            return None
+        duration = (
+            abs(next_rotation - prev_rotation) / jig_params.rotation_speed_dps
+            if jig_params.rotation_speed_dps > 0
+            else 0.0
+        )
+        x_machine, y_machine, z_machine = last_seg.end_world
+        y_center = joint_params.edge_length_mm / 2.0
+        y_start_abs = invert_projected_y(
+            y_machine,
+            prev_rotation,
+            axis_to_origin_mm=jig_params.axis_to_origin_mm,
+            y_center=y_center,
+            rotation_zero_deg=jig_params.rotation_zero_deg,
+        )
+        y_end_abs = invert_projected_y(
+            y_machine,
+            next_rotation,
+            axis_to_origin_mm=jig_params.axis_to_origin_mm,
+            y_center=y_center,
+            rotation_zero_deg=jig_params.rotation_zero_deg,
+        )
+        start_board = (x_machine, y_start_abs - y_center, 0.0)
+        end_board = (x_machine, y_end_abs - y_center, 0.0)
+        prev_z_ref = _z_ref(
+            last_seg.board,
+            machine_params.z_zero_tail_mm,
+            machine_params.z_zero_pin_mm,
+        )
+        machine_z = last_seg.end_z_offset_mm + prev_z_ref
+        next_z_ref = _z_ref(
+            next_board,
+            machine_params.z_zero_tail_mm,
+            machine_params.z_zero_pin_mm,
+        )
+        z_offset = machine_z - next_z_ref
+        return PlaybackSegment(
+            start_board=start_board,
+            end_board=end_board,
+            start_world=(x_machine, y_machine, z_machine),
+            end_world=(x_machine, y_machine, z_machine),
+            start_rotation_deg=prev_rotation,
+            end_rotation_deg=next_rotation,
+            start_z_offset_mm=z_offset,
+            end_z_offset_mm=z_offset,
+            board=next_board,
+            is_cut=False,
+            duration=duration,
+            power_pct=0.0,
+            air_assist=last_seg.air_assist,
+            source="rd",
         )
 
     playback: List[PlaybackSegment] = []
+    last_segment: PlaybackSegment | None = None
+    last_machine_z: float | None = None
     for idx, rd_path in enumerate(rd_paths):
         rotation_deg, board = contexts[min(idx, len(contexts) - 1)]
-        playback.extend(
-            overlay_segments_from_rd(
-                _parse_rd_segments(rd_path),
+        z_base_mm = last_machine_z if last_machine_z is not None else _z_ref_for_board(board)
+        overlays = overlay_segments_from_rd(
+            rd_segments_list[idx],
+            rotation_deg,
+            board,
+            edge_length_mm=joint_params.edge_length_mm,
+            axis_to_origin_mm=jig_params.axis_to_origin_mm,
+            rotation_zero_deg=jig_params.rotation_zero_deg,
+            z_zero_tail_mm=machine_params.z_zero_tail_mm,
+            z_zero_pin_mm=machine_params.z_zero_pin_mm,
+            z_base_mm=z_base_mm,
+            z_speed_mm_s=machine_params.z_speed_mm_s,
+        )
+        if overlays and last_segment is not None:
+            prev_rotation, _prev_board = contexts[min(idx - 1, len(contexts) - 1)]
+            travel_segment = _travel_segment_between(last_segment, overlays[0], prev_rotation)
+            if travel_segment is not None:
+                playback.append(travel_segment)
+                last_segment = travel_segment
+        if idx > 0:
+            prev_rotation, _prev_board = contexts[min(idx - 1, len(contexts) - 1)]
+            rotation_segment = rotation_segment_between(
+                last_segment,
+                prev_rotation,
                 rotation_deg,
                 board,
-                edge_length_mm=joint_params.edge_length_mm,
-                axis_to_origin_mm=jig_params.axis_to_origin_mm,
-                rotation_zero_deg=jig_params.rotation_zero_deg,
-                z_zero_tail_mm=machine_params.z_zero_tail_mm,
-                z_zero_pin_mm=machine_params.z_zero_pin_mm,
             )
-        )
+            if rotation_segment is not None:
+                playback.append(rotation_segment)
+                last_segment = rotation_segment
+        playback.extend(overlays)
+        if overlays:
+            last_segment = overlays[-1]
+            last_machine_z = last_segment.end_z_offset_mm + _z_ref_for_board(last_segment.board)
 
     return _beam_traces_from_playback(
         playback,
@@ -334,6 +508,7 @@ class PygameSimulationViewer:
         z_zero_pin_mm: float,
         z_positive_moves_bed_up: bool = True,
         time_scale: float = 1.0,
+        travel_time_scale: float = 3.0,
     ) -> None:
         self.traces = list(traces)
         self.edge_length_mm = edge_length_mm
@@ -344,6 +519,10 @@ class PygameSimulationViewer:
         self.z_zero_pin_mm = z_zero_pin_mm
         self.z_positive_moves_bed_up = z_positive_moves_bed_up
         self.time_scale = time_scale
+        self.travel_time_scale = max(travel_time_scale, 0.1)
+        for trace in self.traces:
+            if not trace.is_cut:
+                trace.duration *= self.travel_time_scale
         self.total_duration = sum(max(t.duration, 0.0) for t in self.traces)
         self._cumulative: List[float] = []
         running = 0.0
@@ -357,7 +536,7 @@ class PygameSimulationViewer:
         self.width = 1500
         self.height = 820
         self.padding = 18
-        self.hud_line_count = 6
+        self.hud_line_count = 7
         self.top_rect_pos = None
         self.top_rect_neg = None
         self.edge_rect = None
@@ -988,6 +1167,9 @@ class PygameSimulationViewer:
         clock = pygame.time.Clock()
         play_time = 0.0
         paused = False
+        min_scale = 0.1
+        max_scale = 20.0
+        scale_step = 1.25
         running = True
         while running:
             dt = clock.tick(60) / 1000.0
@@ -1002,6 +1184,10 @@ class PygameSimulationViewer:
                     if event.key == pygame.K_r:
                         play_time = 0.0
                         paused = False
+                    if event.key == pygame.K_LEFTBRACKET:
+                        self.time_scale = max(self.time_scale / scale_step, min_scale)
+                    if event.key == pygame.K_RIGHTBRACKET:
+                        self.time_scale = min(self.time_scale * scale_step, max_scale)
 
             if not paused and self.total_duration > 0:
                 play_time = min(play_time + dt * self.time_scale, self.total_duration)
@@ -1412,6 +1598,7 @@ class PygameSimulationViewer:
                 f"Bed Δ: {bed_offset_mm:+.3f} mm (Z+ bed {bed_dir})"
             ),
             f"Power: {trace.power_pct:.1f}% {'CUT' if trace.is_cut else 'MOVE'}",
+            f"Playback: {self.time_scale:.2f}x ([ slows, ] speeds)",
             "Space: pause/play | R: restart | Esc/Q: quit",
         ]
         line_h = self._hud_line_height_px()
