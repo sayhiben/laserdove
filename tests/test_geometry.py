@@ -41,9 +41,9 @@ def test_kerf_offset_moves_boundary_toward_keep_side_with_clearance():
     kerf_mm = 0.2
     clearance_mm = 0.1
     kerf_radius = kerf_mm / 2.0
-    clearance_shift = clearance_mm / 2.0
+    clearance_shift = clearance_mm / 4.0
 
-    # Keep on positive side: cut should land so the kerf edge is at +clearance/2.
+    # Keep on positive side: cut should land so the kerf edge is at +clearance/4.
     y_cut_pos = kerf_offset_boundary(
         y_geo=y_geo,
         kerf_mm=kerf_mm,
@@ -55,7 +55,7 @@ def test_kerf_offset_moves_boundary_toward_keep_side_with_clearance():
     # Effective kept boundary after the cut (kerf edge on keep side).
     assert abs((y_cut_pos + kerf_radius) - (y_geo + clearance_shift)) < 1e-9
 
-    # Keep on negative side: kerf edge should land at -clearance/2.
+    # Keep on negative side: kerf edge should land at -clearance/4.
     y_geo_neg = 10.0
     y_cut_neg = kerf_offset_boundary(
         y_geo=y_geo_neg,

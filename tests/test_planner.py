@@ -83,6 +83,25 @@ def _find_pocket_span_y(commands, pin_index: int, side: Side) -> float:
     raise AssertionError(f"Pocket span for pin {pin_index} {side.name} not found")
 
 
+def _kept_edge(
+    y_geo: float,
+    kerf_mm: float,
+    clearance_mm: float,
+    keep_positive: bool,
+    *,
+    is_tail_board: bool = False,
+) -> float:
+    y_cut = kerf_offset_boundary(
+        y_geo=y_geo,
+        kerf_mm=kerf_mm,
+        clearance_mm=clearance_mm,
+        keep_on_positive_side=keep_positive,
+        is_tail_board=is_tail_board,
+    )
+    kerf_radius = kerf_mm / 2.0
+    return y_cut + (kerf_radius if keep_positive else -kerf_radius)
+
+
 def test_pin_rotation_orientation_widens_at_bottom():
     joint = make_joint()
     jig = make_jig()
@@ -109,6 +128,50 @@ def test_pin_rotation_orientation_widens_at_bottom():
 
     assert bottom_width > top_width
     assert bottom_width == pytest.approx(top_width + expected_delta)
+
+
+def test_clearance_sets_socket_minus_pin_width():
+    joint = make_joint()
+    jig = make_jig()
+    layout = compute_tail_layout(joint)
+    pin_plan = compute_pin_plan(joint, jig, layout)
+
+    left_side = next(s for s in pin_plan.sides if s.pin_index == 1 and s.side == Side.LEFT)
+    right_side = next(s for s in pin_plan.sides if s.pin_index == 1 and s.side == Side.RIGHT)
+
+    pin_left = _kept_edge(
+        left_side.y_boundary_mm,
+        joint.kerf_pin_mm,
+        joint.clearance_mm,
+        keep_positive=True,
+    )
+    pin_right = _kept_edge(
+        right_side.y_boundary_mm,
+        joint.kerf_pin_mm,
+        joint.clearance_mm,
+        keep_positive=False,
+    )
+    pin_width = pin_right - pin_left
+
+    pocket_start = layout.half_pin_width + layout.tail_outer_width
+    pocket_end = pocket_start + layout.pin_outer_width
+    socket_left = _kept_edge(
+        pocket_start,
+        joint.kerf_tail_mm,
+        joint.clearance_mm,
+        keep_positive=False,
+        is_tail_board=True,
+    )
+    socket_right = _kept_edge(
+        pocket_end,
+        joint.kerf_tail_mm,
+        joint.clearance_mm,
+        keep_positive=True,
+        is_tail_board=True,
+    )
+    socket_width = socket_right - socket_left
+
+    assert socket_width - pin_width == pytest.approx(joint.clearance_mm, abs=1e-9)
 
 
 def test_pin_projection_accounts_for_axis_translation_per_rotation():

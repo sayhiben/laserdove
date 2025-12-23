@@ -73,11 +73,13 @@ def kerf_offset_boundary(
         Y coordinate (mm) of the cut centerline so the kept edge lands at the requested clearance.
     """
     kerf_radius = kerf_mm / 2.0
-    clearance_per_board = clearance_mm / 2.0
+    # clearance_mm is the total socket-minus-tail clearance at the face. Both boards
+    # apply it across two boundaries, so each boundary shifts by a quarter of the total.
+    clearance_per_boundary = clearance_mm / 4.0
 
     keep_sign = 1.0 if keep_on_positive_side else -1.0
-    # Shift the desired kept boundary toward the keep side by clearance/2.
-    boundary_shift = keep_sign * clearance_per_board
+    # Shift the desired kept boundary toward the keep side by clearance/4.
+    boundary_shift = keep_sign * clearance_per_boundary
 
     # Place the cut so that the kerf edge on the keep side sits at the shifted boundary.
     return y_geo + boundary_shift - keep_sign * kerf_radius

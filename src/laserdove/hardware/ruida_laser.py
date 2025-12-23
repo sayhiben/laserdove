@@ -384,7 +384,7 @@ class RuidaLaser:
             log.info("[RUIDA UDP] BLOW %s", "ON" if blow_on else "OFF")
             self._udp.send_packets(payload)
 
-    def _pre_cut_warmup(self) -> None:
+    def _pre_cut_warmup(self, *, origin_x: float, origin_y: float) -> None:
         if self.pre_cut_warmup_s <= 0:
             return
         outputs = []
@@ -408,10 +408,58 @@ class RuidaLaser:
             air_assist=True if self.air_assist else None,
             blow_on=True if self.inline_fan_on else None,
         )
-        if self.dry_run:
-            log.info("[RUIDA UDP] Dry-run: skipping warmup delay")
+        warmup_speed = max(min(self.z_speed_mm_s, 10.0), 1.0)
+        warmup_span = 1.0
+        leg_time = warmup_span / warmup_speed if warmup_speed > 0 else 0.0
+        if leg_time <= 0.0:
+            log.info("[RUIDA UDP] Warmup skipped: invalid speed/span")
             return
-        time.sleep(self.pre_cut_warmup_s)
+        legs = max(1, math.ceil(self.pre_cut_warmup_s / leg_time))
+        moves: List[RDMove] = [
+            RDMove(
+                x_mm=origin_x,
+                y_mm=origin_y,
+                speed_mm_s=warmup_speed,
+                power_pct=0.0,
+                is_cut=False,
+            )
+        ]
+        for idx in range(legs):
+            x_target = origin_x + warmup_span if idx % 2 == 0 else origin_x
+            moves.append(
+                RDMove(
+                    x_mm=x_target,
+                    y_mm=origin_y,
+                    speed_mm_s=warmup_speed,
+                    power_pct=0.0,
+                    is_cut=False,
+                )
+            )
+        if not math.isclose(moves[-1].x_mm, origin_x, abs_tol=1e-9):
+            moves.append(
+                RDMove(
+                    x_mm=origin_x,
+                    y_mm=origin_y,
+                    speed_mm_s=warmup_speed,
+                    power_pct=0.0,
+                    is_cut=False,
+                )
+            )
+        log.info(
+            "[RUIDA UDP] Warmup travel: span=%.1fmm speed=%.2fmm/s legs=%d",
+            warmup_span,
+            warmup_speed,
+            legs,
+        )
+        if self.dry_run:
+            log.info("[RUIDA UDP] Dry-run: skipping warmup job")
+            return
+        self.send_rd_job(
+            moves,
+            job_z_mm=None,
+            require_busy_transition=True,
+            start_z_mm=self.z,
+        )
 
     def move(self, x=None, y=None, z=None, speed=None) -> None:
         """
@@ -664,7 +712,7 @@ class RuidaLaser:
             for cmd in command_list
         )
         if self.pre_cut_warmup_s > 0 and not movement_only_mode and has_cut:
-            self._pre_cut_warmup()
+            self._pre_cut_warmup(origin_x=job_origin_x, origin_y=job_origin_y)
         current_power = 0.0
         current_speed: float | None = None
         cursor_x = job_origin_x

@@ -72,14 +72,14 @@ def plan_tail_board(
             y_geo=pocket_start_y,
             kerf_mm=joint_params.kerf_tail_mm,
             clearance_mm=joint_params.clearance_mm,
-            keep_on_positive_side=True,  # keep at Y > y0
+            keep_on_positive_side=False,  # keep at Y < y0
             is_tail_board=True,
         )
         y_right_top = kerf_offset_boundary(
             y_geo=pocket_end_y,
             kerf_mm=joint_params.kerf_tail_mm,
             clearance_mm=joint_params.clearance_mm,
-            keep_on_positive_side=False,  # keep at Y < y1
+            keep_on_positive_side=True,  # keep at Y > y1
             is_tail_board=True,
         )
         y_left_bottom = y_left_top - tail_widen_mm
