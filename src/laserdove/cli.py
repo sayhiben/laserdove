@@ -136,7 +136,6 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
 
         rotary = RealRotary(
             steps_per_rev=run_config.rotary_steps_per_rev,
-            microsteps=run_config.rotary_microsteps,
             driver=driver,
             max_step_rate_hz=run_config.rotary_max_step_rate_hz,
         )

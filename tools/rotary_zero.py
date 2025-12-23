@@ -42,7 +42,6 @@ class RotarySettings:
     cfg_path: Path | None
     rotary_backend: str
     steps_per_rev: float | None
-    microsteps: int | None
     step_pin: int | None
     dir_pin: int | None
     step_pin_pos: int | None
@@ -140,7 +139,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         help="Pulses per revolution from driver (same as backend.rotary_steps_per_rev).",
     )
-    ap.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step.")
     ap.add_argument("--rotary-step-pin", type=int, help="GPIO pin for STEP (negative).")
     ap.add_argument("--rotary-dir-pin", type=int, help="GPIO pin for DIR (negative).")
     ap.add_argument("--rotary-step-pin-pos", type=int, help="GPIO pin for STEP+ (optional).")
@@ -162,10 +160,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_rotary_backend(cfg_data: dict[str, Any]) -> str:
-    use_dummy = bool(_dict_get_nested(cfg_data, "backend.use_dummy", True))
     rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
     if rotary_backend is None:
-        rotary_backend = "dummy" if use_dummy else "real"
+        use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
+        if use_dummy is not None:
+            LOG.warning(
+                "backend.use_dummy is deprecated; set backend.rotary_backend instead"
+            )
+            rotary_backend = "dummy" if bool(use_dummy) else "real"
+        else:
+            rotary_backend = "dummy"
     return rotary_backend
 
 
@@ -240,6 +244,11 @@ def _resolve_settings(
 
     steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
     microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
+    if microsteps is not None and steps_per_rev is not None:
+        LOG.warning(
+            "backend.rotary_microsteps is deprecated; fold it into backend.rotary_steps_per_rev"
+        )
+        steps_per_rev = steps_per_rev * microsteps
     step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)
     dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)
     step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)
@@ -254,8 +263,12 @@ def _resolve_settings(
 
     if args.rotary_steps_per_rev is not None:
         steps_per_rev = args.rotary_steps_per_rev
-    if args.rotary_microsteps is not None:
-        microsteps = args.rotary_microsteps
+    cli_microsteps = getattr(args, "rotary_microsteps", None)
+    if cli_microsteps is not None and steps_per_rev is not None:
+        LOG.warning(
+            "CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev"
+        )
+        steps_per_rev = steps_per_rev * cli_microsteps
     if args.rotary_step_pin is not None:
         step_pin = args.rotary_step_pin
     if args.rotary_dir_pin is not None:
@@ -293,7 +306,6 @@ def _resolve_settings(
         cfg_path=cfg_path,
         rotary_backend=rotary_backend,
         steps_per_rev=steps_per_rev,
-        microsteps=microsteps,
         step_pin=step_pin,
         dir_pin=dir_pin,
         step_pin_pos=step_pin_pos,
@@ -347,19 +359,15 @@ def _build_rotary(settings: RotarySettings) -> tuple[RealRotary, object]:
 
     rotary = RealRotary(
         steps_per_rev=settings.steps_per_rev,
-        microsteps=settings.microsteps,
         driver=driver,
         max_step_rate_hz=settings.max_step_rate_hz,
     )
     return rotary, driver
 
 
-def _compute_step_deg(steps_per_rev: float | None, microsteps: int | None) -> float:
+def _compute_step_deg(steps_per_rev: float | None) -> float:
     if steps_per_rev and steps_per_rev > 0:
-        micro = microsteps or 1
-        if micro <= 0:
-            micro = 1
-        return 360.0 / (steps_per_rev * micro)
+        return 360.0 / steps_per_rev
     return 0.1
 
 
@@ -369,7 +377,7 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
     except Exception as exc:
         raise SystemExit(f"Interactive mode requires curses: {exc}") from exc
 
-    step_deg = _compute_step_deg(settings.steps_per_rev, settings.microsteps)
+    step_deg = _compute_step_deg(settings.steps_per_rev)
     zero_deg = settings.zero_deg
     status = "Ready."
 
@@ -412,10 +420,9 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
         lines = [
             "Rotary zeroing (interactive)",
             f"Config: {cfg_label}  Backend: {settings.rotary_backend}  Dry-run: {settings.dry_run}",
-            ("Speed: {:.2f} dps  Steps/rev: {}  Microsteps: {}  Step: {:.6f} deg").format(
+            ("Speed: {:.2f} dps  Steps/rev: {}  Step: {:.6f} deg").format(
                 settings.speed_dps,
                 settings.steps_per_rev,
-                settings.microsteps or 1,
                 step_deg,
             ),
             f"Current angle: {rotary.angle:.4f} deg  Stored zero: {zero_deg:.4f} deg",
@@ -510,12 +517,11 @@ def main() -> None:
     settings = _resolve_settings(args, cfg_data, cfg_path)
 
     LOG.info(
-        "Config=%s backend=%s dry_run=%s steps_per_rev=%s microsteps=%s max_rate_hz=%s",
+        "Config=%s backend=%s dry_run=%s steps_per_rev=%s max_rate_hz=%s",
         str(settings.cfg_path) if settings.cfg_path is not None else "none",
         settings.rotary_backend,
         settings.dry_run,
         settings.steps_per_rev,
-        settings.microsteps,
         settings.max_step_rate_hz,
     )
 

@@ -26,14 +26,12 @@ class RunConfig:
     mode: str
     dry_run: bool
     dry_run_rd: bool
-    backend_use_dummy: bool
     backend_host: str
     backend_port: int
     ruida_magic: int
     ruida_timeout_s: float
     ruida_source_port: int
     rotary_steps_per_rev: float
-    rotary_microsteps: Optional[int]
     rotary_step_pin: Optional[int]
     rotary_dir_pin: Optional[int]
     rotary_step_pin_pos: Optional[int]
@@ -158,9 +156,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--dovetail-angle-deg", type=float)
     p.add_argument("--tail-width-mm", type=float)
     p.add_argument("--clearance-mm", type=float)
+    p.add_argument("--kerf-mm", type=float)
     p.add_argument("--kerf-tail-mm", type=float)
     p.add_argument("--kerf-pin-mm", type=float)
-    p.add_argument("--axis-offset-mm", type=float)
     p.add_argument(
         "--axis-to-fence-mm",
         type=float,
@@ -176,9 +174,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--ruida-source-port", type=int, help="Local UDP source port (default 40200)")
     # Rotary tuning
     p.add_argument(
-        "--rotary-steps-per-rev", type=float, help="Full steps per revolution (default 200)"
+        "--rotary-steps-per-rev",
+        type=float,
+        help="Step pulses per revolution (includes microsteps; e.g. 4000)",
     )
-    p.add_argument("--rotary-microsteps", type=int, help="Microsteps per full step (driver DIP)")
     p.add_argument("--rotary-step-pin", type=int, help="BCM pin for STEP (real rotary only)")
     p.add_argument("--rotary-dir-pin", type=int, help="BCM pin for DIR (real rotary only)")
     p.add_argument(
@@ -260,21 +259,25 @@ def _dict_get_nested(data: dict, key: str, default=None):
     return current_level.get(parts[-1], default)
 
 
-def load_backend_config(cfg_data: dict) -> tuple[bool, str, int, int]:
+def load_backend_config(cfg_data: dict) -> tuple[str, int, int, Optional[bool]]:
     """
-    Return (use_dummy, ruida_host, ruida_port, ruida_magic)
+    Return (ruida_host, ruida_port, ruida_magic, deprecated_use_dummy)
 
     Args:
         cfg_data: Parsed config dictionary.
 
     Returns:
-        Tuple of (use_dummy_backend, ruida_host, ruida_port, swizzle_magic).
+        Tuple of (ruida_host, ruida_port, swizzle_magic, use_dummy if present).
     """
-    use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", True)
+    use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
     host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
     port = _dict_get_nested(cfg_data, "backend.ruida_port", 50200)
     magic = _dict_get_nested(cfg_data, "backend.ruida_magic", 0x88)
-    return use_dummy, host, port, magic
+    if use_dummy is not None:
+        log.warning(
+            "backend.use_dummy is deprecated; set backend.laser_backend and backend.rotary_backend instead"
+        )
+    return host, port, magic, use_dummy
 
 
 def load_config_and_args(args: argparse.Namespace) -> RunConfig:
@@ -311,17 +314,39 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         except Exception as e:  # TOML parse errors, permission issues, etc.
             raise SystemExit(f"Failed to load config file {cfg_path}: {e}") from e
 
+    thickness_mm = _dict_get_nested(cfg_data, "joint.thickness_mm", 6.35)
+    edge_length_mm = _dict_get_nested(cfg_data, "joint.edge_length_mm", 100.0)
+    dovetail_angle_deg = _dict_get_nested(cfg_data, "joint.dovetail_angle_deg", 8.0)
+    num_tails = _dict_get_nested(cfg_data, "joint.num_tails", 3)
+    tail_outer_width_mm = _dict_get_nested(cfg_data, "joint.tail_outer_width_mm", 20.0)
+    clearance_mm = _dict_get_nested(cfg_data, "joint.clearance_mm", 0.05)
+
+    kerf_mm_cfg = _dict_get_nested(cfg_data, "joint.kerf_mm", None)
+    kerf_mm = kerf_mm_cfg if kerf_mm_cfg is not None else 0.15
+    kerf_tail_cfg = _dict_get_nested(cfg_data, "joint.kerf_tail_mm", None)
+    kerf_pin_cfg = _dict_get_nested(cfg_data, "joint.kerf_pin_mm", None)
+    kerf_tail_mm = kerf_tail_cfg if kerf_tail_cfg is not None else kerf_mm
+    kerf_pin_mm = kerf_pin_cfg if kerf_pin_cfg is not None else kerf_mm
+
+    if (
+        _dict_get_nested(cfg_data, "joint.tail_depth_mm", None) is not None
+        or _dict_get_nested(cfg_data, "joint.socket_depth_mm", None) is not None
+    ):
+        log.warning(
+            "joint.tail_depth_mm and joint.socket_depth_mm are derived from thickness_mm and ignored"
+        )
+
     joint_params = JointParams(
-        thickness_mm=_dict_get_nested(cfg_data, "joint.thickness_mm", 6.35),
-        edge_length_mm=_dict_get_nested(cfg_data, "joint.edge_length_mm", 100.0),
-        dovetail_angle_deg=_dict_get_nested(cfg_data, "joint.dovetail_angle_deg", 8.0),
-        num_tails=_dict_get_nested(cfg_data, "joint.num_tails", 3),
-        tail_outer_width_mm=_dict_get_nested(cfg_data, "joint.tail_outer_width_mm", 20.0),
-        tail_depth_mm=_dict_get_nested(cfg_data, "joint.tail_depth_mm", 6.35),
-        socket_depth_mm=_dict_get_nested(cfg_data, "joint.socket_depth_mm", 6.6),
-        clearance_mm=_dict_get_nested(cfg_data, "joint.clearance_mm", 0.05),
-        kerf_tail_mm=_dict_get_nested(cfg_data, "joint.kerf_tail_mm", 0.15),
-        kerf_pin_mm=_dict_get_nested(cfg_data, "joint.kerf_pin_mm", 0.15),
+        thickness_mm=thickness_mm,
+        edge_length_mm=edge_length_mm,
+        dovetail_angle_deg=dovetail_angle_deg,
+        num_tails=num_tails,
+        tail_outer_width_mm=tail_outer_width_mm,
+        tail_depth_mm=thickness_mm,
+        socket_depth_mm=thickness_mm,
+        clearance_mm=clearance_mm,
+        kerf_tail_mm=kerf_tail_mm,
+        kerf_pin_mm=kerf_pin_mm,
     )
 
     machine_params = MachineParams(
@@ -349,6 +374,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     if args.thickness_mm is not None:
         joint_params.thickness_mm = args.thickness_mm
         joint_params.tail_depth_mm = joint_params.thickness_mm
+        joint_params.socket_depth_mm = joint_params.thickness_mm
     if args.num_tails is not None:
         joint_params.num_tails = args.num_tails
     if args.dovetail_angle_deg is not None:
@@ -357,23 +383,30 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         joint_params.tail_outer_width_mm = args.tail_width_mm
     if args.clearance_mm is not None:
         joint_params.clearance_mm = args.clearance_mm
+    if args.kerf_mm is not None:
+        joint_params.kerf_tail_mm = args.kerf_mm
+        joint_params.kerf_pin_mm = args.kerf_mm
     if args.kerf_tail_mm is not None:
         joint_params.kerf_tail_mm = args.kerf_tail_mm
     if args.kerf_pin_mm is not None:
         joint_params.kerf_pin_mm = args.kerf_pin_mm
 
-    axis_to_origin_cfg = _dict_get_nested(cfg_data, "jig.axis_to_origin_mm", None)
-    axis_to_origin_explicit = axis_to_origin_cfg is not None
     axis_to_fence_cfg = _dict_get_nested(cfg_data, "jig.axis_to_fence_mm", None)
-    if axis_to_origin_cfg is None:
-        axis_to_origin_cfg = 30.0
-    axis_to_origin_mm = axis_to_origin_cfg
+    axis_to_origin_cfg = _dict_get_nested(cfg_data, "jig.axis_to_origin_mm", None)
+    if axis_to_fence_cfg is not None and axis_to_origin_cfg is not None:
+        log.warning(
+            "jig.axis_to_origin_mm is deprecated; using axis_to_fence_mm + thickness instead"
+        )
     if axis_to_fence_cfg is not None:
-        if axis_to_origin_explicit:
-            log.warning(
-                "Both jig.axis_to_origin_mm and jig.axis_to_fence_mm set; using axis_to_fence_mm + thickness"
-            )
         axis_to_origin_mm = axis_to_fence_cfg + joint_params.thickness_mm
+    elif axis_to_origin_cfg is not None:
+        log.warning(
+            "jig.axis_to_origin_mm is deprecated; set jig.axis_to_fence_mm instead"
+        )
+        axis_to_origin_mm = axis_to_origin_cfg
+    else:
+        axis_to_origin_mm = 30.0
+        log.warning("jig.axis_to_fence_mm not set; defaulting axis_to_origin_mm to 30.0")
 
     jig_params = JigParams(
         axis_to_origin_mm=axis_to_origin_mm,
@@ -384,8 +417,6 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     # CLI overrides (jig/machine params)
     if args.axis_to_fence_mm is not None:
         jig_params.axis_to_origin_mm = args.axis_to_fence_mm + joint_params.thickness_mm
-    if args.axis_offset_mm is not None:
-        jig_params.axis_to_origin_mm = args.axis_offset_mm
     if args.cut_overtravel_mm is not None:
         machine_params.cut_overtravel_mm = args.cut_overtravel_mm
     if getattr(args, "air_assist", None) is not None:
@@ -397,11 +428,16 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     if getattr(args, "z_positive_moves_bed_up", None) is not None:
         machine_params.z_positive_moves_bed_up = bool(args.z_positive_moves_bed_up)
 
-    backend_use_dummy, backend_host, backend_port, ruida_magic = load_backend_config(cfg_data)
+    backend_host, backend_port, ruida_magic, use_dummy = load_backend_config(cfg_data)
     ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)
     ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
     rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
     rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
+    if rotary_microsteps is not None and rotary_steps_per_rev is not None:
+        log.warning(
+            "backend.rotary_microsteps is deprecated; fold it into backend.rotary_steps_per_rev"
+        )
+        rotary_steps_per_rev = rotary_steps_per_rev * rotary_microsteps
     # Default pins match the known working script (BOARD/physical numbers): pulse PUL+/DIR+, PUL-/DIR- tied to GND.
     rotary_pin_numbering = _dict_get_nested(
         cfg_data, "backend.rotary_pin_numbering", "board"
@@ -431,8 +467,12 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         ruida_source_port = args.ruida_source_port
     if args.rotary_steps_per_rev is not None:
         rotary_steps_per_rev = args.rotary_steps_per_rev
-    if args.rotary_microsteps is not None:
-        rotary_microsteps = args.rotary_microsteps
+    cli_microsteps = getattr(args, "rotary_microsteps", None)
+    if cli_microsteps is not None and rotary_steps_per_rev is not None:
+        log.warning(
+            "CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev"
+        )
+        rotary_steps_per_rev = rotary_steps_per_rev * cli_microsteps
     if args.rotary_step_pin is not None:
         rotary_step_pin = args.rotary_step_pin
     if args.rotary_dir_pin is not None:
@@ -467,9 +507,19 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
 
     # Default backend selection preserves legacy use_dummy behavior.
     if laser_backend is None:
-        laser_backend = "dummy" if backend_use_dummy else "ruida"
+        if use_dummy is True:
+            laser_backend = "dummy"
+        elif use_dummy is False:
+            laser_backend = "ruida"
+        else:
+            laser_backend = "dummy"
     if rotary_backend is None:
-        rotary_backend = "dummy" if backend_use_dummy else "real"
+        if use_dummy is True:
+            rotary_backend = "dummy"
+        elif use_dummy is False:
+            rotary_backend = "real"
+        else:
+            rotary_backend = "dummy"
 
     valid_laser_backends = {"dummy", "ruida"}
     valid_rotary_backends = {"dummy", "real"}
@@ -500,14 +550,12 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         mode=args.mode,
         dry_run=args.dry_run,
         dry_run_rd=dry_run_rd,
-        backend_use_dummy=backend_use_dummy,
         backend_host=backend_host,
         backend_port=backend_port,
         ruida_magic=ruida_magic,
         ruida_timeout_s=ruida_timeout_s,
         ruida_source_port=ruida_source_port,
         rotary_steps_per_rev=rotary_steps_per_rev,
-        rotary_microsteps=rotary_microsteps,
         rotary_step_pin=rotary_step_pin,
         rotary_dir_pin=rotary_dir_pin,
         rotary_step_pin_pos=rotary_step_pin_pos,

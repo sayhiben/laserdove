@@ -20,8 +20,8 @@ class JointParams:
     dovetail_angle_deg: float  # β (used by both pins and tails in v1)
     num_tails: int  # N
     tail_outer_width_mm: float  # W_tail at outer face (X=0)
-    tail_depth_mm: float  # D; depth into tail board
-    socket_depth_mm: float  # D_pin; depth into pin board
+    tail_depth_mm: float  # D; depth into tail board (derived from thickness_mm)
+    socket_depth_mm: float  # D_pin; depth into pin board (derived from thickness_mm)
     clearance_mm: float  # C; socket-face minus tail-face width
     kerf_tail_mm: float  # k_tail
     kerf_pin_mm: float  # k_pin

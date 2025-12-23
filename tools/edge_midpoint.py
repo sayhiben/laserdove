@@ -43,7 +43,7 @@ LOG = logging.getLogger("edge_midpoint")
 @dataclass
 class MidpointSettings:
     cfg_path: Path | None
-    use_dummy: bool
+    laser_backend: str
     host: str
     port: int
     source_port: int
@@ -204,7 +204,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--force",
         action="store_true",
-        help="Run even if backend.use_dummy is true in config.",
+        help="Run even if backend.laser_backend is dummy in config.",
     )
     ap.add_argument("--log-level", default="INFO", help="Log level (default INFO).")
     return ap
@@ -213,7 +213,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _resolve_settings(
     args: argparse.Namespace, cfg_data: dict[str, Any], cfg_path: Path | None
 ) -> MidpointSettings:
-    use_dummy = bool(_dict_get_nested(cfg_data, "backend.use_dummy", True))
+    laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
+    if laser_backend is None:
+        use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
+        if use_dummy is not None:
+            LOG.warning(
+                "backend.use_dummy is deprecated; set backend.laser_backend instead"
+            )
+            laser_backend = "dummy" if bool(use_dummy) else "ruida"
+        else:
+            laser_backend = "dummy"
     host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
     port = int(_dict_get_nested(cfg_data, "backend.ruida_port", 50200))
     source_port = int(_dict_get_nested(cfg_data, "backend.ruida_source_port", 40200))
@@ -239,7 +248,7 @@ def _resolve_settings(
 
     return MidpointSettings(
         cfg_path=cfg_path,
-        use_dummy=use_dummy,
+        laser_backend=str(laser_backend).lower(),
         host=str(host),
         port=port,
         source_port=source_port,
@@ -267,10 +276,10 @@ def main() -> None:
     cfg_data, cfg_path = _load_config(args.config)
     settings = _resolve_settings(args, cfg_data, cfg_path)
 
-    if settings.use_dummy and not settings.force:
+    if settings.laser_backend == "dummy" and not settings.force:
         raise SystemExit(
-            "backend.use_dummy is true; refusing to move the head. "
-            "Set use_dummy=false or pass --force."
+            "backend.laser_backend is dummy; refusing to move the head. "
+            "Set backend.laser_backend=ruida or pass --force."
         )
 
     laser = RuidaLaser(

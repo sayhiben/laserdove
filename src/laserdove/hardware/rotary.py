@@ -188,7 +188,6 @@ class RealRotary(RotaryInterface):
     def __init__(
         self,
         steps_per_rev: float | None = 4000.0,
-        microsteps: int | None = None,
         driver: Optional[object] = None,
         max_step_rate_hz: float | None = 500.0,
     ) -> None:
@@ -197,19 +196,16 @@ class RealRotary(RotaryInterface):
 
         Args:
             steps_per_rev: Full steps per revolution (pre-microstep).
-            microsteps: Microstep setting of the driver.
             driver: Stepper driver object with move_steps.
             max_step_rate_hz: Optional cap on step rate.
         """
         self.angle = 0.0
         self.steps_per_rev = steps_per_rev
-        self.microsteps = microsteps
         self.driver = driver or LoggingStepperDriver()
         self.max_step_rate_hz = max_step_rate_hz
         log.info(
-            "RealRotary initialized (steps_per_rev=%s microsteps=%s max_step_rate_hz=%s)",
+            "RealRotary initialized (steps_per_rev=%s max_step_rate_hz=%s)",
             steps_per_rev,
-            microsteps,
             max_step_rate_hz,
         )
 
@@ -225,8 +221,7 @@ class RealRotary(RotaryInterface):
         delta = angle_deg - prev_angle
         log.info("[ROTARY] rotate_to θ=%.3f° (Δ=%.3f°) at %.1f dps", angle_deg, delta, speed_dps)
         if self.steps_per_rev:
-            micro = self.microsteps or 1
-            steps = int(round((delta / 360.0) * self.steps_per_rev * micro))
+            steps = int(round((delta / 360.0) * self.steps_per_rev))
             duration_s = abs(delta) / speed_dps if speed_dps > 0 else 0.0
             step_rate_hz = (abs(steps) / duration_s) if duration_s > 0 else 0.0
             if self.max_step_rate_hz and step_rate_hz > self.max_step_rate_hz:
@@ -237,9 +232,8 @@ class RealRotary(RotaryInterface):
                 )
                 step_rate_hz = self.max_step_rate_hz
             log.debug(
-                "Computed step target: %d steps (microsteps=%s, rate=%.1f Hz)",
+                "Computed step target: %d steps (rate=%.1f Hz)",
                 steps,
-                micro,
                 step_rate_hz,
             )
             if hasattr(self.driver, "move_steps"):

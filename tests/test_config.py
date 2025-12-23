@@ -24,9 +24,9 @@ def make_args(**overrides) -> argparse.Namespace:
         dovetail_angle_deg=None,
         tail_width_mm=None,
         clearance_mm=None,
+        kerf_mm=None,
         kerf_tail_mm=None,
         kerf_pin_mm=None,
-        axis_offset_mm=None,
         axis_to_fence_mm=None,
         cut_overtravel_mm=None,
         log_level="INFO",
@@ -37,7 +37,6 @@ def make_args(**overrides) -> argparse.Namespace:
         ruida_timeout_s=None,
         ruida_source_port=None,
         rotary_steps_per_rev=None,
-        rotary_microsteps=None,
         rotary_step_pin=None,
         rotary_dir_pin=None,
         rotary_step_pin_pos=None,
@@ -67,11 +66,12 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert rc.mode == "both"
     assert rc.dry_run is False
     assert rc.simulate is False
-    assert rc.backend_use_dummy is True
     assert rc.backend_host == "192.168.1.100"
     assert rc.backend_port == 50200
     assert rc.laser_backend == "dummy"
     assert rc.rotary_backend == "dummy"
+    assert rc.joint_params.tail_depth_mm == rc.joint_params.thickness_mm
+    assert rc.joint_params.socket_depth_mm == rc.joint_params.thickness_mm
     assert rc.rotary_step_pin is None
     assert rc.rotary_dir_pin is None
     assert rc.rotary_step_pin_pos == 11
@@ -123,7 +123,7 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         edge_length_mm = 50.0
         num_tails = 2
         [jig]
-        axis_to_origin_mm = 40.0
+        axis_to_fence_mm = 40.0
         [machine]
         cut_speed_tail_mm_s = 12.0
         """
@@ -132,7 +132,7 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
         config=cfg_path,
         thickness_mm=7.0,  # override thickness and tail depth
         clearance_mm=0.2,
-        axis_offset_mm=55.0,
+        axis_to_fence_mm=55.0,
         mode="pins",
         dry_run=True,
         simulate=True,
@@ -144,17 +144,17 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
 
     assert rc.joint_params.thickness_mm == 7.0
     assert rc.joint_params.tail_depth_mm == 7.0  # thickness override also updates tail depth
+    assert rc.joint_params.socket_depth_mm == 7.0
     assert rc.joint_params.edge_length_mm == 50.0
     assert rc.joint_params.clearance_mm == 0.2
     assert rc.joint_params.num_tails == 2
 
-    assert rc.jig_params.axis_to_origin_mm == 55.0  # CLI override wins over file
+    assert rc.jig_params.axis_to_origin_mm == 62.0  # CLI override wins over file
     assert rc.machine_params.cut_speed_tail_mm_s == 12.0
 
     assert rc.mode == "pins"
     assert rc.dry_run is True
     assert rc.simulate is True
-    assert rc.backend_use_dummy is True
     assert rc.backend_host == "192.168.1.100"
     assert rc.backend_port == 50200
     assert rc.laser_backend == "dummy"
@@ -188,7 +188,6 @@ def test_backend_overrides_and_movement_only(tmp_path):
 
     rc = load_config_and_args(args)
 
-    assert rc.backend_use_dummy is False
     assert rc.backend_host == "10.0.0.5"
     assert rc.backend_port == 60000
     assert rc.laser_backend == "ruida"
@@ -228,10 +227,10 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
         num_tails=5,
         dovetail_angle_deg=10.0,
         tail_width_mm=12.0,
+        kerf_mm=0.18,
         kerf_tail_mm=0.2,
         kerf_pin_mm=0.25,
         rotary_steps_per_rev=1234.0,
-        rotary_microsteps=8,
         rotary_enable_pin=7,
         rotary_alarm_pin=8,
         rotary_max_step_rate_hz=900.0,
@@ -251,7 +250,6 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
     assert rc.joint_params.kerf_tail_mm == 0.2
     assert rc.joint_params.kerf_pin_mm == 0.25
     assert rc.rotary_steps_per_rev == 1234.0
-    assert rc.rotary_microsteps == 8
     assert rc.rotary_enable_pin == 7
     assert rc.rotary_alarm_pin == 8
     assert rc.rotary_max_step_rate_hz == 900.0
@@ -271,7 +269,6 @@ def test_axis_to_fence_uses_current_thickness(tmp_path):
         [joint]
         thickness_mm = 6.0
         [jig]
-        axis_to_origin_mm = 40.0
         axis_to_fence_mm = 20.0
         """
     )

@@ -43,7 +43,7 @@
 ## Commit & Pull Request Guidelines
 - Always review `AGENTS.md`, `README.md`, and `reference/index.html` for project and reference context before answering prompts.
 - Match the history’s style: short, imperative, capitalized subjects (e.g., “Enhance configuration and backend handling”).
-- In PRs, state scope, configs used, and test commands run; call out hardware-impacting changes and whether `backend.use_dummy` was true.
+- In PRs, state scope, configs used, and test commands run; call out hardware-impacting changes and whether `backend.laser_backend`/`backend.rotary_backend` targeted real devices.
 - Update `README.md` or `example-config.toml` when behavior or defaults change; include dry-run output excerpts only when they clarify behavior.
 - Any new file added under `reference/` must be accompanied by an entry in `reference/index.html`, keeping the table’s current columns intact.
 - PDF->Markdown conversion tool lives at `tools/pdf_to_md.py` (uses PyMuPDF). Run `python tools/pdf_to_md.py --root reference` to regenerate .md and images; filters header/footer and tiny images by default.
@@ -56,7 +56,7 @@
 - Do not send jobs to real hardware until a dry-run, simulation, and at least one movement-only pass have completed cleanly with the intended config.
 - Use `--movement-only`/`--reset` to force travel-only RD jobs with power 0; `--save-rd-dir` is helpful for inspecting what would be sent.
 - Validate inputs before executing plans (`validation.py` covers core checks); extend it when adding new parameters or motion types.
-- Prefer `jig.axis_to_fence_mm` to auto-derive `axis_to_origin_mm` from thickness; set `axis_to_origin_mm` only when you need an explicit override.
+- Use `jig.axis_to_fence_mm` to derive `axis_to_origin_mm` from thickness; `axis_to_origin_mm` is no longer a config knob.
 - RD File Inspection
   - You can design in LightBurn, export the generated `.rd` file, and decode it locally (unswizzle with magic 0x88) to inspect layer settings and embedded commands (e.g., Z offsets via 0x80 0x03).
   - When validating RD generation, a quick path is to `--save-rd-dir`, then decode with `tools/rd_parser.py` (Z offsets, bbox, speeds) or replay with `--simulate --simulate-rd-dir rd_out` to compare the emitted Ruida commands against the planned moves.

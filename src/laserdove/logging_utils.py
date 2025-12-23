@@ -62,6 +62,13 @@ class DedupStreamHandler(logging.StreamHandler):
         """Flush the currently buffered repeated message (if any)."""
         if self._last_rendered is None:
             return
+        if getattr(self.stream, "closed", False):
+            self._last_rendered = None
+            self._last_key = None
+            self._repeat_count = 0
+            self._repeat_start = None
+            self._last_time = None
+            return
 
         if (
             self._repeat_count > 1

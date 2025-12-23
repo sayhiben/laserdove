@@ -11,7 +11,7 @@ class CaptureDriver:
 
 def test_real_rotary_computes_steps_and_calls_driver():
     driver = CaptureDriver()
-    rotary = RealRotary(steps_per_rev=4000.0, microsteps=1, driver=driver, max_step_rate_hz=500.0)
+    rotary = RealRotary(steps_per_rev=4000.0, driver=driver, max_step_rate_hz=500.0)
     rotary.rotate_to(90.0, speed_dps=180.0)  # quarter turn => raw rate 2000 Hz, capped to 500
     assert driver.calls, "Driver should be invoked"
     steps, rate = driver.calls[0]
@@ -36,6 +36,6 @@ def test_real_rotary_handles_driver_exception(capfd):
             raise RuntimeError("fail")
 
     driver = FailingDriver()
-    rotary = RealRotary(steps_per_rev=4000.0, microsteps=1, driver=driver, max_step_rate_hz=1000.0)
+    rotary = RealRotary(steps_per_rev=4000.0, driver=driver, max_step_rate_hz=1000.0)
     rotary.rotate_to(10.0, speed_dps=100.0)
     assert driver.calls == 1

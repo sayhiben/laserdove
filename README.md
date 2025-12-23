@@ -76,26 +76,25 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 | Option | Default (config) | Values | Description |
 | --- | --- | --- | --- |
 | `--edge-length-mm` | `100.0` | float | Joint edge length. |
-| `--thickness-mm` | `6.35` | float | Board thickness (also sets tail depth). |
+| `--thickness-mm` | `6.35` | float | Board thickness (also sets tail/socket depths). |
 | `--num-tails` | `3` | int | Tail count. |
 | `--dovetail-angle-deg` | `8.0` | float | Tail angle. |
 | `--tail-width-mm` | `20.0` | float | Tail outer width. |
-| `--clearance-mm` | `0.05` | float | Socket minus tail clearance. |
+| `--clearance-mm` | `0.05` | float | Total socket-minus-tail clearance across the face. |
+| `--kerf-mm` | `0.15` | float | Kerf applied to both boards unless overridden. |
 | `--kerf-tail-mm` | `0.15` | float | Kerf for tail board cuts. |
 | `--kerf-pin-mm` | `0.15` | float | Kerf for pin board cuts. |
-| `--axis-to-fence-mm` | none | float | Axis center to fence top; adds thickness to derive `axis_to_origin_mm`. |
-| `--axis-offset-mm` | `30.0` | float | Axis center to top-of-board distance (`axis_to_origin_mm`). |
+| `--axis-to-fence-mm` | none | float | Axis center to fence top; adds thickness to derive the top-surface radius. |
 | `--cut-overtravel-mm` | `0.5` | float | Extra X depth to extend pin cuts past the edge for through/finger joints. |
 
 ### Hardware/backends
 | Option | Default (config) | Values | Description |
 | --- | --- | --- | --- |
-| `--laser-backend` | `dummy` if `backend.use_dummy` else `ruida` | `dummy` \| `ruida` | Laser transport. |
-| `--rotary-backend` | `dummy` if `backend.use_dummy` else `real` | `dummy` \| `real` | Rotary driver. |
+| `--laser-backend` | `dummy` | `dummy` \| `ruida` | Laser transport. |
+| `--rotary-backend` | `dummy` | `dummy` \| `real` | Rotary driver. |
 | `--ruida-timeout-s` | `3.0` | float | UDP ACK timeout. |
 | `--ruida-source-port` | `40200` | int | Local UDP source port. |
-| `--rotary-steps-per-rev` | `4000.0` | float | Steps per revolution (includes microsteps). |
-| `--rotary-microsteps` | none | int | Microsteps per full step (driver DIP). |
+| `--rotary-steps-per-rev` | `4000.0` | float | Step pulses per revolution (includes microsteps). |
 | `--rotary-step-pin` / `--rotary-dir-pin` | none | int | BCM pins for STEP-/DIR- (real rotary). |
 | `--rotary-step-pin-pos` / `--rotary-dir-pin-pos` | `11` / `13` | int | BCM pins for STEP+/DIR+ (default high). |
 | `--rotary-enable-pin` / `--rotary-alarm-pin` | none | int | Optional enable/alarm pins. |
@@ -106,8 +105,8 @@ python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out 
 ## Configuration file
 - Copy `example-config.toml` to `config.toml` and edit.
 - Sections:
-  - `[joint]`: geometry inputs (length, tails, angle, kerf, clearance).
-  - `[jig]`: rotary geometry (`axis_to_origin_mm` or `axis_to_fence_mm`, zero angle, rotation speed).
+  - `[joint]`: geometry inputs (length, tails, angle, kerf_mm with optional overrides, clearance; depths derive from thickness).
+  - `[jig]`: rotary geometry (`axis_to_fence_mm`, zero angle, rotation speed).
   - `[machine]`: speeds, powers, Z zeros, air assist/inline fan, warmup, Z direction.
   - `[backend]`: hardware targets and GPIO pins (dummy vs Ruida/real rotary, host/port, RD save dir).
 - CLI flags override TOML values.

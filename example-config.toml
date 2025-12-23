@@ -1,18 +1,16 @@
 # example-config.toml
 [joint]
-thickness_mm        = 6.0
+thickness_mm        = 6.0   # also sets tail/socket depth
 edge_length_mm      = 77.5
 dovetail_angle_deg  = 8.0
 num_tails           = 3
 tail_outer_width_mm = 14.0
-tail_depth_mm       = 6.0
-socket_depth_mm     = 6.0
-clearance_mm        = 0.05
-kerf_tail_mm        = 0.075
-kerf_pin_mm         = 0.075
+clearance_mm        = 0.05  # total socket-minus-tail gap across the face
+kerf_mm             = 0.075
+# kerf_tail_mm      = 0.075  # optional per-board override
+# kerf_pin_mm       = 0.075  # optional per-board override
 
 [jig]
-# axis_to_origin_mm = 35.2  # axis center to top of board (optional override)
 axis_to_fence_mm    = 29.2  # axis center to fence top; adds thickness
 rotation_zero_deg   = 0.0
 rotation_speed_dps  = 30.0
@@ -34,13 +32,9 @@ pre_cut_warmup_s    = 20.0    # seconds to run air assist/fan before first cut
 z_positive_moves_bed_up = false  # set false if your controller treats Z+ as lowering the bed
 
 [backend]
-# If use_dummy = true, laserdove.main will use DummyLaser/DummyRotary
-# regardless of ruida_host.
-use_dummy = false
 laser_backend = "ruida"  # "dummy" or "ruida"
 rotary_backend = "real" # "dummy" or "real"
 rotary_steps_per_rev = 4000.0  # pulses per rev from driver (CL57T default)
-rotary_microsteps = 1         # optional extra microstep multiplier
 rotary_pin_numbering = "board"  # "board" for physical pin numbers, "bcm" for BCM
 rotary_max_step_rate_hz = 500.0
 # Keep the laser off but still move the head when talking to a real Ruida.
