@@ -46,3 +46,37 @@ def test_run_sequence_inserts_origin_move_between_blocks(monkeypatch):
     # Subsequent blocks should start by returning to the original job origin (100, 200).
     assert second_block[0].x_mm == 100.0
     assert second_block[0].y_mm == 200.0
+
+
+def test_run_sequence_places_origin_move_after_leading_z(monkeypatch):
+    """Leading Z-only moves should stay before the origin move to add clearance first."""
+
+    ruida = RuidaLaser(host="0.0.0.0", dry_run=True)
+    ruida._read_machine_state = lambda read_positions=True: ruida.MachineState(  # type: ignore[attr-defined]
+        status_bits=0, x_mm=100.0, y_mm=200.0, z_mm=0.0
+    )
+
+    recorded_blocks = []
+
+    def fake_send_rd_job(moves, **kwargs):
+        recorded_blocks.append(moves)
+
+    monkeypatch.setattr(ruida, "send_rd_job", fake_send_rd_job)
+
+    commands = [
+        Command(type=CommandType.MOVE, y=10.0, speed_mm_s=150.0),
+        Command(type=CommandType.ROTATE, angle_deg=45.0, speed_mm_s=30.0),
+        Command(type=CommandType.MOVE, z=1.0, speed_mm_s=5.0),
+        Command(type=CommandType.MOVE, y=20.0, speed_mm_s=100.0),
+    ]
+
+    ruida.run_sequence_with_rotary(commands, DummyRotary(), edge_length_mm=None)
+
+    assert len(recorded_blocks) >= 2
+    second_block = recorded_blocks[1]
+
+    assert second_block[0].z_mm is not None
+    assert second_block[1].x_mm == 100.0
+    assert second_block[1].y_mm == 200.0
+    assert second_block[1].z_mm is None
+    assert second_block[1].speed_mm_s == 150.0

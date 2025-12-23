@@ -788,20 +788,30 @@ class RuidaLaser:
                 pass
             needs_origin_move = block_index > 0
             origin_move_speed = origin_speed or current_speed or self.z_speed_mm_s
-            payload_moves = (
-                [
-                    RDMove(
-                        x_mm=origin_x,
-                        y_mm=origin_y,
-                        speed_mm_s=origin_move_speed,
-                        power_pct=0.0,
-                        is_cut=False,
+            payload_moves = block_moves
+            if needs_origin_move:
+                origin_move = RDMove(
+                    x_mm=origin_x,
+                    y_mm=origin_y,
+                    speed_mm_s=origin_move_speed,
+                    power_pct=0.0,
+                    is_cut=False,
+                )
+                # If a block starts with Z-only moves, keep them first so Z clearance
+                # happens before any XY travel.
+                leading_z_count = 0
+                for mv in payload_moves:
+                    if mv.z_mm is None:
+                        break
+                    leading_z_count += 1
+                if leading_z_count:
+                    payload_moves = (
+                        payload_moves[:leading_z_count]
+                        + [origin_move]
+                        + payload_moves[leading_z_count:]
                     )
-                ]
-                + block_moves
-                if needs_origin_move
-                else block_moves
-            )
+                else:
+                    payload_moves = [origin_move] + payload_moves
             start_z_display = f"{start_z_mm:.3f}" if start_z_mm is not None else "unknown"
             block_start_display = f"{block_start_z:.3f}" if block_start_z is not None else "unknown"
             log.info(
