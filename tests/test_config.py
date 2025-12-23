@@ -45,7 +45,7 @@ def make_args(**overrides) -> argparse.Namespace:
         rotary_alarm_pin=None,
         rotary_invert_dir=False,
         rotary_max_step_rate_hz=None,
-        rotary_pin_numbering="board",
+        rotary_pin_numbering=None,
         laser_backend=None,
         rotary_backend=None,
         save_rd_dir=None,
@@ -65,25 +65,26 @@ def test_load_config_defaults_without_file(tmp_path, monkeypatch):
     assert isinstance(rc.machine_params, MachineParams)
     assert rc.mode == "both"
     assert rc.dry_run is False
-    assert rc.simulate is False
-    assert rc.backend_host == "192.168.1.100"
-    assert rc.backend_port == 50200
-    assert rc.laser_backend == "dummy"
-    assert rc.rotary_backend == "dummy"
+    assert rc.simulation.enabled is False
+    assert rc.backend.ruida_host == "192.168.1.100"
+    assert rc.backend.ruida_port == 50200
+    assert rc.backend.laser_backend == "dummy"
+    assert rc.backend.rotary_backend == "dummy"
     assert rc.joint_params.tail_depth_mm == rc.joint_params.thickness_mm
     assert rc.joint_params.socket_depth_mm == rc.joint_params.thickness_mm
-    assert rc.rotary_step_pin is None
-    assert rc.rotary_dir_pin is None
-    assert rc.rotary_step_pin_pos == 11
-    assert rc.rotary_dir_pin_pos == 13
-    assert rc.rotary_enable_pin is None
-    assert rc.rotary_alarm_pin is None
-    assert rc.rotary_invert_dir is False
-    assert rc.rotary_max_step_rate_hz == 500.0
-    assert rc.rotary_pin_numbering == "board"
-    assert rc.movement_only is False
-    assert rc.save_rd_dir is None
-    assert rc.simulate_rd_dir is None
+    assert rc.rotary.step_pin is None
+    assert rc.rotary.dir_pin is None
+    assert rc.rotary.step_pin_pos == 11
+    assert rc.rotary.dir_pin_pos == 13
+    assert rc.rotary.enable_pin is None
+    assert rc.rotary.alarm_pin is None
+    assert rc.rotary.invert_dir is False
+    assert rc.rotary.max_step_rate_hz == 500.0
+    assert rc.rotary.pin_numbering == "board"
+    assert rc.backend.movement_only is False
+    assert rc.backend.save_rd_dir is None
+    assert rc.backend.dry_run_rd is False
+    assert rc.simulation.rd_dir is None
 
 
 def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
@@ -103,8 +104,8 @@ def test_load_config_uses_default_config_file(tmp_path, monkeypatch):
     rc = load_config_and_args(args)
     # Default config.toml picked up and applied
     assert rc.joint_params.edge_length_mm == 42.0
-    assert rc.laser_backend == "ruida"
-    assert rc.rotary_backend == "real"
+    assert rc.backend.laser_backend == "ruida"
+    assert rc.backend.rotary_backend == "real"
 
 
 def test_load_config_missing_explicit_path_raises(tmp_path):
@@ -154,12 +155,12 @@ def test_load_config_reads_toml_and_applies_overrides(tmp_path):
 
     assert rc.mode == "pins"
     assert rc.dry_run is True
-    assert rc.simulate is True
-    assert rc.backend_host == "192.168.1.100"
-    assert rc.backend_port == 50200
-    assert rc.laser_backend == "dummy"
-    assert rc.rotary_backend == "dummy"
-    assert rc.movement_only is False
+    assert rc.simulation.enabled is True
+    assert rc.backend.ruida_host == "192.168.1.100"
+    assert rc.backend.ruida_port == 50200
+    assert rc.backend.laser_backend == "dummy"
+    assert rc.backend.rotary_backend == "dummy"
+    assert rc.backend.movement_only is False
 
 
 def test_backend_overrides_and_movement_only(tmp_path):
@@ -167,7 +168,6 @@ def test_backend_overrides_and_movement_only(tmp_path):
     cfg_path.write_text(
         """
         [backend]
-        use_dummy = false
         laser_backend = "ruida"
         rotary_backend = "real"
         movement_only = true
@@ -188,20 +188,20 @@ def test_backend_overrides_and_movement_only(tmp_path):
 
     rc = load_config_and_args(args)
 
-    assert rc.backend_host == "10.0.0.5"
-    assert rc.backend_port == 60000
-    assert rc.laser_backend == "ruida"
-    assert rc.rotary_backend == "dummy"  # CLI override wins
-    assert rc.movement_only is True
-    assert rc.rotary_step_pin == 23
-    assert rc.rotary_dir_pin == 24
-    assert rc.rotary_step_pin_pos == 11  # defaults remain unless overridden
-    assert rc.rotary_dir_pin_pos == 13
-    assert rc.rotary_enable_pin == 25
-    assert rc.rotary_alarm_pin == 18
-    assert rc.rotary_invert_dir is True
-    assert rc.rotary_max_step_rate_hz == 500.0
-    assert rc.rotary_pin_numbering == "board"
+    assert rc.backend.ruida_host == "10.0.0.5"
+    assert rc.backend.ruida_port == 60000
+    assert rc.backend.laser_backend == "ruida"
+    assert rc.backend.rotary_backend == "dummy"  # CLI override wins
+    assert rc.backend.movement_only is True
+    assert rc.rotary.step_pin == 23
+    assert rc.rotary.dir_pin == 24
+    assert rc.rotary.step_pin_pos == 11  # defaults remain unless overridden
+    assert rc.rotary.dir_pin_pos == 13
+    assert rc.rotary.enable_pin == 25
+    assert rc.rotary.alarm_pin == 18
+    assert rc.rotary.invert_dir is True
+    assert rc.rotary.max_step_rate_hz == 500.0
+    assert rc.rotary.pin_numbering == "board"
 
 
 def test_invalid_backends_raise(monkeypatch):
@@ -249,17 +249,17 @@ def test_cli_overrides_apply_to_optional_fields(tmp_path):
     assert rc.joint_params.tail_outer_width_mm == 12.0
     assert rc.joint_params.kerf_tail_mm == 0.2
     assert rc.joint_params.kerf_pin_mm == 0.25
-    assert rc.rotary_steps_per_rev == 1234.0
-    assert rc.rotary_enable_pin == 7
-    assert rc.rotary_alarm_pin == 8
-    assert rc.rotary_max_step_rate_hz == 900.0
-    assert rc.ruida_timeout_s == 1.5
-    assert rc.ruida_source_port == 41000
-    assert rc.rotary_step_pin == 9
-    assert rc.rotary_dir_pin == 10
-    assert rc.save_rd_dir == tmp_path / "rd"
-    assert rc.dry_run_rd is True
-    assert rc.simulate_rd_dir == tmp_path / "rd_sim"
+    assert rc.rotary.steps_per_rev == 1234.0
+    assert rc.rotary.enable_pin == 7
+    assert rc.rotary.alarm_pin == 8
+    assert rc.rotary.max_step_rate_hz == 900.0
+    assert rc.backend.ruida_timeout_s == 1.5
+    assert rc.backend.ruida_source_port == 41000
+    assert rc.rotary.step_pin == 9
+    assert rc.rotary.dir_pin == 10
+    assert rc.backend.save_rd_dir == tmp_path / "rd"
+    assert rc.backend.dry_run_rd is True
+    assert rc.simulation.rd_dir == tmp_path / "rd_sim"
 
 
 def test_axis_to_fence_uses_current_thickness(tmp_path):

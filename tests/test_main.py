@@ -3,7 +3,7 @@ import sys
 import pytest
 
 from laserdove.cli import main
-from laserdove.config import RunConfig
+from laserdove.config import BackendConfig, RotaryConfig, RunConfig, SimulationConfig
 from laserdove.model import (
     Command,
     CommandType,
@@ -14,7 +14,113 @@ from laserdove.model import (
 )
 
 
+def make_backend_config(**overrides) -> BackendConfig:
+    defaults = dict(
+        laser_backend="dummy",
+        rotary_backend="dummy",
+        ruida_host="host",
+        ruida_port=50200,
+        ruida_magic=0x88,
+        ruida_timeout_s=3.0,
+        ruida_source_port=40200,
+        movement_only=False,
+        save_rd_dir=None,
+        dry_run_rd=False,
+    )
+    defaults.update(overrides)
+    return BackendConfig(**defaults)
+
+
+def make_rotary_config(**overrides) -> RotaryConfig:
+    defaults = dict(
+        steps_per_rev=4000.0,
+        step_pin=None,
+        dir_pin=None,
+        step_pin_pos=11,
+        dir_pin_pos=13,
+        enable_pin=None,
+        alarm_pin=None,
+        invert_dir=False,
+        max_step_rate_hz=500.0,
+        pin_numbering="board",
+    )
+    defaults.update(overrides)
+    return RotaryConfig(**defaults)
+
+
+def make_simulation_config(**overrides) -> SimulationConfig:
+    defaults = dict(
+        enabled=False,
+        screenshots_dir=None,
+        screenshots_every_s=2.0,
+        rd_dir=None,
+    )
+    defaults.update(overrides)
+    return SimulationConfig(**defaults)
+
+
 def make_run_config(**overrides) -> RunConfig:
+    backend = overrides.pop("backend", make_backend_config())
+    rotary = overrides.pop("rotary", make_rotary_config())
+    simulation = overrides.pop("simulation", make_simulation_config())
+
+    backend_overrides = {
+        "laser_backend",
+        "rotary_backend",
+        "ruida_host",
+        "ruida_port",
+        "ruida_magic",
+        "ruida_timeout_s",
+        "ruida_source_port",
+        "movement_only",
+        "save_rd_dir",
+        "dry_run_rd",
+    }
+    rotary_overrides = {
+        "rotary_steps_per_rev",
+        "rotary_step_pin",
+        "rotary_dir_pin",
+        "rotary_step_pin_pos",
+        "rotary_dir_pin_pos",
+        "rotary_enable_pin",
+        "rotary_alarm_pin",
+        "rotary_invert_dir",
+        "rotary_max_step_rate_hz",
+        "rotary_pin_numbering",
+    }
+    simulation_overrides = {
+        "simulate",
+        "simulate_screenshots_dir",
+        "simulate_screenshots_every_s",
+        "simulate_rd_dir",
+    }
+
+    for key in list(overrides):
+        if key in backend_overrides:
+            setattr(backend, key, overrides.pop(key))
+        elif key in rotary_overrides:
+            mapping = {
+                "rotary_steps_per_rev": "steps_per_rev",
+                "rotary_step_pin": "step_pin",
+                "rotary_dir_pin": "dir_pin",
+                "rotary_step_pin_pos": "step_pin_pos",
+                "rotary_dir_pin_pos": "dir_pin_pos",
+                "rotary_enable_pin": "enable_pin",
+                "rotary_alarm_pin": "alarm_pin",
+                "rotary_invert_dir": "invert_dir",
+                "rotary_max_step_rate_hz": "max_step_rate_hz",
+                "rotary_pin_numbering": "pin_numbering",
+            }
+            setattr(rotary, mapping[key], overrides.pop(key))
+        elif key in simulation_overrides:
+            mapping = {
+                "simulate": "enabled",
+                "simulate_screenshots_dir": "screenshots_dir",
+                "simulate_screenshots_every_s": "screenshots_every_s",
+                "simulate_rd_dir": "rd_dir",
+            }
+            setattr(simulation, mapping[key], overrides.pop(key))
+
     defaults = dict(
         joint_params=JointParams(
             thickness_mm=6.35,
@@ -23,7 +129,7 @@ def make_run_config(**overrides) -> RunConfig:
             num_tails=3,
             tail_outer_width_mm=20.0,
             tail_depth_mm=6.35,
-            socket_depth_mm=6.6,
+            socket_depth_mm=6.35,
             clearance_mm=0.05,
             kerf_tail_mm=0.15,
             kerf_pin_mm=0.15,
@@ -47,34 +153,10 @@ def make_run_config(**overrides) -> RunConfig:
         ),
         mode="both",
         dry_run=False,
-        dry_run_rd=False,
-        backend_host="host",
-        backend_port=50200,
-        ruida_magic=0x88,
-        ruida_timeout_s=3.0,
-        ruida_source_port=40200,
-        rotary_steps_per_rev=4000.0,
-        rotary_step_pin=None,
-        rotary_dir_pin=None,
-        rotary_step_pin_pos=11,
-        rotary_dir_pin_pos=13,
-        rotary_enable_pin=None,
-        rotary_alarm_pin=None,
-        rotary_invert_dir=False,
-        rotary_max_step_rate_hz=500.0,
-        rotary_pin_numbering="board",
-        simulate=False,
-        laser_backend="dummy",
-        rotary_backend="dummy",
-        movement_only=False,
-        save_rd_dir=None,
         reset_only=False,
-        simulate_screenshots_dir=None,
-        simulate_screenshots_every_s=2.0,
-        simulate_rd_dir=None,
     )
     defaults.update(overrides)
-    return RunConfig(**defaults)
+    return RunConfig(backend=backend, rotary=rotary, simulation=simulation, **defaults)
 
 
 def test_main_runs_dry_run_and_prints_commands(monkeypatch, capsys):
@@ -113,31 +195,10 @@ def test_main_exits_on_validation_error(monkeypatch):
         machine_params=None,
         mode="tails",
         dry_run=False,
-        dry_run_rd=False,
-        backend_host="host",
-        backend_port=0,
-        ruida_magic=0x88,
-        ruida_timeout_s=3.0,
-        ruida_source_port=40200,
-        rotary_steps_per_rev=200.0,
-        rotary_step_pin=None,
-        rotary_dir_pin=None,
-        rotary_step_pin_pos=None,
-        rotary_dir_pin_pos=None,
-        rotary_enable_pin=None,
-        rotary_alarm_pin=None,
-        rotary_invert_dir=False,
-        rotary_max_step_rate_hz=None,
-        rotary_pin_numbering="board",
-        simulate=False,
-        laser_backend="dummy",
-        rotary_backend="dummy",
-        movement_only=False,
-        save_rd_dir=None,
         reset_only=False,
-        simulate_screenshots_dir=None,
-        simulate_screenshots_every_s=2.0,
-        simulate_rd_dir=None,
+        backend=make_backend_config(),
+        rotary=make_rotary_config(),
+        simulation=make_simulation_config(),
     )
     monkeypatch.setattr(
         "laserdove.cli.load_config_and_args",
@@ -219,7 +280,7 @@ def test_main_ruida_respects_dry_run_rd_and_cleans(monkeypatch):
             self.cleaned = False
             created["ruida"] = self
 
-        def run_sequence_with_rotary(self, commands, rotary):
+        def run_sequence_with_rotary(self, commands, rotary, **_kwargs):
             run_called["count"] = len(list(commands))
 
         def cleanup(self):

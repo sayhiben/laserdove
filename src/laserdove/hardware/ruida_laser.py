@@ -18,6 +18,7 @@ from .ruida_common import (
     swizzle,
     should_force_speed,
 )
+from ..command_compiler import LaserBlock, RotationStep, compile_command_plan
 
 log = logging.getLogger(__name__)
 
@@ -644,7 +645,6 @@ class RuidaLaser:
         rotary,
         *,
         movement_only: bool | None = None,
-        travel_only: bool | None = None,
         edge_length_mm: float | None = None,
     ) -> None:
         """
@@ -655,7 +655,6 @@ class RuidaLaser:
             commands: Iterable of high-level commands (MOVE/CUT/SET_LASER_POWER/ROTATE).
             rotary: Rotary backend implementing rotate_to.
             movement_only: Force power=0 regardless of command (overrides instance flag).
-            travel_only: Legacy alias for movement_only.
             edge_length_mm: Board edge length to compute Y midline for rotary centering.
         """
         command_list = list(commands)
@@ -702,27 +701,28 @@ class RuidaLaser:
             job_origin_z_str,
             cached_z_origin_str,
         )
-        y_center = (edge_length_mm / 2.0) if edge_length_mm is not None else 0.0
 
-        # movement_only is the preferred name; travel_only is accepted for backward compatibility.
-        movement_only_mode = any(flag for flag in (movement_only, travel_only, self.movement_only))
-        has_cut = any(
-            cmd.type.name == "CUT_LINE"
-            or (cmd.type.name == "SET_LASER_POWER" and (cmd.power_pct or 0.0) > 0.0)
-            for cmd in command_list
+        movement_only_mode = bool(movement_only) or self.movement_only
+        plan = compile_command_plan(
+            command_list,
+            origin_x=job_origin_x,
+            origin_y=job_origin_y,
+            start_z=job_origin_z,
+            edge_length_mm=edge_length_mm,
+            z_speed_mm_s=self.z_speed_mm_s,
+            movement_only=movement_only_mode,
         )
-        if self.pre_cut_warmup_s > 0 and not movement_only_mode and has_cut:
+        if self.pre_cut_warmup_s > 0 and not movement_only_mode and plan.has_cut:
             self._pre_cut_warmup(origin_x=job_origin_x, origin_y=job_origin_y)
-        current_power = 0.0
-        current_speed: float | None = None
-        cursor_x = job_origin_x
-        cursor_y = job_origin_y
-        current_z: float | None = job_origin_z
-        last_set_z: float | None = None
+        cursor_x = plan.initial_state.cursor_x
+        cursor_y = plan.initial_state.cursor_y
+        current_speed: float | None = plan.initial_state.current_speed
+        current_z: float | None = plan.initial_state.current_z
+        last_set_z: float | None = plan.initial_state.last_set_z
+        origin_speed: float | None = plan.initial_state.origin_speed
         origin_x = job_origin_x
         origin_y = job_origin_y
-        origin_speed: float | None = None
-        park_z: float | None = job_origin_z
+        park_z: float | None = plan.origin_z
 
         def park_head_before_rotary() -> None:
             if movement_only_mode:
@@ -736,9 +736,8 @@ class RuidaLaser:
             if not need_xy:
                 return
             # Keep head at origin in XY; Z adjustments are emitted via RD job payloads.
-            if need_xy:
-                self.move(x=origin_x, y=origin_y, speed=move_speed)
-                cursor_x, cursor_y = origin_x, origin_y
+            self.move(x=origin_x, y=origin_y, speed=move_speed)
+            cursor_x, cursor_y = origin_x, origin_y
 
         def _ensure_at_job_origin() -> None:
             """
@@ -766,13 +765,13 @@ class RuidaLaser:
             self.move(x=origin_x, y=origin_y, speed=move_speed)
             cursor_x, cursor_y = origin_x, origin_y
 
-        def flush_block(block_moves: List[RDMove], block_index: int) -> bool:
-            if not block_moves:
+        def send_block(block: LaserBlock, block_index: int) -> bool:
+            if not block.moves:
                 return False
-            nonlocal block_start_z
+            nonlocal cursor_x, cursor_y, current_speed, current_z, last_set_z, origin_speed
             _ensure_at_job_origin()
             # Refresh Z from the controller in case it changed between RD jobs.
-            start_z_mm = block_start_z
+            start_z_mm = block.start_z_mm
             try:
                 state = self._read_machine_state(read_positions=True)
                 if state and state.z_mm is not None:
@@ -788,7 +787,7 @@ class RuidaLaser:
                 pass
             needs_origin_move = block_index > 0
             origin_move_speed = origin_speed or current_speed or self.z_speed_mm_s
-            payload_moves = block_moves
+            payload_moves = block.moves
             if needs_origin_move:
                 origin_move = RDMove(
                     x_mm=origin_x,
@@ -813,7 +812,9 @@ class RuidaLaser:
                 else:
                     payload_moves = [origin_move] + payload_moves
             start_z_display = f"{start_z_mm:.3f}" if start_z_mm is not None else "unknown"
-            block_start_display = f"{block_start_z:.3f}" if block_start_z is not None else "unknown"
+            block_start_display = (
+                f"{block.start_z_mm:.3f}" if block.start_z_mm is not None else "unknown"
+            )
             log.info(
                 "[RUIDA UDP] Flushing RD block %d: start_z=%s block_start_z=%s moves=%d",
                 block_index,
@@ -827,121 +828,31 @@ class RuidaLaser:
                 require_busy_transition=True,
                 start_z_mm=start_z_mm,
             )
-            block_start_z = current_z if current_z is not None else start_z_mm
+            cursor_x = block.end_state.cursor_x
+            cursor_y = block.end_state.cursor_y
+            current_speed = block.end_state.current_speed
+            current_z = block.end_state.current_z
+            last_set_z = block.end_state.last_set_z
+            if block.end_state.origin_speed is not None:
+                origin_speed = block.end_state.origin_speed
             return True
 
-        block: List[RDMove] = []
-        block_start_z: float | None = current_z
         block_index = 0
 
         try:
-            for cmd in command_list:
-                if cmd.type.name == "ROTATE":
-                    if park_speed is None and cmd.speed_mm_s is not None:
-                        park_speed = cmd.speed_mm_s
-                    sent = flush_block(block, block_index)
-                    block = []
-                    block_start_z = current_z
+            for step in plan.steps:
+                if isinstance(step, LaserBlock):
+                    sent = send_block(step, block_index)
                     if sent:
                         block_index += 1
+                    continue
+                if isinstance(step, RotationStep):
+                    if park_speed is None and step.speed_dps is not None:
+                        park_speed = step.speed_dps
                     park_head_before_rotary()
                     # After parking, cursor/last_set_z reflect parked position.
                     current_z = last_set_z
-                    rotary.rotate_to(cmd.angle_deg, cmd.speed_mm_s or 0.0)
-                    continue
-
-                if cmd.type.name == "SET_LASER_POWER":
-                    if movement_only_mode:
-                        current_power = 0.0
-                    elif cmd.power_pct is not None:
-                        current_power = cmd.power_pct
-                    continue
-
-                if cmd.type.name == "MOVE":
-                    x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                    y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        current_z = cmd.z
-                        last_set_z = current_z
-                        self.z = current_z
-                        log.info(
-                            "[RUIDA UDP] Command requests Z=%.3f at x=%.3f y=%.3f (block=%d)",
-                            current_z,
-                            x,
-                            y,
-                            block_index,
-                        )
-                        block.append(
-                            RDMove(
-                                x_mm=x,
-                                y_mm=y,
-                                speed_mm_s=self.z_speed_mm_s,
-                                power_pct=current_power,
-                                is_cut=False,
-                                z_mm=current_z,
-                            )
-                        )
-                    if cmd.speed_mm_s is not None:
-                        current_speed = cmd.speed_mm_s
-                        if origin_speed is None:
-                            origin_speed = current_speed
-                    if current_speed is None:
-                        continue
-                    block.append(
-                        RDMove(
-                            x_mm=x,
-                            y_mm=y,
-                            speed_mm_s=current_speed,
-                            power_pct=current_power,
-                            is_cut=False,
-                        )
-                    )
-                    cursor_x, cursor_y = x, y
-                    continue
-
-                if cmd.type.name == "CUT_LINE":
-                    x = cursor_x if cmd.x is None else job_origin_x + cmd.x
-                    y = cursor_y if cmd.y is None else job_origin_y + (cmd.y - y_center)
-                    if cmd.z is not None:
-                        current_z = cmd.z
-                        last_set_z = current_z
-                        self.z = current_z
-                        log.info(
-                            "[RUIDA UDP] Command requests Z=%.3f at x=%.3f y=%.3f (block=%d)",
-                            current_z,
-                            x,
-                            y,
-                            block_index,
-                        )
-                        block.append(
-                            RDMove(
-                                x_mm=x,
-                                y_mm=y,
-                                speed_mm_s=self.z_speed_mm_s,
-                                power_pct=current_power,
-                                is_cut=False,
-                                z_mm=current_z,
-                            )
-                        )
-                    if cmd.speed_mm_s is not None:
-                        current_speed = cmd.speed_mm_s
-                    if current_speed is None:
-                        continue
-                    block.append(
-                        RDMove(
-                            x_mm=x,
-                            y_mm=y,
-                            speed_mm_s=current_speed,
-                            power_pct=current_power,
-                            is_cut=not movement_only_mode,
-                        )
-                    )
-                    cursor_x, cursor_y = x, y
-                    continue
-
-            sent = flush_block(block, block_index)
-            if sent:
-                block_index += 1
+                    rotary.rotate_to(step.angle_deg, step.speed_dps or 0.0)
         finally:
             parked_via_rd = False
             try:

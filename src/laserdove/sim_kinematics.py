@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
-from .model import Command, CommandType
+from .model import BoardSide, Command, CommandType
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class PlaybackSegment:
     end_rotation_deg: float
     start_z_offset_mm: float
     end_z_offset_mm: float
-    board: str
+    board: BoardSide
     is_cut: bool
     duration: float
     power_pct: float
@@ -75,8 +75,8 @@ def board_to_world_local(
     return (x_b, y_center + y_rot, z_rot)
 
 
-def _current_z_reference(board: str, z_zero_tail_mm: float, z_zero_pin_mm: float) -> float:
-    return z_zero_tail_mm if board == "tail" else z_zero_pin_mm
+def _current_z_reference(board: BoardSide, z_zero_tail_mm: float, z_zero_pin_mm: float) -> float:
+    return z_zero_tail_mm if board == BoardSide.TAIL else z_zero_pin_mm
 
 
 def capture_segments_from_commands(
@@ -89,7 +89,7 @@ def capture_segments_from_commands(
     z_zero_pin_mm: float,
     movement_only: bool = False,
     air_assist: bool = True,
-    start_board: str = "tail",
+    start_board: BoardSide = BoardSide.TAIL,
 ) -> List[PlaybackSegment]:
     """
     Expand planner Commands into time-annotated playback segments for visualization.
@@ -125,8 +125,8 @@ def capture_segments_from_commands(
 
         if command.type == CommandType.ROTATE:
             # Rotary motion always targets the pin-board setup.
-            if board != "pin":
-                board = "pin"
+            if board != BoardSide.PIN:
+                board = BoardSide.PIN
                 z_ref = _current_z_reference(board, z_zero_tail_mm, z_zero_pin_mm)
             target_rotation = rotation if command.angle_deg is None else command.angle_deg
             delta_angle = abs(target_rotation - rotation)
@@ -142,7 +142,8 @@ def capture_segments_from_commands(
                     y_center=y_center,
                     rotation_zero_deg=rotation_zero_deg,
                 )
-                if board == "pin" and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
+                if board == BoardSide.PIN
+                and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
                 else y
             )
             y_local = board_y_abs - y_center
@@ -185,7 +186,8 @@ def capture_segments_from_commands(
                     y_center=y_center,
                     rotation_zero_deg=rotation_zero_deg,
                 )
-                if board == "pin" and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
+                if board == BoardSide.PIN
+                and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
                 else y
             )
             y_local = board_y_abs - y_center
@@ -218,7 +220,8 @@ def capture_segments_from_commands(
                 y_center=y_center,
                 rotation_zero_deg=rotation_zero_deg,
             )
-            if board == "pin" and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
+            if board == BoardSide.PIN
+            and not math.isclose(rotation, rotation_zero_deg, abs_tol=1e-9)
             else target_y_machine
         )
         y_target_local = y_board_abs - y_center
@@ -274,7 +277,7 @@ def capture_segments_from_commands(
 def overlay_segments_from_rd(
     rd_segments: Sequence[dict],
     rotation_deg: float,
-    board: str,
+    board: BoardSide,
     *,
     edge_length_mm: float,
     axis_to_origin_mm: float,
@@ -307,7 +310,8 @@ def overlay_segments_from_rd(
                 y_center=y_center,
                 rotation_zero_deg=rotation_zero_deg,
             )
-            if board == "pin" and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
+            if board == BoardSide.PIN
+            and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
             else y0
         )
         y1_board = (
@@ -318,7 +322,8 @@ def overlay_segments_from_rd(
                 y_center=y_center,
                 rotation_zero_deg=rotation_zero_deg,
             )
-            if board == "pin" and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
+            if board == BoardSide.PIN
+            and not math.isclose(rotation_deg, rotation_zero_deg, abs_tol=1e-9)
             else y1
         )
         z_offset = (z_base + z_seg) - z_ref

@@ -5,10 +5,10 @@ from pathlib import Path
 
 from laserdove.hardware.rd_builder import RDMove, build_rd_job
 from laserdove.hardware.ruida_common import swizzle
-from laserdove.model import Command, CommandType, JigParams, JointParams, MachineParams
-from laserdove.pygame_simulator import (
+from laserdove.model import BoardSide, Command, CommandType, JigParams, JointParams, MachineParams
+from laserdove.pygame_simulator import PygameSimulationViewer
+from laserdove.sim_traces import (
     BeamTrace,
-    PygameSimulationViewer,
     _beam_traces_from_playback,
     _rd_job_contexts,
     build_beam_traces_from_rd_files,
@@ -68,7 +68,7 @@ def test_rd_job_contexts_detects_blocks():
         Command(type=CommandType.MOVE, x=0.0, y=10.0, speed_mm_s=10.0),
     ]
     contexts = _rd_job_contexts(commands, rotation_zero_deg=0.0)
-    assert contexts == [(0.0, "tail"), (15.0, "pin")]
+    assert contexts == [(0.0, BoardSide.TAIL), (15.0, BoardSide.PIN)]
 
 
 def test_beam_traces_from_playback_computes_duration():
@@ -88,7 +88,7 @@ def test_beam_traces_from_playback_computes_duration():
             end_rotation_deg=0.0,
             start_z_offset_mm=0.0,
             end_z_offset_mm=0.0,
-            board="tail",
+            board=BoardSide.TAIL,
             is_cut=False,
             duration=0.0,
             power_pct=0.0,
@@ -123,7 +123,7 @@ def test_viewer_rotation_and_metadata():
             end_rotation_deg=90.0,
             start_z_offset_mm=0.0,
             end_z_offset_mm=0.0,
-            board="pin",
+            board=BoardSide.PIN,
             is_cut=False,
             duration=2.0,
             power_pct=0.0,
@@ -139,7 +139,7 @@ def test_viewer_rotation_and_metadata():
             end_rotation_deg=90.0,
             start_z_offset_mm=0.0,
             end_z_offset_mm=0.0,
-            board="pin",
+            board=BoardSide.PIN,
             is_cut=True,
             duration=1.0,
             power_pct=50.0,
@@ -181,7 +181,7 @@ def test_viewer_edge_polygons_and_beam_entry():
         start_world = (0.0, y_center + y0, axis)
         end_world = (0.0, y_center + y1, axis)
         return BeamTrace(
-            board="tail",
+            board=BoardSide.TAIL,
             is_cut=True,
             start_top=start_world,
             end_top=end_world,

@@ -1,7 +1,7 @@
 # tests/test_simulator_kinematics.py
 import math
 
-from laserdove.model import Command, CommandType
+from laserdove.model import BoardSide, Command, CommandType
 from laserdove.sim_kinematics import (
     board_to_world_local,
     capture_segments_from_commands,
@@ -21,13 +21,13 @@ def test_rotate_segment_targets_pin_board():
         rotation_zero_deg=0.0,
         z_zero_tail_mm=0.0,
         z_zero_pin_mm=0.0,
-        start_board="tail",
+        start_board=BoardSide.TAIL,
     )
     rotate_segments = [
         seg for seg in segments if not math.isclose(seg.start_rotation_deg, seg.end_rotation_deg)
     ]
     assert rotate_segments, "Expected at least one rotation segment"
-    assert rotate_segments[0].board == "pin"
+    assert rotate_segments[0].board == BoardSide.PIN
 
 
 def test_z_move_does_not_shift_y_when_rotated():
@@ -42,7 +42,7 @@ def test_z_move_does_not_shift_y_when_rotated():
         rotation_zero_deg=0.0,
         z_zero_tail_mm=0.0,
         z_zero_pin_mm=0.0,
-        start_board="pin",
+        start_board=BoardSide.PIN,
     )
     move_segments = [seg for seg in segments if seg.start_rotation_deg == seg.end_rotation_deg]
     assert move_segments, "Expected at least one MOVE segment"
@@ -76,7 +76,7 @@ def test_projection_round_trip_matches_board_y():
         rotation_zero_deg=0.0,
         z_zero_tail_mm=0.0,
         z_zero_pin_mm=0.0,
-        start_board="pin",
+        start_board=BoardSide.PIN,
     )
     move_seg = segments[-1]
     assert abs(move_seg.end_world[1] - y_machine) < 1e-9

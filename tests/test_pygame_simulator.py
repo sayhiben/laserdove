@@ -1,13 +1,10 @@
 import math
 
 from laserdove.hardware.rd_builder import RDMove, build_rd_job
-from laserdove.model import Command, CommandType, JigParams, JointParams, MachineParams
-from laserdove.pygame_simulator import (
-    PygameSimulationViewer,
-    build_beam_traces,
-    build_beam_traces_from_rd_segments,
-)
+from laserdove.model import BoardSide, Command, CommandType, JigParams, JointParams, MachineParams
+from laserdove.pygame_simulator import PygameSimulationViewer
 from laserdove.rd_parser import RuidaParser
+from laserdove.sim_traces import build_beam_traces, build_beam_traces_from_rd_segments
 
 
 def _machine_params() -> MachineParams:
@@ -64,7 +61,7 @@ def test_build_beam_traces_vertical_beam_exit_matches_machine_y() -> None:
         machine_params=_machine_params(),
         movement_only=True,
         air_assist=True,
-        start_board="tail",
+        start_board=BoardSide.TAIL,
     )
 
     move_trace = traces[-1]
@@ -114,7 +111,7 @@ def test_edge_cut_polygon_shears_by_thickness_tan() -> None:
         machine_params=machine,
         movement_only=False,
         air_assist=True,
-        start_board="tail",
+        start_board=BoardSide.TAIL,
     )
     viewer = PygameSimulationViewer(
         traces,
@@ -128,7 +125,7 @@ def test_edge_cut_polygon_shears_by_thickness_tan() -> None:
     polygons = viewer._edge_cut_polygons([t for t in traces if t.is_cut])
     assert len(polygons) == 1
     board, rot, poly = polygons[0]
-    assert board == "pin"
+    assert board == BoardSide.PIN
     assert math.isclose(rot, rotation, abs_tol=1e-9)
 
     shear = thickness * math.tan(math.radians(rotation))
@@ -156,7 +153,7 @@ def test_rd_segments_round_trip_to_traces() -> None:
     traces = build_beam_traces_from_rd_segments(
         parser._segments,
         rotation_deg=0.0,
-        board="tail",
+        board=BoardSide.TAIL,
         joint_params=joint,
         jig_params=jig,
         machine_params=machine,
@@ -189,7 +186,7 @@ def test_rd_z_offsets_animate_between_segments() -> None:
     traces = build_beam_traces_from_rd_segments(
         parser._segments,
         rotation_deg=0.0,
-        board="tail",
+        board=BoardSide.TAIL,
         joint_params=joint,
         jig_params=jig,
         machine_params=machine,

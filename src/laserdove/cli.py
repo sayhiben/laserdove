@@ -1,7 +1,6 @@
 # cli entrypoint
 from __future__ import annotations
 
-import inspect
 import logging
 from typing import List, Tuple
 
@@ -82,19 +81,19 @@ def plan_commands(run_config) -> List[Command]:
 
 
 def _build_real_backends(run_config) -> Tuple[object, object]:
-    if run_config.laser_backend == "dummy":
+    if run_config.backend.laser_backend == "dummy":
         laser = DummyLaser()
-    elif run_config.laser_backend == "ruida":
-        ruida_dry_run = run_config.dry_run or run_config.dry_run_rd
+    elif run_config.backend.laser_backend == "ruida":
+        ruida_dry_run = run_config.dry_run or run_config.backend.dry_run_rd
         laser = RuidaLaser(
-            host=run_config.backend_host,
-            port=run_config.backend_port,
-            magic=run_config.ruida_magic,
-            timeout_s=run_config.ruida_timeout_s,
-            source_port=run_config.ruida_source_port,
+            host=run_config.backend.ruida_host,
+            port=run_config.backend.ruida_port,
+            magic=run_config.backend.ruida_magic,
+            timeout_s=run_config.backend.ruida_timeout_s,
+            source_port=run_config.backend.ruida_source_port,
             dry_run=ruida_dry_run,
-            movement_only=run_config.movement_only,
-            save_rd_dir=run_config.save_rd_dir,
+            movement_only=run_config.backend.movement_only,
+            save_rd_dir=run_config.backend.save_rd_dir,
             air_assist=run_config.machine_params.air_assist,
             inline_fan_on=run_config.machine_params.inline_fan_on,
             pre_cut_warmup_s=run_config.machine_params.pre_cut_warmup_s,
@@ -103,27 +102,27 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
             min_stable_s=5.0,
         )
     else:
-        raise ValueError(f"Unsupported laser backend {run_config.laser_backend}")
+        raise ValueError(f"Unsupported laser backend {run_config.backend.laser_backend}")
 
-    if run_config.rotary_backend == "dummy":
+    if run_config.backend.rotary_backend == "dummy":
         rotary = DummyRotary()
-    elif run_config.rotary_backend == "real":
+    elif run_config.backend.rotary_backend == "real":
         driver = LoggingStepperDriver()
         if any(
-            pin is not None for pin in (run_config.rotary_step_pin, run_config.rotary_step_pin_pos)
+            pin is not None for pin in (run_config.rotary.step_pin, run_config.rotary.step_pin_pos)
         ) and any(
-            pin is not None for pin in (run_config.rotary_dir_pin, run_config.rotary_dir_pin_pos)
+            pin is not None for pin in (run_config.rotary.dir_pin, run_config.rotary.dir_pin_pos)
         ):
             try:
                 driver = GPIOStepperDriver(
-                    step_pin=run_config.rotary_step_pin,
-                    dir_pin=run_config.rotary_dir_pin,
-                    step_pin_pos=run_config.rotary_step_pin_pos,
-                    dir_pin_pos=run_config.rotary_dir_pin_pos,
-                    enable_pin=run_config.rotary_enable_pin,
-                    alarm_pin=run_config.rotary_alarm_pin,
-                    invert_dir=run_config.rotary_invert_dir,
-                    pin_mode=run_config.rotary_pin_numbering.upper(),
+                    step_pin=run_config.rotary.step_pin,
+                    dir_pin=run_config.rotary.dir_pin,
+                    step_pin_pos=run_config.rotary.step_pin_pos,
+                    dir_pin_pos=run_config.rotary.dir_pin_pos,
+                    enable_pin=run_config.rotary.enable_pin,
+                    alarm_pin=run_config.rotary.alarm_pin,
+                    invert_dir=run_config.rotary.invert_dir,
+                    pin_mode=run_config.rotary.pin_numbering.upper(),
                 )
             except Exception as e:
                 log.warning(
@@ -135,17 +134,17 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
             )
 
         rotary = RealRotary(
-            steps_per_rev=run_config.rotary_steps_per_rev,
+            steps_per_rev=run_config.rotary.steps_per_rev,
             driver=driver,
-            max_step_rate_hz=run_config.rotary_max_step_rate_hz,
+            max_step_rate_hz=run_config.rotary.max_step_rate_hz,
         )
     else:
-        raise ValueError(f"Unsupported rotary backend {run_config.rotary_backend}")
+        raise ValueError(f"Unsupported rotary backend {run_config.backend.rotary_backend}")
     return laser, rotary
 
 
 def _prepend_rotate_zero(commands: List[Command], run_config) -> None:
-    if run_config.simulate or run_config.reset_only:
+    if run_config.simulation.enabled or run_config.reset_only:
         return
     commands.insert(
         0,
@@ -161,16 +160,13 @@ def _prepend_rotate_zero(commands: List[Command], run_config) -> None:
 def _execute(commands: List[Command], laser, rotary, run_config) -> None:
     try:
         if isinstance(laser, RuidaLaser):
-            run_kwargs = {}
-            sig = inspect.signature(laser.run_sequence_with_rotary)
-            movement_only_flag = run_config.movement_only or run_config.reset_only
-            if "movement_only" in sig.parameters:
-                run_kwargs["movement_only"] = movement_only_flag
-            elif "travel_only" in sig.parameters:
-                run_kwargs["travel_only"] = movement_only_flag
-            if "edge_length_mm" in sig.parameters:
-                run_kwargs["edge_length_mm"] = run_config.joint_params.edge_length_mm
-            laser.run_sequence_with_rotary(commands, rotary, **run_kwargs)
+            movement_only_flag = run_config.backend.movement_only or run_config.reset_only
+            laser.run_sequence_with_rotary(
+                commands,
+                rotary,
+                movement_only=movement_only_flag,
+                edge_length_mm=run_config.joint_params.edge_length_mm,
+            )
         else:
             execute_commands(commands, laser, rotary)
 
@@ -192,23 +188,23 @@ def main() -> None:
 
     run_config = load_config_and_args(args)
     if run_config.reset_only:
-        run_config.movement_only = True
+        run_config.backend.movement_only = True
 
     commands = plan_commands(run_config)
 
-    if run_config.simulate_screenshots_dir is not None:
+    if run_config.simulation.screenshots_dir is not None:
         from .pygame_simulator import run_pygame_viewer
 
         run_pygame_viewer(
             commands,
             run_config,
-            screenshot_dir=run_config.simulate_screenshots_dir,
-            screenshot_every_s=run_config.simulate_screenshots_every_s,
-            rd_dir=run_config.simulate_rd_dir,
+            screenshot_dir=run_config.simulation.screenshots_dir,
+            screenshot_every_s=run_config.simulation.screenshots_every_s,
+            rd_dir=run_config.simulation.rd_dir,
         )
         return
 
-    if run_config.simulate:
+    if run_config.simulation.enabled:
         try:
             from .pygame_simulator import run_pygame_viewer
 
@@ -216,13 +212,13 @@ def main() -> None:
                 commands,
                 run_config,
                 time_scale=6.0,
-                rd_dir=run_config.simulate_rd_dir,
+                rd_dir=run_config.simulation.rd_dir,
             )
         except Exception:  # pragma: no cover - UI best-effort path
             log.error("Pygame viewer failed", exc_info=True)
         return
 
-    if run_config.dry_run and run_config.laser_backend != "ruida":
+    if run_config.dry_run and run_config.backend.laser_backend != "ruida":
         for command in commands:
             print(command)
         return

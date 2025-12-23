@@ -19,37 +19,52 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class BackendConfig:
+    laser_backend: str
+    rotary_backend: str
+    ruida_host: str
+    ruida_port: int
+    ruida_magic: int
+    ruida_timeout_s: float
+    ruida_source_port: int
+    movement_only: bool
+    save_rd_dir: Optional[Path]
+    dry_run_rd: bool
+
+
+@dataclass
+class RotaryConfig:
+    steps_per_rev: float
+    step_pin: Optional[int]
+    dir_pin: Optional[int]
+    step_pin_pos: Optional[int]
+    dir_pin_pos: Optional[int]
+    enable_pin: Optional[int]
+    alarm_pin: Optional[int]
+    invert_dir: bool
+    max_step_rate_hz: Optional[float]
+    pin_numbering: str
+
+
+@dataclass
+class SimulationConfig:
+    enabled: bool
+    screenshots_dir: Optional[Path]
+    screenshots_every_s: float
+    rd_dir: Optional[Path]
+
+
+@dataclass
 class RunConfig:
     joint_params: JointParams
     jig_params: JigParams
     machine_params: MachineParams
     mode: str
     dry_run: bool
-    dry_run_rd: bool
-    backend_host: str
-    backend_port: int
-    ruida_magic: int
-    ruida_timeout_s: float
-    ruida_source_port: int
-    rotary_steps_per_rev: float
-    rotary_step_pin: Optional[int]
-    rotary_dir_pin: Optional[int]
-    rotary_step_pin_pos: Optional[int]
-    rotary_dir_pin_pos: Optional[int]
-    rotary_enable_pin: Optional[int]
-    rotary_alarm_pin: Optional[int]
-    rotary_invert_dir: bool
-    rotary_max_step_rate_hz: Optional[float]
-    rotary_pin_numbering: str
-    simulate: bool
-    laser_backend: str
-    rotary_backend: str
-    movement_only: bool
-    save_rd_dir: Optional[Path]
     reset_only: bool
-    simulate_screenshots_dir: Optional[Path]
-    simulate_screenshots_every_s: float
-    simulate_rd_dir: Optional[Path]
+    backend: BackendConfig
+    rotary: RotaryConfig
+    simulation: SimulationConfig
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -198,7 +213,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--rotary-pin-numbering",
         choices=["bcm", "board"],
-        default="board",
+        default=None,
         help="Pin numbering scheme for rotary GPIO (BCM vs physical)",
     )
     p.add_argument("--rotary-max-step-rate-hz", type=float, help="Cap rotary step pulse rate (Hz)")
@@ -240,44 +255,251 @@ def _load_toml(path: Path) -> dict:
         return tomllib.load(f)
 
 
-def _dict_get_nested(data: dict, key: str, default=None):
+def load_config_data(path: Path | None) -> tuple[dict, Path | None]:
     """
-    Fetch a dotted-path value from a nested dict.
+    Load configuration data from the given path or default config.toml.
 
     Args:
-        data: Mapping to search.
-        key: Dot-separated key path.
-        default: Fallback if key is absent.
+        path: Optional TOML config file path.
 
     Returns:
-        Retrieved value or default.
+        Tuple of (config dict, resolved path or None).
     """
-    parts = key.split(".")
-    current_level = data
-    for part in parts[:-1]:
-        current_level = current_level.get(part, {})
-    return current_level.get(parts[-1], default)
+    cfg_data: dict = {}
+    cfg_path: Path | None = path
+    used_default = False
+
+    if cfg_path is None:
+        default_path = Path("config.toml")
+        if default_path.exists():
+            cfg_path = default_path
+            used_default = True
+
+    if cfg_path is not None:
+        try:
+            cfg_data = _load_toml(cfg_path)
+        except FileNotFoundError:
+            if not used_default:
+                raise SystemExit(f"Config file not found: {cfg_path}")
+        except Exception as exc:
+            raise SystemExit(f"Failed to load config file {cfg_path}: {exc}") from exc
+
+    return cfg_data, cfg_path
 
 
-def load_backend_config(cfg_data: dict) -> tuple[str, int, int, Optional[bool]]:
-    """
-    Return (ruida_host, ruida_port, ruida_magic, deprecated_use_dummy)
+def _section(cfg_data: dict, key: str) -> dict:
+    value = cfg_data.get(key, {})
+    return value if isinstance(value, dict) else {}
 
-    Args:
-        cfg_data: Parsed config dictionary.
 
-    Returns:
-        Tuple of (ruida_host, ruida_port, swizzle_magic, use_dummy if present).
-    """
-    use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
-    host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
-    port = _dict_get_nested(cfg_data, "backend.ruida_port", 50200)
-    magic = _dict_get_nested(cfg_data, "backend.ruida_magic", 0x88)
-    if use_dummy is not None:
+def _as_path(value: object | None) -> Path | None:
+    if value is None:
+        return None
+    if isinstance(value, Path):
+        return value
+    return Path(str(value))
+
+
+def build_joint_params(cfg_data: dict) -> JointParams:
+    joint_cfg = _section(cfg_data, "joint")
+    thickness_mm = float(joint_cfg.get("thickness_mm", 6.35))
+    edge_length_mm = float(joint_cfg.get("edge_length_mm", 100.0))
+    dovetail_angle_deg = float(joint_cfg.get("dovetail_angle_deg", 8.0))
+    num_tails = int(joint_cfg.get("num_tails", 3))
+    tail_outer_width_mm = float(joint_cfg.get("tail_outer_width_mm", 20.0))
+    clearance_mm = float(joint_cfg.get("clearance_mm", 0.05))
+
+    kerf_mm_cfg = joint_cfg.get("kerf_mm")
+    kerf_mm = float(kerf_mm_cfg) if kerf_mm_cfg is not None else 0.15
+    kerf_tail_cfg = joint_cfg.get("kerf_tail_mm")
+    kerf_pin_cfg = joint_cfg.get("kerf_pin_mm")
+    kerf_tail_mm = float(kerf_tail_cfg) if kerf_tail_cfg is not None else kerf_mm
+    kerf_pin_mm = float(kerf_pin_cfg) if kerf_pin_cfg is not None else kerf_mm
+
+    if "tail_depth_mm" in joint_cfg or "socket_depth_mm" in joint_cfg:
         log.warning(
-            "backend.use_dummy is deprecated; set backend.laser_backend and backend.rotary_backend instead"
+            "joint.tail_depth_mm and joint.socket_depth_mm are derived from thickness_mm and ignored"
         )
-    return host, port, magic, use_dummy
+
+    return JointParams(
+        thickness_mm=thickness_mm,
+        edge_length_mm=edge_length_mm,
+        dovetail_angle_deg=dovetail_angle_deg,
+        num_tails=num_tails,
+        tail_outer_width_mm=tail_outer_width_mm,
+        tail_depth_mm=thickness_mm,
+        socket_depth_mm=thickness_mm,
+        clearance_mm=clearance_mm,
+        kerf_tail_mm=kerf_tail_mm,
+        kerf_pin_mm=kerf_pin_mm,
+    )
+
+
+def apply_joint_overrides(args: argparse.Namespace, joint_params: JointParams) -> None:
+    if getattr(args, "edge_length_mm", None) is not None:
+        joint_params.edge_length_mm = args.edge_length_mm
+    if getattr(args, "thickness_mm", None) is not None:
+        joint_params.thickness_mm = args.thickness_mm
+        joint_params.tail_depth_mm = joint_params.thickness_mm
+        joint_params.socket_depth_mm = joint_params.thickness_mm
+    if getattr(args, "num_tails", None) is not None:
+        joint_params.num_tails = args.num_tails
+    if getattr(args, "dovetail_angle_deg", None) is not None:
+        joint_params.dovetail_angle_deg = args.dovetail_angle_deg
+    if getattr(args, "tail_width_mm", None) is not None:
+        joint_params.tail_outer_width_mm = args.tail_width_mm
+    if getattr(args, "clearance_mm", None) is not None:
+        joint_params.clearance_mm = args.clearance_mm
+    if getattr(args, "kerf_mm", None) is not None:
+        joint_params.kerf_tail_mm = args.kerf_mm
+        joint_params.kerf_pin_mm = args.kerf_mm
+    if getattr(args, "kerf_tail_mm", None) is not None:
+        joint_params.kerf_tail_mm = args.kerf_tail_mm
+    if getattr(args, "kerf_pin_mm", None) is not None:
+        joint_params.kerf_pin_mm = args.kerf_pin_mm
+
+
+def build_jig_params(cfg_data: dict, joint_params: JointParams) -> JigParams:
+    jig_cfg = _section(cfg_data, "jig")
+    axis_to_fence_mm = jig_cfg.get("axis_to_fence_mm")
+    if axis_to_fence_mm is not None:
+        axis_to_origin_mm = float(axis_to_fence_mm) + joint_params.thickness_mm
+    else:
+        axis_to_origin_mm = 30.0
+        log.warning("jig.axis_to_fence_mm not set; defaulting axis_to_origin_mm to 30.0")
+    return JigParams(
+        axis_to_origin_mm=axis_to_origin_mm,
+        rotation_zero_deg=float(jig_cfg.get("rotation_zero_deg", 0.0)),
+        rotation_speed_dps=float(jig_cfg.get("rotation_speed_dps", 30.0)),
+    )
+
+
+def apply_jig_overrides(
+    args: argparse.Namespace, jig_params: JigParams, joint_params: JointParams
+) -> None:
+    if getattr(args, "axis_to_fence_mm", None) is not None:
+        jig_params.axis_to_origin_mm = args.axis_to_fence_mm + joint_params.thickness_mm
+
+
+def build_machine_params(cfg_data: dict) -> MachineParams:
+    machine_cfg = _section(cfg_data, "machine")
+    return MachineParams(
+        cut_speed_tail_mm_s=float(machine_cfg.get("cut_speed_tail_mm_s", 10.0)),
+        cut_speed_pin_mm_s=float(machine_cfg.get("cut_speed_pin_mm_s", 8.0)),
+        rapid_speed_mm_s=float(machine_cfg.get("rapid_speed_mm_s", 200.0)),
+        z_speed_mm_s=float(machine_cfg.get("z_speed_mm_s", 5.0)),
+        cut_power_tail_pct=float(machine_cfg.get("cut_power_tail_pct", 60.0)),
+        cut_power_pin_pct=float(machine_cfg.get("cut_power_pin_pct", 65.0)),
+        travel_power_pct=float(machine_cfg.get("travel_power_pct", 0.0)),
+        cut_overtravel_mm=float(machine_cfg.get("cut_overtravel_mm", 0.5)),
+        air_assist=bool(machine_cfg.get("air_assist", True)),
+        z_positive_moves_bed_up=bool(machine_cfg.get("z_positive_moves_bed_up", True)),
+        inline_fan_on=bool(machine_cfg.get("inline_fan_on", False)),
+        pre_cut_warmup_s=float(machine_cfg.get("pre_cut_warmup_s", 0.0)),
+        z_zero_tail_mm=float(machine_cfg.get("z_zero_tail_mm", 0.0)),
+        z_zero_pin_mm=float(machine_cfg.get("z_zero_pin_mm", 0.0)),
+    )
+
+
+def apply_machine_overrides(args: argparse.Namespace, machine_params: MachineParams) -> None:
+    if getattr(args, "cut_overtravel_mm", None) is not None:
+        machine_params.cut_overtravel_mm = args.cut_overtravel_mm
+    if getattr(args, "air_assist", None) is not None:
+        machine_params.air_assist = bool(args.air_assist)
+    if getattr(args, "inline_fan_on", None) is not None:
+        machine_params.inline_fan_on = bool(args.inline_fan_on)
+    if getattr(args, "pre_cut_warmup_s", None) is not None:
+        machine_params.pre_cut_warmup_s = float(args.pre_cut_warmup_s)
+    if getattr(args, "z_positive_moves_bed_up", None) is not None:
+        machine_params.z_positive_moves_bed_up = bool(args.z_positive_moves_bed_up)
+
+
+def build_backend_config(cfg_data: dict, *, dry_run_rd: bool) -> BackendConfig:
+    backend_cfg = _section(cfg_data, "backend")
+    laser_backend = backend_cfg.get("laser_backend")
+    rotary_backend = backend_cfg.get("rotary_backend")
+    if laser_backend is None:
+        laser_backend = "dummy"
+    if rotary_backend is None:
+        rotary_backend = "dummy"
+    return BackendConfig(
+        laser_backend=str(laser_backend).lower(),
+        rotary_backend=str(rotary_backend).lower(),
+        ruida_host=str(backend_cfg.get("ruida_host", "192.168.1.100")),
+        ruida_port=int(backend_cfg.get("ruida_port", 50200)),
+        ruida_magic=int(backend_cfg.get("ruida_magic", 0x88)),
+        ruida_timeout_s=float(backend_cfg.get("ruida_timeout_s", 3.0)),
+        ruida_source_port=int(backend_cfg.get("ruida_source_port", 40200)),
+        movement_only=bool(backend_cfg.get("movement_only", False)),
+        save_rd_dir=_as_path(backend_cfg.get("save_rd_dir")),
+        dry_run_rd=dry_run_rd,
+    )
+
+
+def apply_backend_overrides(args: argparse.Namespace, backend: BackendConfig) -> None:
+    if getattr(args, "ruida_timeout_s", None) is not None:
+        backend.ruida_timeout_s = args.ruida_timeout_s
+    if getattr(args, "ruida_source_port", None) is not None:
+        backend.ruida_source_port = args.ruida_source_port
+    if getattr(args, "laser_backend", None) is not None:
+        backend.laser_backend = args.laser_backend
+    if getattr(args, "rotary_backend", None) is not None:
+        backend.rotary_backend = args.rotary_backend
+    if getattr(args, "save_rd_dir", None) is not None:
+        backend.save_rd_dir = _as_path(args.save_rd_dir)
+    backend.movement_only = backend.movement_only or bool(getattr(args, "movement_only", False))
+
+
+def build_rotary_config(cfg_data: dict) -> RotaryConfig:
+    backend_cfg = _section(cfg_data, "backend")
+    return RotaryConfig(
+        steps_per_rev=float(backend_cfg.get("rotary_steps_per_rev", 4000.0)),
+        step_pin=backend_cfg.get("rotary_step_pin"),
+        dir_pin=backend_cfg.get("rotary_dir_pin"),
+        step_pin_pos=backend_cfg.get("rotary_step_pin_pos", 11),
+        dir_pin_pos=backend_cfg.get("rotary_dir_pin_pos", 13),
+        enable_pin=backend_cfg.get("rotary_enable_pin"),
+        alarm_pin=backend_cfg.get("rotary_alarm_pin"),
+        invert_dir=bool(backend_cfg.get("rotary_invert_dir", False)),
+        max_step_rate_hz=backend_cfg.get("rotary_max_step_rate_hz", 500.0),
+        pin_numbering=str(backend_cfg.get("rotary_pin_numbering", "board")).lower(),
+    )
+
+
+def apply_rotary_overrides(args: argparse.Namespace, rotary: RotaryConfig) -> None:
+    if getattr(args, "rotary_steps_per_rev", None) is not None:
+        rotary.steps_per_rev = args.rotary_steps_per_rev
+    if getattr(args, "rotary_step_pin", None) is not None:
+        rotary.step_pin = args.rotary_step_pin
+    if getattr(args, "rotary_dir_pin", None) is not None:
+        rotary.dir_pin = args.rotary_dir_pin
+    if getattr(args, "rotary_step_pin_pos", None) is not None:
+        rotary.step_pin_pos = args.rotary_step_pin_pos
+    if getattr(args, "rotary_dir_pin_pos", None) is not None:
+        rotary.dir_pin_pos = args.rotary_dir_pin_pos
+    if getattr(args, "rotary_enable_pin", None) is not None:
+        rotary.enable_pin = args.rotary_enable_pin
+    if getattr(args, "rotary_alarm_pin", None) is not None:
+        rotary.alarm_pin = args.rotary_alarm_pin
+    if getattr(args, "rotary_invert_dir", False):
+        rotary.invert_dir = True
+    if getattr(args, "rotary_pin_numbering", None) is not None:
+        rotary.pin_numbering = args.rotary_pin_numbering.lower()
+    if getattr(args, "rotary_max_step_rate_hz", None) is not None:
+        rotary.max_step_rate_hz = args.rotary_max_step_rate_hz
+
+
+def build_simulation_config(cfg_data: dict, args: argparse.Namespace) -> SimulationConfig:
+    backend_cfg = _section(cfg_data, "backend")
+    rd_dir = _as_path(backend_cfg.get("simulate_rd_dir"))
+    if getattr(args, "simulate_rd_dir", None) is not None:
+        rd_dir = _as_path(args.simulate_rd_dir)
+    return SimulationConfig(
+        enabled=bool(getattr(args, "simulate", False)),
+        screenshots_dir=getattr(args, "simulate_screenshots_dir", None),
+        screenshots_every_s=float(getattr(args, "simulate_screenshots_every_s", 2.0)),
+        rd_dir=rd_dir,
+    )
 
 
 def load_config_and_args(args: argparse.Namespace) -> RunConfig:
@@ -293,281 +515,55 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     Raises:
         SystemExit: On missing/invalid config when explicitly requested.
     """
-    cfg_data: dict = {}
-    cfg_path: Path | None = args.config
-    used_default = False
+    cfg_data, _cfg_path = load_config_data(args.config)
 
-    # Default: try config.toml if no explicit --config was provided
-    if cfg_path is None:
-        default_path = Path("config.toml")
-        if default_path.exists():
-            cfg_path = default_path
-            used_default = True
+    joint_params = build_joint_params(cfg_data)
+    apply_joint_overrides(args, joint_params)
 
-    if cfg_path is not None:
-        try:
-            cfg_data = _load_toml(cfg_path)
-        except FileNotFoundError:
-            # Explicit --config must exist; default config.toml may be absent
-            if not used_default:
-                raise SystemExit(f"Config file not found: {cfg_path}")
-        except Exception as e:  # TOML parse errors, permission issues, etc.
-            raise SystemExit(f"Failed to load config file {cfg_path}: {e}") from e
+    jig_params = build_jig_params(cfg_data, joint_params)
+    apply_jig_overrides(args, jig_params, joint_params)
 
-    thickness_mm = _dict_get_nested(cfg_data, "joint.thickness_mm", 6.35)
-    edge_length_mm = _dict_get_nested(cfg_data, "joint.edge_length_mm", 100.0)
-    dovetail_angle_deg = _dict_get_nested(cfg_data, "joint.dovetail_angle_deg", 8.0)
-    num_tails = _dict_get_nested(cfg_data, "joint.num_tails", 3)
-    tail_outer_width_mm = _dict_get_nested(cfg_data, "joint.tail_outer_width_mm", 20.0)
-    clearance_mm = _dict_get_nested(cfg_data, "joint.clearance_mm", 0.05)
+    machine_params = build_machine_params(cfg_data)
+    apply_machine_overrides(args, machine_params)
 
-    kerf_mm_cfg = _dict_get_nested(cfg_data, "joint.kerf_mm", None)
-    kerf_mm = kerf_mm_cfg if kerf_mm_cfg is not None else 0.15
-    kerf_tail_cfg = _dict_get_nested(cfg_data, "joint.kerf_tail_mm", None)
-    kerf_pin_cfg = _dict_get_nested(cfg_data, "joint.kerf_pin_mm", None)
-    kerf_tail_mm = kerf_tail_cfg if kerf_tail_cfg is not None else kerf_mm
-    kerf_pin_mm = kerf_pin_cfg if kerf_pin_cfg is not None else kerf_mm
+    backend = build_backend_config(cfg_data, dry_run_rd=bool(getattr(args, "dry_run_rd", False)))
+    apply_backend_overrides(args, backend)
 
-    if (
-        _dict_get_nested(cfg_data, "joint.tail_depth_mm", None) is not None
-        or _dict_get_nested(cfg_data, "joint.socket_depth_mm", None) is not None
-    ):
-        log.warning(
-            "joint.tail_depth_mm and joint.socket_depth_mm are derived from thickness_mm and ignored"
-        )
+    rotary = build_rotary_config(cfg_data)
+    apply_rotary_overrides(args, rotary)
 
-    joint_params = JointParams(
-        thickness_mm=thickness_mm,
-        edge_length_mm=edge_length_mm,
-        dovetail_angle_deg=dovetail_angle_deg,
-        num_tails=num_tails,
-        tail_outer_width_mm=tail_outer_width_mm,
-        tail_depth_mm=thickness_mm,
-        socket_depth_mm=thickness_mm,
-        clearance_mm=clearance_mm,
-        kerf_tail_mm=kerf_tail_mm,
-        kerf_pin_mm=kerf_pin_mm,
-    )
-
-    machine_params = MachineParams(
-        cut_speed_tail_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_tail_mm_s", 10.0),
-        cut_speed_pin_mm_s=_dict_get_nested(cfg_data, "machine.cut_speed_pin_mm_s", 8.0),
-        rapid_speed_mm_s=_dict_get_nested(cfg_data, "machine.rapid_speed_mm_s", 200.0),
-        z_speed_mm_s=_dict_get_nested(cfg_data, "machine.z_speed_mm_s", 5.0),
-        cut_power_tail_pct=_dict_get_nested(cfg_data, "machine.cut_power_tail_pct", 60.0),
-        cut_power_pin_pct=_dict_get_nested(cfg_data, "machine.cut_power_pin_pct", 65.0),
-        travel_power_pct=_dict_get_nested(cfg_data, "machine.travel_power_pct", 0.0),
-        cut_overtravel_mm=_dict_get_nested(cfg_data, "machine.cut_overtravel_mm", 0.5),
-        air_assist=bool(_dict_get_nested(cfg_data, "machine.air_assist", True)),
-        z_positive_moves_bed_up=bool(
-            _dict_get_nested(cfg_data, "machine.z_positive_moves_bed_up", True)
-        ),
-        inline_fan_on=bool(_dict_get_nested(cfg_data, "machine.inline_fan_on", False)),
-        pre_cut_warmup_s=float(_dict_get_nested(cfg_data, "machine.pre_cut_warmup_s", 0.0)),
-        z_zero_tail_mm=_dict_get_nested(cfg_data, "machine.z_zero_tail_mm", 0.0),
-        z_zero_pin_mm=_dict_get_nested(cfg_data, "machine.z_zero_pin_mm", 0.0),
-    )
-
-    # CLI overrides (joint params)
-    if args.edge_length_mm is not None:
-        joint_params.edge_length_mm = args.edge_length_mm
-    if args.thickness_mm is not None:
-        joint_params.thickness_mm = args.thickness_mm
-        joint_params.tail_depth_mm = joint_params.thickness_mm
-        joint_params.socket_depth_mm = joint_params.thickness_mm
-    if args.num_tails is not None:
-        joint_params.num_tails = args.num_tails
-    if args.dovetail_angle_deg is not None:
-        joint_params.dovetail_angle_deg = args.dovetail_angle_deg
-    if args.tail_width_mm is not None:
-        joint_params.tail_outer_width_mm = args.tail_width_mm
-    if args.clearance_mm is not None:
-        joint_params.clearance_mm = args.clearance_mm
-    if args.kerf_mm is not None:
-        joint_params.kerf_tail_mm = args.kerf_mm
-        joint_params.kerf_pin_mm = args.kerf_mm
-    if args.kerf_tail_mm is not None:
-        joint_params.kerf_tail_mm = args.kerf_tail_mm
-    if args.kerf_pin_mm is not None:
-        joint_params.kerf_pin_mm = args.kerf_pin_mm
-
-    axis_to_fence_cfg = _dict_get_nested(cfg_data, "jig.axis_to_fence_mm", None)
-    axis_to_origin_cfg = _dict_get_nested(cfg_data, "jig.axis_to_origin_mm", None)
-    if axis_to_fence_cfg is not None and axis_to_origin_cfg is not None:
-        log.warning(
-            "jig.axis_to_origin_mm is deprecated; using axis_to_fence_mm + thickness instead"
-        )
-    if axis_to_fence_cfg is not None:
-        axis_to_origin_mm = axis_to_fence_cfg + joint_params.thickness_mm
-    elif axis_to_origin_cfg is not None:
-        log.warning("jig.axis_to_origin_mm is deprecated; set jig.axis_to_fence_mm instead")
-        axis_to_origin_mm = axis_to_origin_cfg
-    else:
-        axis_to_origin_mm = 30.0
-        log.warning("jig.axis_to_fence_mm not set; defaulting axis_to_origin_mm to 30.0")
-
-    jig_params = JigParams(
-        axis_to_origin_mm=axis_to_origin_mm,
-        rotation_zero_deg=_dict_get_nested(cfg_data, "jig.rotation_zero_deg", 0.0),
-        rotation_speed_dps=_dict_get_nested(cfg_data, "jig.rotation_speed_dps", 30.0),
-    )
-
-    # CLI overrides (jig/machine params)
-    if args.axis_to_fence_mm is not None:
-        jig_params.axis_to_origin_mm = args.axis_to_fence_mm + joint_params.thickness_mm
-    if args.cut_overtravel_mm is not None:
-        machine_params.cut_overtravel_mm = args.cut_overtravel_mm
-    if getattr(args, "air_assist", None) is not None:
-        machine_params.air_assist = bool(args.air_assist)
-    if getattr(args, "inline_fan_on", None) is not None:
-        machine_params.inline_fan_on = bool(args.inline_fan_on)
-    if getattr(args, "pre_cut_warmup_s", None) is not None:
-        machine_params.pre_cut_warmup_s = float(args.pre_cut_warmup_s)
-    if getattr(args, "z_positive_moves_bed_up", None) is not None:
-        machine_params.z_positive_moves_bed_up = bool(args.z_positive_moves_bed_up)
-
-    backend_host, backend_port, ruida_magic, use_dummy = load_backend_config(cfg_data)
-    ruida_timeout_s = _dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0)
-    ruida_source_port = _dict_get_nested(cfg_data, "backend.ruida_source_port", 40200)
-    rotary_steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
-    rotary_microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
-    if rotary_microsteps is not None and rotary_steps_per_rev is not None:
-        log.warning(
-            "backend.rotary_microsteps is deprecated; fold it into backend.rotary_steps_per_rev"
-        )
-        rotary_steps_per_rev = rotary_steps_per_rev * rotary_microsteps
-    # Default pins match the known working script (BOARD/physical numbers): pulse PUL+/DIR+, PUL-/DIR- tied to GND.
-    rotary_pin_numbering = _dict_get_nested(
-        cfg_data, "backend.rotary_pin_numbering", "board"
-    ).lower()
-    rotary_step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)  # PUL-
-    rotary_dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)  # DIR-
-    rotary_step_pin_pos = _dict_get_nested(
-        cfg_data, "backend.rotary_step_pin_pos", 11
-    )  # PUL+ (physical pin 11)
-    rotary_dir_pin_pos = _dict_get_nested(
-        cfg_data, "backend.rotary_dir_pin_pos", 13
-    )  # DIR+ (physical pin 13)
-    rotary_enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
-    rotary_alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
-    rotary_invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
-    rotary_max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 500.0)
-    save_rd_dir = _dict_get_nested(cfg_data, "backend.save_rd_dir", None)
-    simulate_rd_dir = _dict_get_nested(cfg_data, "backend.simulate_rd_dir", None)
-    laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
-    rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
-    movement_only = bool(_dict_get_nested(cfg_data, "backend.movement_only", False))
-    simulate_screenshots_dir = getattr(args, "simulate_screenshots_dir", None)
-    simulate_screenshots_every_s = float(getattr(args, "simulate_screenshots_every_s", 2.0))
-    if args.ruida_timeout_s is not None:
-        ruida_timeout_s = args.ruida_timeout_s
-    if args.ruida_source_port is not None:
-        ruida_source_port = args.ruida_source_port
-    if args.rotary_steps_per_rev is not None:
-        rotary_steps_per_rev = args.rotary_steps_per_rev
-    cli_microsteps = getattr(args, "rotary_microsteps", None)
-    if cli_microsteps is not None and rotary_steps_per_rev is not None:
-        log.warning("CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev")
-        rotary_steps_per_rev = rotary_steps_per_rev * cli_microsteps
-    if args.rotary_step_pin is not None:
-        rotary_step_pin = args.rotary_step_pin
-    if args.rotary_dir_pin is not None:
-        rotary_dir_pin = args.rotary_dir_pin
-    if args.rotary_step_pin_pos is not None:
-        rotary_step_pin_pos = args.rotary_step_pin_pos
-    if args.rotary_dir_pin_pos is not None:
-        rotary_dir_pin_pos = args.rotary_dir_pin_pos
-    if args.rotary_enable_pin is not None:
-        rotary_enable_pin = args.rotary_enable_pin
-    if args.rotary_alarm_pin is not None:
-        rotary_alarm_pin = args.rotary_alarm_pin
-    if args.rotary_invert_dir:
-        rotary_invert_dir = True
-    if args.rotary_pin_numbering is not None:
-        rotary_pin_numbering = args.rotary_pin_numbering.lower()
-    if args.rotary_max_step_rate_hz is not None:
-        rotary_max_step_rate_hz = args.rotary_max_step_rate_hz
-    if getattr(args, "save_rd_dir", None) is not None:
-        save_rd_dir = args.save_rd_dir
-    if args.laser_backend is not None:
-        laser_backend = args.laser_backend
-    if args.rotary_backend is not None:
-        rotary_backend = args.rotary_backend
-    if getattr(args, "simulate_rd_dir", None) is not None:
-        simulate_rd_dir = args.simulate_rd_dir
-    movement_only = movement_only or args.movement_only
-    if save_rd_dir is not None and not isinstance(save_rd_dir, Path):
-        save_rd_dir = Path(save_rd_dir)
-    if simulate_rd_dir is not None and not isinstance(simulate_rd_dir, Path):
-        simulate_rd_dir = Path(simulate_rd_dir)
-
-    # Default backend selection preserves legacy use_dummy behavior.
-    if laser_backend is None:
-        if use_dummy is True:
-            laser_backend = "dummy"
-        elif use_dummy is False:
-            laser_backend = "ruida"
-        else:
-            laser_backend = "dummy"
-    if rotary_backend is None:
-        if use_dummy is True:
-            rotary_backend = "dummy"
-        elif use_dummy is False:
-            rotary_backend = "real"
-        else:
-            rotary_backend = "dummy"
+    simulation = build_simulation_config(cfg_data, args)
 
     valid_laser_backends = {"dummy", "ruida"}
     valid_rotary_backends = {"dummy", "real"}
-    if laser_backend not in valid_laser_backends:
+    if backend.laser_backend not in valid_laser_backends:
         raise SystemExit(
-            f"Invalid laser backend '{laser_backend}'; expected one of {sorted(valid_laser_backends)}"
+            f"Invalid laser backend '{backend.laser_backend}'; expected one of {sorted(valid_laser_backends)}"
         )
-    if rotary_backend not in valid_rotary_backends:
+    if backend.rotary_backend not in valid_rotary_backends:
         raise SystemExit(
-            f"Invalid rotary backend '{rotary_backend}'; expected one of {sorted(valid_rotary_backends)}"
+            f"Invalid rotary backend '{backend.rotary_backend}'; expected one of {sorted(valid_rotary_backends)}"
         )
-    if simulate_screenshots_every_s <= 0.0:
+    if simulation.screenshots_every_s <= 0.0:
         raise SystemExit("--simulate-screenshots-every-s must be > 0")
-    if rotary_pin_numbering not in ("bcm", "board"):
+    if rotary.pin_numbering not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'")
-
-    dry_run_rd = bool(getattr(args, "dry_run_rd", False))
-    reset_only = bool(getattr(args, "reset", False))
 
     log.debug("JointParams: %s", asdict(joint_params))
     log.debug("JigParams: %s", asdict(jig_params))
     log.debug("MachineParams: %s", asdict(machine_params))
+    log.debug("BackendConfig: %s", asdict(backend))
+    log.debug("RotaryConfig: %s", asdict(rotary))
+    log.debug("SimulationConfig: %s", asdict(simulation))
 
     return RunConfig(
         joint_params=joint_params,
         jig_params=jig_params,
         machine_params=machine_params,
         mode=args.mode,
-        dry_run=args.dry_run,
-        dry_run_rd=dry_run_rd,
-        backend_host=backend_host,
-        backend_port=backend_port,
-        ruida_magic=ruida_magic,
-        ruida_timeout_s=ruida_timeout_s,
-        ruida_source_port=ruida_source_port,
-        rotary_steps_per_rev=rotary_steps_per_rev,
-        rotary_step_pin=rotary_step_pin,
-        rotary_dir_pin=rotary_dir_pin,
-        rotary_step_pin_pos=rotary_step_pin_pos,
-        rotary_dir_pin_pos=rotary_dir_pin_pos,
-        rotary_enable_pin=rotary_enable_pin,
-        rotary_alarm_pin=rotary_alarm_pin,
-        rotary_invert_dir=rotary_invert_dir,
-        rotary_max_step_rate_hz=rotary_max_step_rate_hz,
-        rotary_pin_numbering=rotary_pin_numbering,
-        simulate=args.simulate,
-        laser_backend=laser_backend,
-        rotary_backend=rotary_backend,
-        movement_only=movement_only,
-        save_rd_dir=save_rd_dir,
-        reset_only=reset_only,
-        simulate_screenshots_dir=simulate_screenshots_dir,
-        simulate_screenshots_every_s=simulate_screenshots_every_s,
-        simulate_rd_dir=simulate_rd_dir,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        reset_only=bool(getattr(args, "reset", False)),
+        backend=backend,
+        rotary=rotary,
+        simulation=simulation,
     )

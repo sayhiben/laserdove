@@ -17,6 +17,15 @@ from typing import Any
 
 try:
     from laserdove.hardware import RealRotary, LoggingStepperDriver, GPIOStepperDriver
+    from laserdove.config import (
+        load_config_data,
+        build_joint_params,
+        build_jig_params,
+        build_rotary_config,
+        apply_rotary_overrides,
+        build_backend_config,
+        apply_backend_overrides,
+    )
     from laserdove.logging_utils import setup_logging
 except ImportError:
     # Allow running directly from the repository without editable install.
@@ -27,12 +36,16 @@ except ImportError:
         if path_str not in sys.path:
             sys.path.insert(0, path_str)
     from laserdove.hardware import RealRotary, LoggingStepperDriver, GPIOStepperDriver
+    from laserdove.config import (
+        load_config_data,
+        build_joint_params,
+        build_jig_params,
+        build_rotary_config,
+        apply_rotary_overrides,
+        build_backend_config,
+        apply_backend_overrides,
+    )
     from laserdove.logging_utils import setup_logging
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover - fallback for older Pythons
-    import tomli as tomllib  # type: ignore
 
 LOG = logging.getLogger("rotary_zero")
 
@@ -54,45 +67,6 @@ class RotarySettings:
     speed_dps: float
     zero_deg: float
     dry_run: bool
-
-
-def _dict_get_nested(data: dict[str, Any], key: str, default: Any = None) -> Any:
-    current: Any = data
-    for part in key.split("."):
-        if not isinstance(current, dict) or part not in current:
-            return default
-        current = current[part]
-    return current
-
-
-def _load_toml(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
-    with path.open("rb") as f:
-        return tomllib.load(f)
-
-
-def _load_config(path: Path | None) -> tuple[dict[str, Any], Path | None]:
-    cfg_data: dict[str, Any] = {}
-    cfg_path: Path | None = path
-    used_default = False
-
-    if cfg_path is None:
-        default_path = Path("config.toml")
-        if default_path.exists():
-            cfg_path = default_path
-            used_default = True
-
-    if cfg_path is not None:
-        try:
-            cfg_data = _load_toml(cfg_path)
-        except FileNotFoundError:
-            if not used_default:
-                raise SystemExit(f"Config file not found: {cfg_path}")
-        except Exception as exc:
-            raise SystemExit(f"Failed to load config file {cfg_path}: {exc}") from exc
-
-    return cfg_data, cfg_path
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -157,18 +131,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Cap rotary step pulse rate (Hz).",
     )
     return ap
-
-
-def _resolve_rotary_backend(cfg_data: dict[str, Any]) -> str:
-    rotary_backend = _dict_get_nested(cfg_data, "backend.rotary_backend", None)
-    if rotary_backend is None:
-        use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
-        if use_dummy is not None:
-            LOG.warning("backend.use_dummy is deprecated; set backend.rotary_backend instead")
-            rotary_backend = "dummy" if bool(use_dummy) else "real"
-        else:
-            rotary_backend = "dummy"
-    return rotary_backend
 
 
 def _format_float(value: float) -> str:
@@ -236,83 +198,40 @@ def _update_toml_value(path: Path, section: str, key: str, value: float) -> None
 def _resolve_settings(
     args: argparse.Namespace, cfg_data: dict[str, Any], cfg_path: Path | None
 ) -> RotarySettings:
-    rotary_backend = _resolve_rotary_backend(cfg_data)
-    if args.rotary_backend is not None:
-        rotary_backend = args.rotary_backend
-
-    steps_per_rev = _dict_get_nested(cfg_data, "backend.rotary_steps_per_rev", 4000.0)
-    microsteps = _dict_get_nested(cfg_data, "backend.rotary_microsteps", None)
-    if microsteps is not None and steps_per_rev is not None:
-        LOG.warning(
-            "backend.rotary_microsteps is deprecated; fold it into backend.rotary_steps_per_rev"
-        )
-        steps_per_rev = steps_per_rev * microsteps
-    step_pin = _dict_get_nested(cfg_data, "backend.rotary_step_pin", None)
-    dir_pin = _dict_get_nested(cfg_data, "backend.rotary_dir_pin", None)
-    step_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_step_pin_pos", 11)
-    dir_pin_pos = _dict_get_nested(cfg_data, "backend.rotary_dir_pin_pos", 13)
-    enable_pin = _dict_get_nested(cfg_data, "backend.rotary_enable_pin", None)
-    alarm_pin = _dict_get_nested(cfg_data, "backend.rotary_alarm_pin", None)
-    invert_dir = bool(_dict_get_nested(cfg_data, "backend.rotary_invert_dir", False))
-    pin_numbering = _dict_get_nested(cfg_data, "backend.rotary_pin_numbering", "board")
-    max_step_rate_hz = _dict_get_nested(cfg_data, "backend.rotary_max_step_rate_hz", 500.0)
-    speed_dps = _dict_get_nested(cfg_data, "jig.rotation_speed_dps", 30.0)
-    zero_deg = float(_dict_get_nested(cfg_data, "jig.rotation_zero_deg", 0.0))
-
-    if args.rotary_steps_per_rev is not None:
-        steps_per_rev = args.rotary_steps_per_rev
-    cli_microsteps = getattr(args, "rotary_microsteps", None)
-    if cli_microsteps is not None and steps_per_rev is not None:
-        LOG.warning("CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev")
-        steps_per_rev = steps_per_rev * cli_microsteps
-    if args.rotary_step_pin is not None:
-        step_pin = args.rotary_step_pin
-    if args.rotary_dir_pin is not None:
-        dir_pin = args.rotary_dir_pin
-    if args.rotary_step_pin_pos is not None:
-        step_pin_pos = args.rotary_step_pin_pos
-    if args.rotary_dir_pin_pos is not None:
-        dir_pin_pos = args.rotary_dir_pin_pos
-    if args.rotary_enable_pin is not None:
-        enable_pin = args.rotary_enable_pin
-    if args.rotary_alarm_pin is not None:
-        alarm_pin = args.rotary_alarm_pin
-    if args.rotary_invert_dir:
-        invert_dir = True
-    if args.rotary_pin_numbering is not None:
-        pin_numbering = args.rotary_pin_numbering
-    if args.rotary_max_step_rate_hz is not None:
-        max_step_rate_hz = args.rotary_max_step_rate_hz
+    joint_params = build_joint_params(cfg_data)
+    jig_params = build_jig_params(cfg_data, joint_params)
+    rotary = build_rotary_config(cfg_data)
+    apply_rotary_overrides(args, rotary)
+    backend = build_backend_config(cfg_data, dry_run_rd=False)
+    apply_backend_overrides(args, backend)
+    speed_dps = jig_params.rotation_speed_dps
     if args.speed_dps is not None:
         speed_dps = args.speed_dps
-
-    if pin_numbering is None:
-        pin_numbering = "board"
-    if speed_dps is None:
-        speed_dps = 30.0
-
+    pin_numbering = rotary.pin_numbering
     if speed_dps <= 0:
         raise SystemExit("--speed-dps must be > 0.")
-    if rotary_backend not in ("dummy", "real"):
-        raise SystemExit(f"Invalid rotary backend '{rotary_backend}'; expected 'dummy' or 'real'.")
+    if backend.rotary_backend not in ("dummy", "real"):
+        raise SystemExit(
+            f"Invalid rotary backend '{backend.rotary_backend}'; expected 'dummy' or 'real'."
+        )
     if str(pin_numbering).lower() not in ("bcm", "board"):
         raise SystemExit("rotary_pin_numbering must be 'bcm' or 'board'.")
 
     return RotarySettings(
         cfg_path=cfg_path,
-        rotary_backend=rotary_backend,
-        steps_per_rev=steps_per_rev,
-        step_pin=step_pin,
-        dir_pin=dir_pin,
-        step_pin_pos=step_pin_pos,
-        dir_pin_pos=dir_pin_pos,
-        enable_pin=enable_pin,
-        alarm_pin=alarm_pin,
-        invert_dir=invert_dir,
+        rotary_backend=backend.rotary_backend,
+        steps_per_rev=rotary.steps_per_rev,
+        step_pin=rotary.step_pin,
+        dir_pin=rotary.dir_pin,
+        step_pin_pos=rotary.step_pin_pos,
+        dir_pin_pos=rotary.dir_pin_pos,
+        enable_pin=rotary.enable_pin,
+        alarm_pin=rotary.alarm_pin,
+        invert_dir=rotary.invert_dir,
         pin_numbering=str(pin_numbering).lower(),
-        max_step_rate_hz=max_step_rate_hz,
+        max_step_rate_hz=rotary.max_step_rate_hz,
         speed_dps=speed_dps,
-        zero_deg=zero_deg,
+        zero_deg=jig_params.rotation_zero_deg,
         dry_run=bool(getattr(args, "dry_run", False)),
     )
 
@@ -509,7 +428,7 @@ def main() -> None:
     interactive = _should_run_interactive(args)
     setup_logging(args.log_level, stream=sys.stderr if interactive else None)
 
-    cfg_data, cfg_path = _load_config(args.config)
+    cfg_data, cfg_path = load_config_data(args.config)
     settings = _resolve_settings(args, cfg_data, cfg_path)
 
     LOG.info(

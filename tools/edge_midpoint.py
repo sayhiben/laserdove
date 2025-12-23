@@ -20,6 +20,12 @@ from typing import Any
 
 try:
     from laserdove.hardware.ruida_laser import RuidaLaser
+    from laserdove.config import (
+        load_config_data,
+        build_backend_config,
+        apply_backend_overrides,
+        build_machine_params,
+    )
     from laserdove.logging_utils import setup_logging
 except ImportError:
     # Allow running directly from the repository without editable install.
@@ -30,12 +36,13 @@ except ImportError:
         if path_str not in sys.path:
             sys.path.insert(0, path_str)
     from laserdove.hardware.ruida_laser import RuidaLaser
+    from laserdove.config import (
+        load_config_data,
+        build_backend_config,
+        apply_backend_overrides,
+        build_machine_params,
+    )
     from laserdove.logging_utils import setup_logging
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:  # pragma: no cover - fallback for older Pythons
-    import tomli as tomllib  # type: ignore
 
 LOG = logging.getLogger("edge_midpoint")
 
@@ -52,45 +59,6 @@ class MidpointSettings:
     rapid_speed_mm_s: float
     dry_run: bool
     force: bool
-
-
-def _dict_get_nested(data: dict[str, Any], key: str, default: Any = None) -> Any:
-    current: Any = data
-    for part in key.split("."):
-        if not isinstance(current, dict) or part not in current:
-            return default
-        current = current[part]
-    return current
-
-
-def _load_toml(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
-    with path.open("rb") as f:
-        return tomllib.load(f)
-
-
-def _load_config(path: Path | None) -> tuple[dict[str, Any], Path | None]:
-    cfg_data: dict[str, Any] = {}
-    cfg_path: Path | None = path
-    used_default = False
-
-    if cfg_path is None:
-        default_path = Path("config.toml")
-        if default_path.exists():
-            cfg_path = default_path
-            used_default = True
-
-    if cfg_path is not None:
-        try:
-            cfg_data = _load_toml(cfg_path)
-        except FileNotFoundError:
-            if not used_default:
-                raise SystemExit(f"Config file not found: {cfg_path}")
-        except Exception as exc:
-            raise SystemExit(f"Failed to load config file {cfg_path}: {exc}") from exc
-
-    return cfg_data, cfg_path
 
 
 def _format_float(value: float) -> str:
@@ -211,20 +179,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _resolve_settings(
     args: argparse.Namespace, cfg_data: dict[str, Any], cfg_path: Path | None
 ) -> MidpointSettings:
-    laser_backend = _dict_get_nested(cfg_data, "backend.laser_backend", None)
-    if laser_backend is None:
-        use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
-        if use_dummy is not None:
-            LOG.warning("backend.use_dummy is deprecated; set backend.laser_backend instead")
-            laser_backend = "dummy" if bool(use_dummy) else "ruida"
-        else:
-            laser_backend = "dummy"
-    host = _dict_get_nested(cfg_data, "backend.ruida_host", "192.168.1.100")
-    port = int(_dict_get_nested(cfg_data, "backend.ruida_port", 50200))
-    source_port = int(_dict_get_nested(cfg_data, "backend.ruida_source_port", 40200))
-    timeout_s = float(_dict_get_nested(cfg_data, "backend.ruida_timeout_s", 3.0))
-    magic = int(_dict_get_nested(cfg_data, "backend.ruida_magic", 0x88))
-    rapid_speed = float(_dict_get_nested(cfg_data, "machine.rapid_speed_mm_s", 200.0))
+    backend = build_backend_config(cfg_data, dry_run_rd=False)
+    apply_backend_overrides(args, backend)
+    machine_params = build_machine_params(cfg_data)
+    laser_backend = backend.laser_backend
+    host = backend.ruida_host
+    port = backend.ruida_port
+    source_port = backend.ruida_source_port
+    timeout_s = backend.ruida_timeout_s
+    magic = backend.ruida_magic
+    rapid_speed = machine_params.rapid_speed_mm_s
 
     if args.host is not None:
         host = args.host
@@ -269,7 +233,7 @@ def main() -> None:
     args = _build_arg_parser().parse_args()
     setup_logging(args.log_level)
 
-    cfg_data, cfg_path = _load_config(args.config)
+    cfg_data, cfg_path = load_config_data(args.config)
     settings = _resolve_settings(args, cfg_data, cfg_path)
 
     if settings.laser_backend == "dummy" and not settings.force:

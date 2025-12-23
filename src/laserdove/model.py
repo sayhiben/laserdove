@@ -11,6 +11,11 @@ class Side(Enum):
     RIGHT = auto()
 
 
+class BoardSide(Enum):
+    TAIL = "tail"
+    PIN = "pin"
+
+
 @dataclass
 class JointParams:
     """Geometry + fit + process parameters for one dovetail joint."""
