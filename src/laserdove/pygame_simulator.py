@@ -318,7 +318,9 @@ def build_beam_traces_from_rd_files(
         x_machine: float, y_machine: float, rotation_deg: float, board: str
     ) -> tuple[float, float, float]:
         y_center = joint_params.edge_length_mm / 2.0
-        if board == "pin" and not math.isclose(rotation_deg, jig_params.rotation_zero_deg, abs_tol=1e-9):
+        if board == "pin" and not math.isclose(
+            rotation_deg, jig_params.rotation_zero_deg, abs_tol=1e-9
+        ):
             y_abs = invert_projected_y(
                 y_machine,
                 rotation_deg,

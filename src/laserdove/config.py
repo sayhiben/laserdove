@@ -400,9 +400,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
     if axis_to_fence_cfg is not None:
         axis_to_origin_mm = axis_to_fence_cfg + joint_params.thickness_mm
     elif axis_to_origin_cfg is not None:
-        log.warning(
-            "jig.axis_to_origin_mm is deprecated; set jig.axis_to_fence_mm instead"
-        )
+        log.warning("jig.axis_to_origin_mm is deprecated; set jig.axis_to_fence_mm instead")
         axis_to_origin_mm = axis_to_origin_cfg
     else:
         axis_to_origin_mm = 30.0
@@ -469,9 +467,7 @@ def load_config_and_args(args: argparse.Namespace) -> RunConfig:
         rotary_steps_per_rev = args.rotary_steps_per_rev
     cli_microsteps = getattr(args, "rotary_microsteps", None)
     if cli_microsteps is not None and rotary_steps_per_rev is not None:
-        log.warning(
-            "CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev"
-        )
+        log.warning("CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev")
         rotary_steps_per_rev = rotary_steps_per_rev * cli_microsteps
     if args.rotary_step_pin is not None:
         rotary_step_pin = args.rotary_step_pin

@@ -166,9 +166,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--host", help="Ruida controller host/IP (overrides config).")
     ap.add_argument("--port", type=int, help="Ruida UDP port (default 50200).")
-    ap.add_argument(
-        "--source-port", type=int, help="Local UDP source port (default 40200)."
-    )
+    ap.add_argument("--source-port", type=int, help="Local UDP source port (default 40200).")
     ap.add_argument("--timeout-s", type=float, help="UDP timeout seconds (default 3.0).")
     ap.add_argument(
         "--magic",
@@ -217,9 +215,7 @@ def _resolve_settings(
     if laser_backend is None:
         use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
         if use_dummy is not None:
-            LOG.warning(
-                "backend.use_dummy is deprecated; set backend.laser_backend instead"
-            )
+            LOG.warning("backend.use_dummy is deprecated; set backend.laser_backend instead")
             laser_backend = "dummy" if bool(use_dummy) else "ruida"
         else:
             laser_backend = "dummy"

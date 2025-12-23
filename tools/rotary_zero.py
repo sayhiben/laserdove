@@ -164,9 +164,7 @@ def _resolve_rotary_backend(cfg_data: dict[str, Any]) -> str:
     if rotary_backend is None:
         use_dummy = _dict_get_nested(cfg_data, "backend.use_dummy", None)
         if use_dummy is not None:
-            LOG.warning(
-                "backend.use_dummy is deprecated; set backend.rotary_backend instead"
-            )
+            LOG.warning("backend.use_dummy is deprecated; set backend.rotary_backend instead")
             rotary_backend = "dummy" if bool(use_dummy) else "real"
         else:
             rotary_backend = "dummy"
@@ -265,9 +263,7 @@ def _resolve_settings(
         steps_per_rev = args.rotary_steps_per_rev
     cli_microsteps = getattr(args, "rotary_microsteps", None)
     if cli_microsteps is not None and steps_per_rev is not None:
-        LOG.warning(
-            "CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev"
-        )
+        LOG.warning("CLI --rotary-microsteps is deprecated; fold it into --rotary-steps-per-rev")
         steps_per_rev = steps_per_rev * cli_microsteps
     if args.rotary_step_pin is not None:
         step_pin = args.rotary_step_pin
