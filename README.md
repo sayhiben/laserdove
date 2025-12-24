@@ -8,147 +8,124 @@
   </div>
 </div>
 
-Experimental Python tooling to plan and drive dovetail joints on laser cutting machines with a stepper-based rotary jig. This is pre-production software: use at your own risk and double-check every motion before powering a laser.
-
-## Safety warning
+# Safety warning
 
 > [!CAUTION]
 > - Always dry-run or simulate commands before sending motion to hardware.
 > - Keep the beam off (`--movement-only` or dummy backend) until you trust the job.
 > - You are responsible for all outcomes. Third-party laser software and firmware can behave unexpectedly; monitor every job and have an e-stop within reach.
 
-## What it does
-- Plans tail/pin layouts and emits motion/laser commands for Ruida controllers.
-- Supports dry-run, pygame simulation, and RD job saving for inspection.
-- Rotary-aware Z offsets and origin capture to align with the controller’s current position.
-- Dummy backends for safe development; GPIO-driven rotary for Raspberry Pi setups.
+# Overview
 
-## Hardware requirements
-- Ruida-based controller reachable over Ethernet (tested against RDC6442G protocol).
-- Raspberry Pi (or similar) with GPIO access to a step/dir stepper driver for the rotary.
-- Stepper-driven rotary fixture for the workpiece.
-- For simulation-only use, hardware is optional.
+Experimental Python tooling to plan and execute dovetail joints on a laser with a stepper-based rotary jig. It computes tail and pin geometry, turns plans into motion commands, and can simulate or emit Ruida RD jobs. This is pre-production software: verify every move before powering a laser.
+
+## What it does
+- Computes deterministic tail and pin layouts with kerf and clearance handling.
+- Builds command sequences for tails (flat) and pins (rotary flanks with Z offsets).
+- Sends Ruida UDP jobs or uses dummy backends for safe dry runs.
+- Simulates jobs in pygame, including rotary and Z movement playback.
+- Includes helper tools for rotary zeroing, midpoint finding, and RD inspection.
+
+## Safety and status
+- Pre-production: expect rough edges and check all moves before firing the laser.
+- Always run a dry-run and simulator pass first; keep beam off until verified.
+- Use `--movement-only` or `--reset` for first hardware shakedowns.
+
+## Requirements
+- Python 3.11+.
+- Optional: `pygame` for the simulator.
+- Optional: `RPi.GPIO` for real rotary GPIO (Raspberry Pi).
+- Ruida controller required only for live cutting.
+
+## Quick start (safe workflow)
+```bash
+cp example-config.toml config.toml
+
+python -m laserdove.main --config config.toml --mode both --dry-run
+python -m laserdove.main --config config.toml --simulate
+
+# Safe Ruida output without firing
+python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out --movement-only
+```
 
 ## Install
 ```bash
 source .venv/bin/activate
-pip install -e .          # runtime
-# For dev/lint/tests
+pip install -e .
+# Dev/lint/tests
 pip install -e ".[dev]"
-# For simulation (optional)
-# pip install pygame
+# Simulator (optional)
+pip install pygame
 ```
 
-## Quick start
+## Usage
+Entry points:
+- `python -m laserdove.main` (recommended)
+- `python -m laserdove.cli`
+
+Common commands:
 ```bash
-cp example-config.toml config.toml   # adjust to your jig/laser
-
-python -m laserdove.main --config config.toml --mode both --dry-run  # plan only
-
-python -m laserdove.main --config config.toml --simulate  # pygame sim (install pygame first)
-
-python -m laserdove.main --config config.toml --mode both --simulate --simulate-screenshots-dir sim_frames --simulate-screenshots-every-s 2  # capture pygame frames
-
-python -m laserdove.main --config config.toml --mode tails --save-rd-dir rd_out --movement-only  # build RD safely
+python -m laserdove.main --config config.toml --mode tails --dry-run
+python -m laserdove.main --config config.toml --simulate
+python -m laserdove.main --config config.toml --simulate --simulate-rd-dir rd_out
+python -m laserdove.main --config config.toml --reset
 ```
 
-## CLI reference
+Run `python -m laserdove.main --help` for the full CLI.
 
-### Runtime flags
-| Option | Default | Values | Description |
-| --- | --- | --- | --- |
-| `--config` | `config.toml` if present | path | TOML config file to load. |
-| `--mode` | `both` | `tails` \| `pins` \| `both` | Which board to plan. |
-| `--dry-run` | `false` | flag | Print commands; skip hardware. |
-| `--simulate` | `false` | flag | Run the pygame viewer to visualize the plan. |
-| `--simulate-screenshots-dir` | none | path | Write periodic PNG frames + `index.json` from the pygame viewer to this directory and exit. |
-| `--simulate-screenshots-every-s` | `2.0` | float | Interval (seconds) between saved frames (used with `--simulate-screenshots-dir`). |
-| `--simulate-rd-dir` | none | path | Load `.rd` files from this directory instead of planner commands in the pygame viewer. |
-| `--reset` | `false` | flag | Skip planning; rotate to zero and park head at pin Z0 (laser off). |
-| `--movement-only` | `false` | flag | Force laser power to 0 while moving (also set by `--reset`). |
-| `--dry-run-rd` | `false` | flag | Build/log RD jobs without talking to Ruida. |
-| `--save-rd-dir` | none | path | Save swizzled `.rd` jobs for inspection. |
-| `--log-level` | `INFO` | std logging levels | Verbosity. |
-| `--air-assist` / `--no-air-assist` | from config (default on) | flag | Toggle air assist in RD jobs. |
-| `--inline-fan-on` / `--inline-fan-off` | from config (default off) | flag | Toggle inline fan output (Ruida BLOW). |
-| `--pre-cut-warmup-s` | from config | float | Seconds to run air assist/inline fan before the first cut. |
-| `--z-positive-bed-up` / `--z-positive-bed-down` | from config (default bed-up) | flag | Z+ direction hint. |
+## Configuration
+Use `example-config.toml` as the reference and copy it to `config.toml`.
 
-### Geometry/Jig overrides
-| Option | Default (config) | Values | Description |
-| --- | --- | --- | --- |
-| `--edge-length-mm` | `100.0` | float | Joint edge length. |
-| `--thickness-mm` | `6.35` | float | Board thickness (also sets tail/socket depths). |
-| `--num-tails` | `3` | int | Tail count. |
-| `--dovetail-angle-deg` | `8.0` | float | Tail angle. |
-| `--tail-width-mm` | `20.0` | float | Tail outer width. |
-| `--clearance-mm` | `0.05` | float | Total socket-minus-tail clearance across the face. |
-| `--kerf-mm` | `0.15` | float | Kerf applied to both boards unless overridden. |
-| `--kerf-tail-mm` | `0.15` | float | Kerf for tail board cuts. |
-| `--kerf-pin-mm` | `0.15` | float | Kerf for pin board cuts. |
-| `--axis-to-fence-mm` | none | float | Axis center to fence top; adds thickness to derive the top-surface radius. |
-| `--cut-overtravel-mm` | `0.5` | float | Extra X depth to extend pin cuts past the edge for through/finger joints. |
+Key notes:
+- `joint.thickness_mm` sets both tail and socket depth.
+- `joint.kerf_mm` applies to both boards unless `kerf_tail_mm` or `kerf_pin_mm` overrides are set.
+- `jig.axis_to_fence_mm` plus `joint.thickness_mm` defines the top surface radius. If unset, the code falls back to 30.0mm with a warning.
+- `machine.z_zero_tail_mm` and `machine.z_zero_pin_mm` define the baseline Z offsets for each board.
+- `machine.pre_cut_warmup_s` controls pre-cut air assist and inline fan warmup.
+- `backend.simulate_rd_dir` lets the simulator replay saved `.rd` jobs when `--simulate` is used.
 
-### Hardware/backends
-| Option | Default (config) | Values | Description |
-| --- | --- | --- | --- |
-| `--laser-backend` | `dummy` | `dummy` \| `ruida` | Laser transport. |
-| `--rotary-backend` | `dummy` | `dummy` \| `real` | Rotary driver. |
-| `--ruida-timeout-s` | `3.0` | float | UDP ACK timeout. |
-| `--ruida-source-port` | `40200` | int | Local UDP source port. |
-| `--rotary-steps-per-rev` | `4000.0` | float | Step pulses per revolution (includes microsteps). |
-| `--rotary-step-pin` / `--rotary-dir-pin` | none | int | BCM pins for STEP-/DIR- (real rotary). |
-| `--rotary-step-pin-pos` / `--rotary-dir-pin-pos` | `11` / `13` | int | BCM pins for STEP+/DIR+ (default high). |
-| `--rotary-enable-pin` / `--rotary-alarm-pin` | none | int | Optional enable/alarm pins. |
-| `--rotary-invert-dir` | `false` | flag | Invert DIR output. |
-| `--rotary-pin-numbering` | `board` | `bcm` \| `board` | GPIO numbering scheme. |
-| `--rotary-max-step-rate-hz` | `500.0` | float | Max step pulse rate. |
+Config sections:
+- `[joint]`: geometry inputs (length, tails, angle, kerf, clearance, thickness).
+- `[jig]`: rotary geometry (`axis_to_fence_mm`, rotation zero, rotation speed).
+- `[machine]`: speeds, powers, Z zeros, air assist, inline fan, warmup, Z direction.
+- `[backend]`: hardware targets and GPIO pins (dummy vs Ruida/real rotary, host/port, RD save dir).
 
-## Configuration file
-- Copy `example-config.toml` to `config.toml` and edit.
-- Sections:
-  - `[joint]`: geometry inputs (length, tails, angle, kerf_mm with optional overrides, clearance; depths derive from thickness).
-  - `[jig]`: rotary geometry (`axis_to_fence_mm`, zero angle, rotation speed).
-  - `[machine]`: speeds, powers, Z zeros, air assist/inline fan, warmup, Z direction.
-  - `[backend]`: hardware targets and GPIO pins (dummy vs Ruida/real rotary, host/port, RD save dir).
-- CLI flags override TOML values.
+CLI flags override TOML values.
 
 ## Architecture (high level)
-- CLI/config: `cli.py`, `config.py` parse flags/TOML into `RunConfig`, set logging.
-- Geometry: `geometry.py` pure math for tail layouts and kerf offsets.
-- Planning: `planner.py` + `model.py` build command sequences for tails/pins and rotary Z offsets.
-- Hardware abstraction: `hardware/`:
-  - `base.py` interfaces + dummy executor,
-  - `ruida_*` + `rd_builder.py` UDP transport and RD payloads,
-  - `rotary.py` GPIO/logging rotary drivers.
-- Visualization/tools: `pygame_simulator.py`, `sim_kinematics.py`, `tools/rd_parser.py`, `tools/ruida_status_probe.py`.
-- Simulator: pygame dual-view (`--simulate`, requires `pygame`) with rotary + Z-aware edge view.
-- Validation: `validation.py` checks geometry, jig, and machine limits before execution.
+- `config.py` parses TOML and CLI into `RunConfig`.
+- `geometry.py` computes tail spacing and kerf offsets (pure math).
+- `planner_tail.py` and `planner_pin.py` emit `Command` sequences.
+- `hardware/` implements dummy backends, Ruida UDP transport, RD job building, and rotary drivers.
+- `pygame_simulator.py` provides the visual simulator (split across `sim_viewer_*`).
 
-## Pin cutting orientation
-- Pin flanks rotate to +β on the left and -β on the right so pins end up wider at the bottom of the mounted board and narrower at the top (helps reduce burning on the narrow faces).
+Flow: config -> geometry -> planner -> commands -> simulator or hardware backends.
 
-To extend: add new motion types in `planner.py`/`model.py`, new hardware backends under `hardware/`, or new CLI/config fields in `config.py` plus `example-config.toml`.
+## Tools
+- `python -m tools.rotary_zero --interactive` for rotary zeroing with step nudges and saved zero.
+- `python -m tools.edge_midpoint` to compute the board edge midpoint and optional edge length update.
+- `python -m tools.rd_parser path/to.rd` to inspect saved RD files.
+- `python -m tools.ruida_status_probe --host <ruida-ip>` to poll controller status bits.
+- `python -m tools.z_movement_suite` to exercise Z motion commands safely.
 
 ## Development
-- Lint/format: `make lint` (ruff check + format --check), autoformat with `make format`.
-- Tests + coverage: `make test` (runs lint + `pytest`).
-- Manual: `python -m pytest`, `ruff check src tests tools`.
+```bash
+make format
+make lint
+make test
+```
+
+Notes:
+- Tests live under `tests/`.
+- Avoid importing from `reference/`; it is background material only.
+
+## Pin cutting orientation
+Pin flanks rotate to rotation_zero_deg plus or minus the dovetail angle so the pin widens toward the bottom of the mounted board. This helps reduce burning on the narrow faces.
 
 ## Diagnostics and inspection
-- Save RD jobs: `--save-rd-dir rd_out/` then inspect with `tools/rd_parser.py path/to.rd`.
-- Ruida status probe: `python -m tools.ruida_status_probe --host <ruida-ip>` to poll status bits with movement-only jobs.
-- Rotary zero/level helper: `python -m tools.rotary_zero --interactive` (use `[`/`]` for step nudges, `{`/`}` for 5x, `s` to save zero to `config.toml`) or `python -m tools.rotary_zero --degrees 1.0 --cw` for one-shot moves; pass `--rotary-backend real` to drive GPIO, `--dry-run` to log only.
-- Edge midpoint helper: `python -m tools.edge_midpoint` then jog to the top/bottom corners to compute the midpoint and (optionally) save `joint.edge_length_mm` with `--save-edge-length`.
-- Simulation: `--simulate` to visualize paths with pacing based on commanded speeds (pygame). Use `[`/`]` to slow down/speed up playback.
-
-## Credits and references
-- Community and research work informed this tooling, including:
-  - MeerK40t Ruida stack (`reference/meerk40t/`).
-  - StevenIsaacs/ruida-protocol-analyzer.
-  - EduTech Wiki Ruida notes.
-  - jnweiger/ruida-laser.
-- Additional vendor and community docs live in `reference/` for background only; they are not imported into runtime code.
+- Save RD jobs with `--save-rd-dir` and inspect with `tools/rd_parser.py`.
+- Replay RD jobs in the simulator with `--simulate --simulate-rd-dir rd_out`.
+- Use `--movement-only` for travel-only validation on real hardware.
 
 ## Disclaimer
-This software is experimental and provided without any warranty or responsibility for damage or injury. Verify every setting, monitor your laser at all times, and proceed only if you accept full responsibility. Use dummy or simulated backends first, and keep an e-stop within reach.
+This software is experimental and provided without any warranty or responsibility for damage or injury. Verify every setting, monitor your laser at all times, and proceed only if you accept full responsibility.
