@@ -38,6 +38,7 @@ class PygameSimulationViewer(
         time_scale: float = 1.0,
         travel_time_scale: float = 3.0,
     ) -> None:
+        """Initialize PygameSimulationViewer."""
         self.traces = list(traces)
         self.edge_length_mm = edge_length_mm
         self.thickness_mm = thickness_mm
@@ -89,6 +90,7 @@ class PygameSimulationViewer(
         self.pin_neg_fill = (230, 64, 64, 70)
 
     def run(self) -> None:
+        """Run."""
         try:
             import pygame
         except Exception as exc:  # pragma: no cover - optional dependency

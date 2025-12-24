@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class BackendConfig:
+    """Backend configuration values."""
+
     laser_backend: str
     rotary_backend: str
     ruida_host: str
@@ -34,6 +36,8 @@ class BackendConfig:
 
 @dataclass
 class RotaryConfig:
+    """Rotary configuration values."""
+
     steps_per_rev: float
     step_pin: Optional[int]
     dir_pin: Optional[int]
@@ -48,6 +52,8 @@ class RotaryConfig:
 
 @dataclass
 class SimulationConfig:
+    """Simulation configuration values."""
+
     enabled: bool
     screenshots_dir: Optional[Path]
     screenshots_every_s: float
@@ -56,6 +62,8 @@ class SimulationConfig:
 
 @dataclass
 class RunConfig:
+    """Combined runtime configuration values."""
+
     joint_params: JointParams
     jig_params: JigParams
     machine_params: MachineParams
@@ -288,11 +296,13 @@ def load_config_data(path: Path | None) -> tuple[dict, Path | None]:
 
 
 def _section(cfg_data: dict, key: str) -> dict:
+    """Internal helper to section."""
     value = cfg_data.get(key, {})
     return value if isinstance(value, dict) else {}
 
 
 def _as_path(value: object | None) -> Path | None:
+    """Internal helper to as path."""
     if value is None:
         return None
     if isinstance(value, Path):
@@ -301,6 +311,7 @@ def _as_path(value: object | None) -> Path | None:
 
 
 def build_joint_params(cfg_data: dict) -> JointParams:
+    """Build joint params."""
     joint_cfg = _section(cfg_data, "joint")
     thickness_mm = float(joint_cfg.get("thickness_mm", 6.35))
     edge_length_mm = float(joint_cfg.get("edge_length_mm", 100.0))
@@ -336,6 +347,7 @@ def build_joint_params(cfg_data: dict) -> JointParams:
 
 
 def apply_joint_overrides(args: argparse.Namespace, joint_params: JointParams) -> None:
+    """Apply joint overrides."""
     if getattr(args, "edge_length_mm", None) is not None:
         joint_params.edge_length_mm = args.edge_length_mm
     if getattr(args, "thickness_mm", None) is not None:
@@ -360,6 +372,7 @@ def apply_joint_overrides(args: argparse.Namespace, joint_params: JointParams) -
 
 
 def build_jig_params(cfg_data: dict, joint_params: JointParams) -> JigParams:
+    """Build jig params."""
     jig_cfg = _section(cfg_data, "jig")
     axis_to_fence_mm = jig_cfg.get("axis_to_fence_mm")
     if axis_to_fence_mm is not None:
@@ -377,11 +390,13 @@ def build_jig_params(cfg_data: dict, joint_params: JointParams) -> JigParams:
 def apply_jig_overrides(
     args: argparse.Namespace, jig_params: JigParams, joint_params: JointParams
 ) -> None:
+    """Apply jig overrides."""
     if getattr(args, "axis_to_fence_mm", None) is not None:
         jig_params.axis_to_origin_mm = args.axis_to_fence_mm + joint_params.thickness_mm
 
 
 def build_machine_params(cfg_data: dict) -> MachineParams:
+    """Build machine params."""
     machine_cfg = _section(cfg_data, "machine")
     return MachineParams(
         cut_speed_tail_mm_s=float(machine_cfg.get("cut_speed_tail_mm_s", 10.0)),
@@ -402,6 +417,7 @@ def build_machine_params(cfg_data: dict) -> MachineParams:
 
 
 def apply_machine_overrides(args: argparse.Namespace, machine_params: MachineParams) -> None:
+    """Apply machine overrides."""
     if getattr(args, "cut_overtravel_mm", None) is not None:
         machine_params.cut_overtravel_mm = args.cut_overtravel_mm
     if getattr(args, "air_assist", None) is not None:
@@ -415,6 +431,7 @@ def apply_machine_overrides(args: argparse.Namespace, machine_params: MachinePar
 
 
 def build_backend_config(cfg_data: dict, *, dry_run_rd: bool) -> BackendConfig:
+    """Build backend config."""
     backend_cfg = _section(cfg_data, "backend")
     laser_backend = backend_cfg.get("laser_backend")
     rotary_backend = backend_cfg.get("rotary_backend")
@@ -437,6 +454,7 @@ def build_backend_config(cfg_data: dict, *, dry_run_rd: bool) -> BackendConfig:
 
 
 def apply_backend_overrides(args: argparse.Namespace, backend: BackendConfig) -> None:
+    """Apply backend overrides."""
     if getattr(args, "ruida_timeout_s", None) is not None:
         backend.ruida_timeout_s = args.ruida_timeout_s
     if getattr(args, "ruida_source_port", None) is not None:
@@ -451,6 +469,7 @@ def apply_backend_overrides(args: argparse.Namespace, backend: BackendConfig) ->
 
 
 def build_rotary_config(cfg_data: dict) -> RotaryConfig:
+    """Build rotary config."""
     backend_cfg = _section(cfg_data, "backend")
     return RotaryConfig(
         steps_per_rev=float(backend_cfg.get("rotary_steps_per_rev", 4000.0)),
@@ -467,6 +486,7 @@ def build_rotary_config(cfg_data: dict) -> RotaryConfig:
 
 
 def apply_rotary_overrides(args: argparse.Namespace, rotary: RotaryConfig) -> None:
+    """Apply rotary overrides."""
     if getattr(args, "rotary_steps_per_rev", None) is not None:
         rotary.steps_per_rev = args.rotary_steps_per_rev
     if getattr(args, "rotary_step_pin", None) is not None:
@@ -490,6 +510,7 @@ def apply_rotary_overrides(args: argparse.Namespace, rotary: RotaryConfig) -> No
 
 
 def build_simulation_config(cfg_data: dict, args: argparse.Namespace) -> SimulationConfig:
+    """Build simulation config."""
     backend_cfg = _section(cfg_data, "backend")
     rd_dir = _as_path(backend_cfg.get("simulate_rd_dir"))
     if getattr(args, "simulate_rd_dir", None) is not None:

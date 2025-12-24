@@ -52,6 +52,8 @@ LOG = logging.getLogger("rotary_zero")
 
 @dataclass
 class RotarySettings:
+    """Settings for the rotary zero helper."""
+
     cfg_path: Path | None
     rotary_backend: str
     steps_per_rev: float | None
@@ -70,6 +72,7 @@ class RotarySettings:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build arg parser."""
     ap = argparse.ArgumentParser(
         description="Rotate the rotary axis by a specified number of degrees (CW/CCW) to level it."
     )
@@ -134,12 +137,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _format_float(value: float) -> str:
+    """Format float."""
     text = f"{value:.6f}"
     text = text.rstrip("0").rstrip(".")
     return text or "0"
 
 
 def _update_toml_value(path: Path, section: str, key: str, value: float) -> None:
+    """Update toml value."""
     text = path.read_text()
     newline = "\n"
     if "\r\n" in text:
@@ -198,6 +203,7 @@ def _update_toml_value(path: Path, section: str, key: str, value: float) -> None
 def _resolve_settings(
     args: argparse.Namespace, cfg_data: dict[str, Any], cfg_path: Path | None
 ) -> RotarySettings:
+    """Internal helper to resolve settings."""
     joint_params = build_joint_params(cfg_data)
     jig_params = build_jig_params(cfg_data, joint_params)
     rotary = build_rotary_config(cfg_data)
@@ -237,6 +243,7 @@ def _resolve_settings(
 
 
 def _build_rotary(settings: RotarySettings) -> tuple[RealRotary, object]:
+    """Build rotary."""
     driver: object = LoggingStepperDriver()
     if not settings.dry_run and settings.rotary_backend == "real":
         have_step = any(pin is not None for pin in (settings.step_pin, settings.step_pin_pos))
@@ -281,12 +288,14 @@ def _build_rotary(settings: RotarySettings) -> tuple[RealRotary, object]:
 
 
 def _compute_step_deg(steps_per_rev: float | None) -> float:
+    """Compute step deg."""
     if steps_per_rev and steps_per_rev > 0:
         return 360.0 / steps_per_rev
     return 0.1
 
 
 def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
+    """Internal helper to interactive ui."""
     try:
         import curses
     except Exception as exc:
@@ -297,6 +306,7 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
     status = "Ready."
 
     def rotate_to(target: float) -> bool:
+        """Helper to rotate to."""
         nonlocal status
         try:
             rotary.rotate_to(target, settings.speed_dps)
@@ -306,12 +316,14 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
             return False
 
     def rotate_by(delta: float) -> None:
+        """Helper to rotate by."""
         nonlocal status
         target = rotary.angle + delta
         if rotate_to(target):
             status = f"Moved {delta:+.4f} deg -> {rotary.angle:.4f} deg"
 
     def store_zero() -> None:
+        """Helper to store zero."""
         nonlocal zero_deg, status
         zero_deg = rotary.angle
         if settings.cfg_path is None:
@@ -324,11 +336,13 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
             status = f"Failed to save zero: {exc}"
 
     def go_zero() -> None:
+        """Helper to go zero."""
         nonlocal status
         if rotate_to(zero_deg):
             status = f"Moved to zero {zero_deg:.4f} deg"
 
     def render(stdscr: Any, input_buffer: str) -> None:
+        """Helper to render."""
         stdscr.clear()
         max_y, max_x = stdscr.getmaxyx()
         cfg_label = str(settings.cfg_path) if settings.cfg_path is not None else "none"
@@ -357,6 +371,7 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
         stdscr.refresh()
 
     def loop(stdscr: Any) -> None:
+        """Helper to loop."""
         nonlocal status
         try:
             curses.curs_set(1)
@@ -416,6 +431,7 @@ def _interactive_ui(rotary: RealRotary, settings: RotarySettings) -> None:
 
 
 def _should_run_interactive(args: argparse.Namespace) -> bool:
+    """Internal helper to should run interactive."""
     if getattr(args, "interactive", False):
         return True
     if args.degrees is None and not args.cw and not args.ccw:
@@ -424,6 +440,7 @@ def _should_run_interactive(args: argparse.Namespace) -> bool:
 
 
 def main() -> None:
+    """CLI entry point."""
     args = _build_arg_parser().parse_args()
     interactive = _should_run_interactive(args)
     setup_logging(args.log_level, stream=sys.stderr if interactive else None)

@@ -169,6 +169,7 @@ def plan_pin_board(
     edge_length = joint_params.edge_length_mm
 
     def is_edge_boundary(y_val: float) -> bool:
+        """Helper to is edge boundary."""
         return math.isclose(y_val, 0.0, abs_tol=1e-9) or math.isclose(
             y_val, edge_length, abs_tol=1e-9
         )
@@ -185,6 +186,7 @@ def plan_pin_board(
         # Start each rotation block with the maximum clearance position.
         # Lower Z offsets mean the bed is farther from the head (safer).
         def z_order(side: PinSide) -> float:
+            """Helper to z order."""
             return side.z_offset_mm
 
         ordered_sides = sorted(

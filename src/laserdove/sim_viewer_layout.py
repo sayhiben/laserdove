@@ -8,13 +8,17 @@ from .sim_traces import BeamTrace
 
 
 class ViewerLayoutMixin:
+    """Mixin for viewer layout and coordinate mapping."""
+
     def _hud_line_height_px(self) -> int:
+        """Internal helper to hud line height px."""
         if self._font_small is None:
             return 18
         return int(self._font_small.get_linesize() + 2)
 
     def _hud_total_height_px(self) -> int:
         # Global HUD starts at y=self.padding and ends with an extra padding.
+        """Internal helper to hud total height px."""
         line_h = self._hud_line_height_px()
         return int(self.padding * 2 + self.hud_line_count * line_h)
 
@@ -27,6 +31,7 @@ class ViewerLayoutMixin:
         return max(28, int(self._font_large.get_linesize() + 10))
 
     def _panel_content_rect(self, rect):
+        """Internal helper to panel content rect."""
         import pygame
 
         header_h = self._panel_header_height_px()
@@ -39,6 +44,7 @@ class ViewerLayoutMixin:
 
     @staticmethod
     def _build_cumulative(traces: Sequence[BeamTrace]) -> List[float]:
+        """Build cumulative."""
         cumulative: List[float] = []
         running = 0.0
         for t in traces:
@@ -54,10 +60,12 @@ class ViewerLayoutMixin:
         def bounds_for(
             traces: Sequence[BeamTrace],
         ) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
+            """Helper to bounds for."""
             x_min, x_max = float("inf"), -float("inf")
             y_min, y_max = float("inf"), -float("inf")
 
             def add_top(pt: tuple[float, float, float]) -> None:
+                """Helper to add top."""
                 nonlocal x_min, x_max, y_min, y_max
                 x_min = min(x_min, pt[0])
                 x_max = max(x_max, pt[0])
@@ -174,6 +182,7 @@ class ViewerLayoutMixin:
 
     @property
     def y_center(self) -> float:
+        """Return y center."""
         return self.edge_length_mm / 2.0
 
     def _scale_for_rect(
@@ -194,6 +203,7 @@ class ViewerLayoutMixin:
         return scale, x_off, y_off, (x_min, y_min)
 
     def _to_screen_top(self, pt: tuple[float, float, float], rect, bounds) -> tuple[int, int]:
+        """Convert to screen top coordinates."""
         scale, x_off, y_off, mins = self._scale_for_rect(bounds, rect)
         x_min, y_min = mins
         x = x_off + (pt[0] - x_min) * scale
@@ -227,6 +237,7 @@ class ViewerLayoutMixin:
         return scale, x_step, y_step
 
     def _to_screen_edge(self, yz: tuple[float, float], rect) -> tuple[int, int]:
+        """Convert to screen edge coordinates."""
         scale, x_off, y_off, mins = self._scale_for_rect(self.edge_bounds, rect)
         y_min, z_min = mins
         x = x_off + (yz[0] - y_min) * scale
@@ -234,10 +245,12 @@ class ViewerLayoutMixin:
         return int(round(x)), int(round(y))
 
     def _to_panel_edge(self, yz: tuple[float, float], rect) -> tuple[int, int]:
+        """Convert to panel edge coordinates."""
         x, y = self._to_screen_edge(yz, rect)
         return x - rect.left, y - rect.top
 
     def _to_screen_pose(self, yz: tuple[float, float], rect) -> tuple[int, int]:
+        """Convert to screen pose coordinates."""
         bounds = self.pose_bounds or self.edge_bounds
         scale, x_off, y_off, mins = self._scale_for_rect(bounds, rect)
         y_min, z_min = mins
@@ -246,10 +259,12 @@ class ViewerLayoutMixin:
         return int(round(x)), int(round(y))
 
     def _to_panel_pose(self, yz: tuple[float, float], rect) -> tuple[int, int]:
+        """Convert to panel pose coordinates."""
         x, y = self._to_screen_pose(yz, rect)
         return x - rect.left, y - rect.top
 
     def _nice_spacing(self, span: float) -> float:
+        """Internal helper to nice spacing."""
         if span <= 0:
             return 10.0
         raw = span / 8.0
@@ -273,6 +288,7 @@ class ViewerLayoutMixin:
         return [(-yc, 0.0), (yc, 0.0), (yc, -self.thickness_mm), (-yc, -self.thickness_mm)]
 
     def _ensure_layout(self, pygame, *, use_default_font: bool = False) -> None:
+        """Ensure layout."""
         if self._font_small is None or self._font_large is None:
             if use_default_font:
                 self._font_small = pygame.font.Font(None, 16)

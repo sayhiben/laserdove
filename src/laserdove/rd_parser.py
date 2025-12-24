@@ -41,6 +41,7 @@ class RuidaParser(RuidaParserHelpersMixin, RuidaParserHandlersMixin, RuidaParser
         *,
         profile: str | RuidaProfile | None = None,
     ) -> None:
+        """Initialize RuidaParser."""
         self.profile = get_profile(profile)
         self._buf = buf
         self._file = file
@@ -70,6 +71,7 @@ class RuidaParser(RuidaParserHelpersMixin, RuidaParserHandlersMixin, RuidaParser
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(
         description="Decode and dump Ruida RD files (unswizzle + token decode)."
     )

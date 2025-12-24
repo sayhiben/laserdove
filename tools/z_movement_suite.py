@@ -68,6 +68,7 @@ def _poll_z(
 
 
 def _hardware_target(laser: RuidaLaser, logical_z_mm: float) -> float:
+    """Internal helper to hardware target."""
     if laser._z_origin_mm is None:
         # Force origin capture via poll.
         _poll_raw_z(laser)
@@ -77,6 +78,7 @@ def _hardware_target(laser: RuidaLaser, logical_z_mm: float) -> float:
 
 
 def direct_udp_axis_move(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """Return direct udp axis move."""
     hw_target = _hardware_target(laser, logical_target_mm)
     payload = b"\x80\x01" + encode_abscoord_mm(hw_target)
     log.info("Direct UDP axis Z move: logical=%.3f raw=%.3f", logical_target_mm, hw_target)
@@ -98,6 +100,7 @@ def direct_udp_axis_move_alt(laser: RuidaLaser, logical_target_mm: float) -> Non
 
 
 def rd_job_move(laser: RuidaLaser, logical_target_mm: float) -> None:
+    """Return rd job move."""
     moves = [
         RDMove(
             x_mm=laser.x,
@@ -246,6 +249,7 @@ def direct_udp_rapid_z(laser: RuidaLaser, logical_target_mm: float, *, options: 
 
 
 def panel_jog(laser: RuidaLaser, logical_delta_mm: float, max_steps: int = 5) -> None:
+    """Return panel jog."""
     if logical_delta_mm == 0:
         log.info("Panel jog skipped (delta 0)")
         return
@@ -295,6 +299,7 @@ def panel_main_jog(laser: RuidaLaser, logical_delta_mm: float, *, hold_s: float 
 
 
 def main() -> None:
+    """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Probe Ruida Z movement fidelity via multiple paths."
     )

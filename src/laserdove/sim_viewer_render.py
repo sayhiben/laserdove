@@ -9,7 +9,10 @@ from .sim_traces import BeamTrace
 
 
 class ViewerRenderMixin:
+    """Mixin for rendering helpers."""
+
     def _draw_grid_top(self, screen, rect, bounds) -> None:
+        """Draw grid top."""
         import pygame
 
         overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
@@ -155,6 +158,7 @@ class ViewerRenderMixin:
         screen.blit(overlay, rect)
 
     def _draw_views(self, screen, play_time: float) -> None:
+        """Draw views."""
         import pygame
 
         if not self.traces:
@@ -190,6 +194,7 @@ class ViewerRenderMixin:
         pygame.draw.rect(screen, (32, 40, 54), self.edge_rect, width=1, border_radius=6)
 
         def draw_board(rect, rot, bounds):
+            """Helper to draw board."""
             overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
             top_poly, _ = self._board_outline_points(rot, z_offset_mm=0.0)
             pygame.draw.polygon(
@@ -325,6 +330,7 @@ class ViewerRenderMixin:
         top_rect_neg,
         edge_rect,
     ) -> None:
+        """Draw traces."""
         import pygame
 
         top_overlay_pos = pygame.Surface(top_rect_pos.size, pygame.SRCALPHA)
@@ -337,9 +343,11 @@ class ViewerRenderMixin:
         def to_panel_from_board(
             pt_local: tuple[float, float, float], rect, bounds
         ) -> tuple[int, int]:
+            """Helper to to panel from board."""
             return self._to_panel_top((pt_local[0], pt_local[1] + y_center, 0.0), rect, bounds)
 
         def flush_top_path() -> None:
+            """Helper to flush top path."""
             nonlocal current_key, current_points
             if current_key is None or len(current_points) < 2:
                 current_key = None
@@ -444,6 +452,7 @@ class ViewerRenderMixin:
         z_offset_cmd_mm: float,
         bed_offset_mm: float,
     ) -> None:
+        """Draw hud."""
         import pygame
 
         bed_dir = "up" if self.z_positive_moves_bed_up else "down"
@@ -476,6 +485,7 @@ class ViewerRenderMixin:
         header_h = self._panel_header_height_px()
 
         def draw_panel_header(rect, title: str, *, subtitle: str | None = None) -> None:
+            """Helper to draw panel header."""
             header_rect = pygame.Rect(rect.left, rect.top, rect.width, header_h)
             pygame.draw.rect(screen, (12, 14, 22), header_rect)
             pygame.draw.line(

@@ -29,6 +29,7 @@ class _RDJobBuilder:
     """
 
     def __init__(self, *, forceabs: int = 100) -> None:
+        """Initialize _RDJobBuilder."""
         self._globalbbox: List[List[float]] | None = None
         self._forceabs = forceabs
 
@@ -398,6 +399,7 @@ class _RDJobBuilder:
         """
 
         def relok(last: Tuple[float, float] | None, point: Tuple[float, float]) -> bool:
+            """Helper to relok."""
             maxrel = 8.191
             if last is None:
                 return False

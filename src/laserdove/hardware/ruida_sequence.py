@@ -11,6 +11,8 @@ log = logging.getLogger("laserdove.hardware.ruida_laser")
 
 
 class RuidaSequenceMixin:
+    """Mixin coordinating command sequences with the rotary."""
+
     def run_sequence_with_rotary(
         self,
         commands: Iterable,
@@ -51,6 +53,7 @@ class RuidaSequenceMixin:
         )
 
         def _state_z_to_command(z_mm: float | None) -> float | None:
+            """Helper to state z to command."""
             if z_mm is None:
                 return None
             return z_mm if self.z_positive_moves_bed_up else -z_mm
@@ -97,6 +100,7 @@ class RuidaSequenceMixin:
         park_z: float | None = plan.origin_z
 
         def park_head_before_rotary() -> None:
+            """Helper to park head before rotary."""
             if movement_only_mode:
                 return
             nonlocal cursor_x, cursor_y
@@ -138,6 +142,7 @@ class RuidaSequenceMixin:
             cursor_x, cursor_y = origin_x, origin_y
 
         def send_block(block: LaserBlock, block_index: int) -> bool:
+            """Helper to send block."""
             if not block.moves:
                 return False
             nonlocal cursor_x, cursor_y, current_speed, current_z, last_set_z, origin_speed

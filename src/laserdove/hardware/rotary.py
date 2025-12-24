@@ -135,6 +135,7 @@ class GPIOStepperDriver:
             GPIO.output(self.enable_pin, GPIO.LOW)  # active enable low on many drivers
 
         def alarm_active() -> bool:
+            """Helper to alarm active."""
             if self.alarm_pin is None:
                 return False
             try:

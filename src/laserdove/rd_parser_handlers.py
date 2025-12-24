@@ -6,7 +6,10 @@ from typing import Any, Dict
 
 class RuidaParserHandlersMixin:
     # ---------------- Token handlers (subset) ----------------
+    """Mixin implementing RD token handlers."""
+
     def skip_msg(self, n: int, desc=None):
+        """Return skip msg."""
         buf = self._buf
         r = []
         if len(buf) < n:
@@ -34,20 +37,24 @@ class RuidaParserHandlersMixin:
         return n, " ".join(r)
 
     def t_skip_bytes(self, n: int, desc=None):
+        """Handle skip bytes opcode."""
         return self.skip_msg(n, desc)
 
     def t_layer_priority(self, n: int, desc=None):
+        """Handle layer priority opcode."""
         layer_id = self._buf[0]
         self._prio = layer_id
         return 1, f"t_layer_priority({layer_id})"
 
     def t_layer_color(self, n: int, desc=None):
+        """Handle layer color opcode."""
         layer = self.get_layer(self._buf[0])
         off, c = self.arg_color(1)
         layer["color"] = "#%06x" % c
         return off, f"t_layer_color({layer['n']}, {layer['color']})"
 
     def _laser_from_desc(self, desc, default=1) -> int:
+        """Internal helper to laser from desc."""
         if isinstance(desc, (list, tuple)):
             for item in desc:
                 if isinstance(item, int):
@@ -57,6 +64,7 @@ class RuidaParserHandlersMixin:
         return default
 
     def t_laser_min_pow(self, n: int, desc=None):
+        """Handle laser min pow opcode."""
         laser_id = self._laser_from_desc(desc, default=1)
         las = self.get_laser(laser_id)
         off, v = self.arg_perc()
@@ -65,6 +73,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_laser_min_pow({las['n']}, {v}%)"
 
     def t_laser_max_pow(self, n: int, desc=None):
+        """Handle laser max pow opcode."""
         laser_id = self._laser_from_desc(desc, default=1)
         las = self.get_laser(laser_id)
         off, v = self.arg_perc()
@@ -73,6 +82,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_laser_max_pow({las['n']}, {v}%)"
 
     def t_laser_min_pow_lay(self, n: int, desc=None):
+        """Handle laser min pow lay opcode."""
         laser_id = self._laser_from_desc(desc, default=1)
         layer_id = self._buf[0] if self._buf else None
         las = self.get_laser(laser_id, layer_id)
@@ -82,6 +92,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_laser_min_pow_lay({las['n']}, {layer_id}, {v}%)"
 
     def t_laser_max_pow_lay(self, n: int, desc=None):
+        """Handle laser max pow lay opcode."""
         laser_id = self._laser_from_desc(desc, default=1)
         layer_id = self._buf[0] if self._buf else None
         las = self.get_laser(laser_id, layer_id)
@@ -91,11 +102,13 @@ class RuidaParserHandlersMixin:
         return off, f"t_laser_max_pow_lay({las['n']}, {layer_id}, {v}%)"
 
     def t_cut_through_pow(self, n: int, desc=None):
+        """Handle cuthrough pow opcode."""
         off, v = self.arg_perc()
         self._current_power_pct = v
         return off, f"t_cut_through_pow({desc[0]}, {v}%)"
 
     def t_layer_speed(self, n: int, desc=None):
+        """Handle layer speed opcode."""
         layer_id = self._buf[0] if self._buf else None
         off, s = self.arg_abs(1)
         layer = self.get_layer(layer_id if layer_id is not None else 0)
@@ -103,6 +116,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_layer_speed({layer['n']}, {s}mm)"
 
     def t_laser_freq(self, n: int, desc=None):
+        """Handle laser freq opcode."""
         laser_id = self._laser_from_desc(desc, default=1)
         if self._buf:
             laser_id = self._buf[0]
@@ -112,15 +126,18 @@ class RuidaParserHandlersMixin:
         return off, f"t_laser_freq({las['n']}, {freq}kHz)"
 
     def t_speed_axis(self, n: int, desc=None):
+        """Handle speed axis opcode."""
         off, s = self.arg_abs()
         return off, f"t_speed_axis({s}mm/s)"
 
     def t_job_units_hint(self, n: int, desc=None):
+        """Handle job units hint opcode."""
         val = self._buf[0]
         hint = "mm" if val == 0x00 else "inch" if val == 0x01 else "unknown"
         return 1, f"job_units_flag=0x{val:02X} ({hint} guess; 00=mm?, 01=in?)"
 
     def t_laser_offset(self, n: int, desc=None):
+        """Handle laser offset opcode."""
         las = self.get_laser(desc[1])
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
@@ -167,19 +184,24 @@ class RuidaParserHandlersMixin:
 
     # ---------------- Counters ----------------
     def _count_label(self, label: str) -> None:
+        """Internal helper to count label."""
         self._opcode_counts[label] = self._opcode_counts.get(label, 0) + 1
 
     def _count_unknown(self, label: str) -> None:
+        """Internal helper to count unknown."""
         self._unknown_counts[label] = self._unknown_counts.get(label, 0) + 1
 
     def t_set_absolute(self, n: int, desc=None):
+        """Handle seabsolute opcode."""
         return 0, "t_set_absolute()"
 
     def t_process_control(self, n: int, desc=None):
+        """Handle process control opcode."""
         label = desc or "process_control"
         return 0, f"t_{label}"
 
     def t_bb_top_left(self, n: int, desc=None):
+        """Handle bb top left opcode."""
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self._bbox[0] = min(self._bbox[0], x)
@@ -187,6 +209,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_bb_top_left({x:.8g}mm, {y:.8g}mm)"
 
     def t_bb_bot_right(self, n: int, desc=None):
+        """Handle bb boright opcode."""
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self._bbox[2] = max(self._bbox[2], x)
@@ -194,6 +217,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_bb_bot_right({x:.8g}mm, {y:.8g}mm)"
 
     def t_lay_top_left(self, n: int, desc=None):
+        """Handle lay top left opcode."""
         layer = self.get_layer(self._buf[0])
         off, x = self.arg_abs(1)
         off, y = self.arg_abs(off)
@@ -204,6 +228,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_lay_top_left({layer['n']}, {x:.8g}mm, {y:.8g}mm)"
 
     def t_lay_bot_right(self, n: int, desc=None):
+        """Handle lay boright opcode."""
         layer = self.get_layer(self._buf[0])
         off, x = self.arg_abs(1)
         off, y = self.arg_abs(off)
@@ -214,11 +239,13 @@ class RuidaParserHandlersMixin:
         return off, f"t_lay_bot_right({layer['n']}, {x:.8g}mm, {y:.8g}mm)"
 
     def t_feeding(self, n: int, desc=None):
+        """Handle feeding opcode."""
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         return off, f"t_feeding({x}mm, {y}mm)"
 
     def t_move_abs(self, n: int, desc=None):
+        """Handle move abs opcode."""
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self.new_path().append([x, y])
@@ -226,6 +253,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_move_abs({x:.3f}mm, {y:.3f}mm)"
 
     def t_move_rel(self, n: int, desc=None):
+        """Handle move rel opcode."""
         off, dx = self.arg_rel()
         off, dy = self.arg_rel(off)
         xy = self.relative_xy(dx, dy)
@@ -234,6 +262,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_move_rel({dx:.3f}mm, {dy:.3f}mm)"
 
     def t_move_horiz(self, n: int, desc=None):
+        """Handle move horiz opcode."""
         off, dx = self.arg_rel()
         xy = self.relative_xy(dx, 0)
         self.new_path().append(xy)
@@ -241,6 +270,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_move_horiz({dx:.3f}mm)"
 
     def t_move_vert(self, n: int, desc=None):
+        """Handle move vert opcode."""
         off, dy = self.arg_rel()
         xy = self.relative_xy(0, dy)
         self.new_path().append(xy)
@@ -248,6 +278,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_move_vert({dy:.3f}mm)"
 
     def t_cut_abs(self, n: int, desc=None):
+        """Handle cuabs opcode."""
         off, x = self.arg_abs()
         off, y = self.arg_abs(off)
         self.get_path().append([x, y])
@@ -255,6 +286,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_cut_abs({x:.3f}mm, {y:.3f}mm)"
 
     def t_cut_rel(self, n: int, desc=None):
+        """Handle curel opcode."""
         off, dx = self.arg_rel()
         off, dy = self.arg_rel(off)
         xy = self.relative_xy(dx, dy)
@@ -263,6 +295,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_cut_rel({dx:.3f}mm, {dy:.3f}mm)"
 
     def t_cut_horiz(self, n: int, desc=None):
+        """Handle cuhoriz opcode."""
         off, dx = self.arg_rel()
         xy = self.relative_xy(dx, 0)
         self.get_path().append(xy)
@@ -270,6 +303,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_cut_horiz({dx:.3f}mm)"
 
     def t_cut_vert(self, n: int, desc=None):
+        """Handle cuvert opcode."""
         off, dy = self.arg_rel()
         xy = self.relative_xy(0, dy)
         self.get_path().append(xy)
@@ -277,6 +311,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_cut_vert({dy:.3f}mm)"
 
     def t_z_offset_8003(self, n: int, desc=None):
+        """Handle z offse8003 opcode."""
         raw = self._buf[:5]
         delta = self.decode_number(raw)
         self._z_offsets.append((self._current_pos, delta, raw, self._prio))
@@ -284,11 +319,13 @@ class RuidaParserHandlersMixin:
         return 5, (f"Z_Offset_80_03({delta:+.3f}mm -> {self._current_z:+.3f}mm raw={raw.hex(' ')})")
 
     def t_air_assist(self, n: int, desc=None):
+        """Handle air assist opcode."""
         self._air_assist = bool(desc)
         state = "ON" if self._air_assist else "OFF"
         return 1, f"t_air_assist({state})"
 
     def t_rapid_move_abs(self, n: int, desc=None):
+        """Handle rapid move abs opcode."""
         mode = self._buf[0]
         off, x = self.arg_abs(1)
         off, y = self.arg_abs(off)
@@ -297,6 +334,7 @@ class RuidaParserHandlersMixin:
         return off, f"t_rapid_move_abs(mode=0x{mode:02X}, x={x:.3f}mm, y={y:.3f}mm)"
 
     def t_rapid_move_axis(self, n: int, desc=None):
+        """Handle rapid move axis opcode."""
         axis = desc or "axis"
         if isinstance(axis, (list, tuple)) and axis:
             axis = axis[0]

@@ -49,6 +49,8 @@ LOG = logging.getLogger("edge_midpoint")
 
 @dataclass
 class MidpointSettings:
+    """Settings for the edge midpoint helper."""
+
     cfg_path: Path | None
     laser_backend: str
     host: str
@@ -62,12 +64,14 @@ class MidpointSettings:
 
 
 def _format_float(value: float) -> str:
+    """Format float."""
     text = f"{value:.6f}"
     text = text.rstrip("0").rstrip(".")
     return text or "0"
 
 
 def _update_toml_value(path: Path, section: str, key: str, value: float) -> None:
+    """Update toml value."""
     text = path.read_text()
     newline = "\n"
     if "\r\n" in text:
@@ -124,6 +128,7 @@ def _update_toml_value(path: Path, section: str, key: str, value: float) -> None
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build arg parser."""
     ap = argparse.ArgumentParser(
         description="Find the Y midpoint of a board edge by jogging to its corners."
     )
@@ -179,6 +184,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def _resolve_settings(
     args: argparse.Namespace, cfg_data: dict[str, Any], cfg_path: Path | None
 ) -> MidpointSettings:
+    """Internal helper to resolve settings."""
     backend = build_backend_config(cfg_data, dry_run_rd=False)
     apply_backend_overrides(args, backend)
     machine_params = build_machine_params(cfg_data)
@@ -221,6 +227,7 @@ def _resolve_settings(
 
 
 def _prompt_position(laser: RuidaLaser, label: str) -> tuple[float, float]:
+    """Prompt for position."""
     input(f"Jog the head to the {label} corner, then press Enter...")
     state = laser._wait_for_ready(max_attempts=60, delay_s=0.25, min_stable_s=0.5)
     if state.x_mm is None or state.y_mm is None:
@@ -230,6 +237,7 @@ def _prompt_position(laser: RuidaLaser, label: str) -> tuple[float, float]:
 
 
 def main() -> None:
+    """CLI entry point."""
     args = _build_arg_parser().parse_args()
     setup_logging(args.log_level)
 

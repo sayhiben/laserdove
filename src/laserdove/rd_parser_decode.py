@@ -5,7 +5,10 @@ import sys
 
 class RuidaParserDecodeMixin:
     # ---------------- Decode loop ----------------
+    """Mixin implementing the RD decode loop."""
+
     def token_method(self, c):
+        """Return token method."""
         consumed, msg = 0, None
         if len(c) == 2:
             return c[1](self)
@@ -23,6 +26,7 @@ class RuidaParserDecodeMixin:
         return consumed, msg
 
     def decode(self, buf: bytes | None = None, *, debug: bool = True) -> None:
+        """Decode."""
         debugfile = sys.stderr
         if debug not in (True, False):
             debug = True

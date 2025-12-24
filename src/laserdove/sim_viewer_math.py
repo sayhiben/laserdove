@@ -9,9 +9,12 @@ from .sim_traces import BeamTrace
 
 
 class ViewerMathMixin:
+    """Mixin for viewer geometry helpers."""
+
     def _project_yz_abs(
         self, y_abs: float, radius: float, rotation_deg: float
     ) -> tuple[float, float]:
+        """Project yz abs."""
         y_local = y_abs - self.y_center
         delta = rotation_deg - self.rotation_zero_deg
         angle_rad = math.radians(delta)
@@ -24,6 +27,7 @@ class ViewerMathMixin:
     def _board_outline_points(
         self, rotation_deg: float, *, z_offset_mm: float = 0.0
     ) -> tuple[List[tuple[float, float, float]], List[tuple[float, float]]]:
+        """Internal helper to board outline points."""
         radius_top = self.axis_to_origin_mm
         radius_bottom = max(radius_top - self.thickness_mm, 0.001)
         y0_top, z0_top = self._project_yz_abs(0.0, radius_top, rotation_deg)
@@ -59,6 +63,7 @@ class ViewerMathMixin:
         group: List[BeamTrace] = []
 
         def flush() -> None:
+            """Helper to flush."""
             nonlocal group
             if not group:
                 return

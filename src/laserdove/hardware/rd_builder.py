@@ -239,6 +239,7 @@ def build_rd_job(
     )
 
     def emit_speed(speed: float) -> bytes:
+        """Helper to emit speed."""
         return builder.enc("-n", [SPEED_SET, speed])
 
     # Optionally start with a job-level Z offset.

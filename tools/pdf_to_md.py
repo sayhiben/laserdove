@@ -97,6 +97,7 @@ def iter_pdfs(root: Path) -> Iterable[Path]:
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(description="Convert PDFs to Markdown with body images.")
     ap.add_argument(
         "--root",

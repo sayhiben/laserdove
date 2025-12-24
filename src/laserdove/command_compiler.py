@@ -9,6 +9,8 @@ from .model import BoardSide, Command, CommandType
 
 @dataclass
 class CompileState:
+    """Snapshot of command compilation state."""
+
     cursor_x: float
     cursor_y: float
     current_speed: float | None
@@ -19,6 +21,8 @@ class CompileState:
 
 @dataclass
 class LaserBlock:
+    """Compiled laser move block."""
+
     moves: List[RDMove]
     rotation_deg: float
     board: BoardSide
@@ -28,6 +32,8 @@ class LaserBlock:
 
 @dataclass
 class RotationStep:
+    """Rotation-only step in a compiled plan."""
+
     angle_deg: float
     speed_dps: float | None
 
@@ -37,6 +43,8 @@ CompiledStep = LaserBlock | RotationStep
 
 @dataclass
 class CompiledPlan:
+    """Compiled command plan with laser blocks and rotations."""
+
     steps: List[CompiledStep]
     origin_x: float
     origin_y: float
@@ -46,6 +54,7 @@ class CompiledPlan:
     has_cut: bool
 
     def blocks(self) -> List[LaserBlock]:
+        """Return blocks."""
         return [step for step in self.steps if isinstance(step, LaserBlock)]
 
 
@@ -79,6 +88,7 @@ def compile_command_plan(
     has_cut = False
 
     def flush_block() -> None:
+        """Helper to flush block."""
         nonlocal block_moves, block_start_z
         if not block_moves:
             return

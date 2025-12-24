@@ -18,6 +18,8 @@ log = logging.getLogger("laserdove.hardware.ruida_laser")
 
 
 class RuidaJobMixin:
+    """Mixin providing RD job and motion helpers."""
+
     def _set_speed(self, speed_mm_s: float) -> None:
         """
         Issue a SET_SPEED command if the requested speed differs from last send.
@@ -36,6 +38,7 @@ class RuidaJobMixin:
     def _set_aux_outputs(
         self, *, air_assist: bool | None = None, blow_on: bool | None = None
     ) -> None:
+        """Set aux outputs."""
         if air_assist is not None:
             payload = b"\xca\x01\x13" if air_assist else b"\xca\x01\x12"
             log.info("[RUIDA UDP] AIR_ASSIST %s", "ON" if air_assist else "OFF")
@@ -46,6 +49,7 @@ class RuidaJobMixin:
             self._udp.send_packets(payload)
 
     def _pre_cut_warmup(self, *, origin_x: float, origin_y: float) -> None:
+        """Internal helper to pre cut warmup."""
         if self.pre_cut_warmup_s <= 0:
             return
         outputs = []

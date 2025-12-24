@@ -31,6 +31,8 @@ class RuidaLaser(RuidaStatusMixin, RuidaJobMixin, RuidaSequenceMixin):
     BUSY_MASK = STATUS_BIT_MOVING | STATUS_BIT_JOB_RUNNING
 
     class MachineState(NamedTuple):
+        """Snapshot of controller status and position."""
+
         status_bits: int
         x_mm: Optional[float]
         y_mm: Optional[float]

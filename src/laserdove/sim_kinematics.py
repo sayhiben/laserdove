@@ -76,6 +76,7 @@ def board_to_world_local(
 
 
 def _current_z_reference(board: BoardSide, z_zero_tail_mm: float, z_zero_pin_mm: float) -> float:
+    """Return current z reference."""
     return z_zero_tail_mm if board == BoardSide.TAIL else z_zero_pin_mm
 
 

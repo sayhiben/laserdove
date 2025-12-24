@@ -7,7 +7,10 @@ from .sim_traces import BeamTrace
 
 
 class ViewerPlaybackMixin:
+    """Mixin for playback timing helpers."""
+
     def _rotation_at(self, play_time: float) -> float:
+        """Internal helper to rotation at."""
         if not self.traces:
             return self.rotation_zero_deg
         for idx, cumulative in enumerate(self._cumulative):
@@ -21,6 +24,7 @@ class ViewerPlaybackMixin:
         return self.traces[-1].rotation_end_deg
 
     def _current_trace_index(self, play_time: float) -> int:
+        """Return current trace index."""
         for idx, cumulative in enumerate(self._cumulative):
             if play_time <= cumulative + 1e-9:
                 return idx
@@ -30,6 +34,7 @@ class ViewerPlaybackMixin:
     def _current_index_for_group(
         play_time: float, traces: Sequence[BeamTrace], cumulative: Sequence[float]
     ) -> int:
+        """Return current index for group."""
         if not traces:
             return -1
         for idx, cum_val in enumerate(cumulative):
@@ -38,6 +43,7 @@ class ViewerPlaybackMixin:
         return len(traces) - 1
 
     def _frame_metadata(self, play_time: float, *, file: str) -> dict:
+        """Internal helper to frame metadata."""
         idx = self._current_trace_index(play_time)
         trace = self.traces[idx]
         rotation = self._rotation_at(play_time)

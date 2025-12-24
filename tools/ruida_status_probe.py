@@ -50,6 +50,7 @@ LOG = logging.getLogger("ruida_status_probe")
 
 
 def decode_bits(raw: int) -> str:
+    """Decode bits."""
     parts = [
         f"raw=0x{raw:08X}",
         f"busy_mask={(raw & RuidaLaser.STATUS_BIT_MOVING) != 0 or (raw & RuidaLaser.STATUS_BIT_JOB_RUNNING) != 0}",
@@ -65,6 +66,7 @@ def decode_bits(raw: int) -> str:
 
 
 def poll_status_once(laser: RuidaLaser, label: str) -> bool:
+    """Poll status once."""
     state = laser._read_machine_state()
     if state:
         LOG.info(
@@ -87,12 +89,14 @@ def run_with_capture(
     interval: float,
     polls_after: int = 5,
 ) -> None:
+    """Run with capture."""
     LOG.info("=== %s START ===", label)
     poll_status_once(poll_laser, f"{label}-before")
 
     stop = threading.Event()
 
     def capture():
+        """Helper to capture."""
         idx = 0
         while not stop.is_set():
             idx += 1
@@ -116,6 +120,7 @@ def run_with_capture(
 
 
 def log_rd_summary(tag: str, moves: List[RDMove], job_z_mm: float | None) -> None:
+    """Log rd summary."""
     if not moves:
         LOG.info("[%s] empty RD job", tag)
         return
@@ -143,6 +148,7 @@ def log_rd_summary(tag: str, moves: List[RDMove], job_z_mm: float | None) -> Non
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(
         description="Poll Ruida status and run movement-only actions to map status bits."
     )
@@ -258,6 +264,7 @@ def main() -> None:
 
     # X move
     def move_x():
+        """Helper to move x."""
         mv = [
             RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
             RDMove(args.move_dist_mm, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
@@ -269,6 +276,7 @@ def main() -> None:
 
     # Y move
     def move_y():
+        """Helper to move y."""
         mv = [
             RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
             RDMove(0.0, args.move_dist_mm, speed_mm_s=50.0, power_pct=0.0, is_cut=False),
@@ -280,6 +288,7 @@ def main() -> None:
 
     # Z move
     def move_z():
+        """Helper to move z."""
         mv = [RDMove(0.0, 0.0, speed_mm_s=50.0, power_pct=0.0, is_cut=False)]
         log_rd_summary("move-z", mv, args.z_move_mm)
         action_laser.send_rd_job(mv, job_z_mm=args.z_move_mm, require_busy_transition=False)
@@ -288,6 +297,7 @@ def main() -> None:
 
     # Air assist ON small job
     def air_on_job():
+        """Helper to air on job."""
         mv = [
             RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
             RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
@@ -299,6 +309,7 @@ def main() -> None:
 
     # Air assist OFF small job (omit CA 01 13)
     def air_off_job():
+        """Helper to air off job."""
         mv = [
             RDMove(0.0, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
             RDMove(args.move_dist_mm, 0.0, speed_mm_s=30.0, power_pct=0.0, is_cut=False),
@@ -310,23 +321,28 @@ def main() -> None:
 
     # Jog-style moves (single-axis jog commands via send_rd_job travel)
     def jog_x_positive():
+        """Helper to jog x positive."""
         mv = [RDMove(args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_x_negative():
+        """Helper to jog x negative."""
         mv = [RDMove(-args.move_dist_mm, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_positive():
+        """Helper to jog y positive."""
         mv = [RDMove(0.0, args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     def jog_y_negative():
+        """Helper to jog y negative."""
         mv = [RDMove(0.0, -args.move_dist_mm, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 
     # Small square travel-only path to see if motion-only sequences toggle bits.
     def square_travel():
+        """Helper to square travel."""
         d = args.move_dist_mm
         mv = [
             RDMove(0.0, 0.0, speed_mm_s=80.0, power_pct=0.0, is_cut=False),
@@ -349,6 +365,7 @@ def main() -> None:
 
     # Home-like move back to origin (travel-only)
     def home_travel():
+        """Helper to home travel."""
         mv = [RDMove(0.0, 0.0, speed_mm_s=100.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=0.0, require_busy_transition=False)
 
@@ -357,6 +374,7 @@ def main() -> None:
     # Upload-only RD (send file but don't run) by using RuidaLaser transport directly with no job run flag.
     # Since our send_rd_job auto-runs, we approximate "upload" as a tiny travel-only job.
     def upload_only():
+        """Helper to upload only."""
         mv = [RDMove(0.0, 0.0, speed_mm_s=10.0, power_pct=0.0, is_cut=False)]
         action_laser.send_rd_job(mv, job_z_mm=None, require_busy_transition=False)
 

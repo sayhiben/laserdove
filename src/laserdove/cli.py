@@ -81,6 +81,7 @@ def plan_commands(run_config) -> List[Command]:
 
 
 def _build_real_backends(run_config) -> Tuple[object, object]:
+    """Build real backends."""
     if run_config.backend.laser_backend == "dummy":
         laser = DummyLaser()
     elif run_config.backend.laser_backend == "ruida":
@@ -144,6 +145,7 @@ def _build_real_backends(run_config) -> Tuple[object, object]:
 
 
 def _prepend_rotate_zero(commands: List[Command], run_config) -> None:
+    """Internal helper to prepend rotate zero."""
     if run_config.simulation.enabled or run_config.reset_only:
         return
     commands.insert(
@@ -158,6 +160,7 @@ def _prepend_rotate_zero(commands: List[Command], run_config) -> None:
 
 
 def _execute(commands: List[Command], laser, rotary, run_config) -> None:
+    """Internal helper to execute."""
     try:
         if isinstance(laser, RuidaLaser):
             movement_only_flag = run_config.backend.movement_only or run_config.reset_only

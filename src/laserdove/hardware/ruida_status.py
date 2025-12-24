@@ -13,6 +13,8 @@ log = logging.getLogger("laserdove.hardware.ruida_laser")
 
 
 class RuidaStatusMixin:
+    """Mixin providing status polling helpers."""
+
     def _get_memory_value(self, address: bytes, *, expected_len: int) -> Optional[bytes]:
         """
         Read a memory address via Ruida UDP GET_SETTING (0xDA 0x00).

@@ -50,6 +50,7 @@ class BeamTrace:
 
 
 def _z_ref(board: BoardSide, z_zero_tail_mm: float, z_zero_pin_mm: float) -> float:
+    """Internal helper to z ref."""
     return z_zero_tail_mm if board == BoardSide.TAIL else z_zero_pin_mm
 
 
@@ -217,6 +218,7 @@ def _rd_job_contexts(
     *,
     rotation_zero_deg: float,
 ) -> List[tuple[float, BoardSide]]:
+    """Internal helper to rd job contexts."""
     plan = compile_command_plan(
         list(commands),
         origin_x=0.0,
@@ -231,6 +233,7 @@ def _rd_job_contexts(
 
 
 def _parse_rd_segments(rd_path: Path) -> List[dict]:
+    """Parse rd segments."""
     parser = RuidaParser(file=str(rd_path))
     parser.decode(debug=False)
     return list(parser._segments)
@@ -245,6 +248,7 @@ def build_beam_traces_from_rd_segments(
     jig_params,
     machine_params,
 ) -> List[BeamTrace]:
+    """Build beam traces from rd segments."""
     playback = overlay_segments_from_rd(
         rd_segments,
         rotation_deg,
@@ -272,6 +276,7 @@ def build_beam_traces_from_rd_files(
     jig_params,
     machine_params,
 ) -> List[BeamTrace]:
+    """Build beam traces from rd files."""
     contexts = _rd_job_contexts(commands, rotation_zero_deg=jig_params.rotation_zero_deg)
     if not contexts:
         contexts = [(jig_params.rotation_zero_deg, BoardSide.TAIL)]
@@ -300,11 +305,13 @@ def build_beam_traces_from_rd_files(
             )
 
     def _z_ref_for_board(board: BoardSide) -> float:
+        """Helper to z ref for board."""
         return _z_ref(board, machine_params.z_zero_tail_mm, machine_params.z_zero_pin_mm)
 
     def _board_local_from_machine(
         x_machine: float, y_machine: float, rotation_deg: float, board: BoardSide
     ) -> tuple[float, float, float]:
+        """Helper to board local from machine."""
         y_center = joint_params.edge_length_mm / 2.0
         if board == BoardSide.PIN and not math.isclose(
             rotation_deg, jig_params.rotation_zero_deg, abs_tol=1e-9
@@ -327,6 +334,7 @@ def build_beam_traces_from_rd_files(
         board: BoardSide,
         z_offset: float,
     ) -> tuple[float, float, float]:
+        """Helper to world from machine."""
         y_center = joint_params.edge_length_mm / 2.0
         board_local = _board_local_from_machine(x_machine, y_machine, rotation_deg, board)
         base = board_to_world_local(
@@ -345,6 +353,7 @@ def build_beam_traces_from_rd_files(
         next_seg: PlaybackSegment,
         rotation_deg: float,
     ) -> PlaybackSegment | None:
+        """Helper to travel segment between."""
         start_x, start_y = last_seg.end_world[0], last_seg.end_world[1]
         end_x, end_y = next_seg.start_world[0], next_seg.start_world[1]
         if math.isclose(start_x, end_x, abs_tol=1e-9) and math.isclose(
@@ -379,6 +388,7 @@ def build_beam_traces_from_rd_files(
         next_rotation: float,
         next_board: BoardSide,
     ) -> PlaybackSegment | None:
+        """Helper to rotation segment between."""
         if last_seg is None or math.isclose(prev_rotation, next_rotation, abs_tol=1e-9):
             return None
         duration = (

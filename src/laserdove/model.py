@@ -7,11 +7,15 @@ from typing import List, Optional
 
 
 class Side(Enum):
+    """Enumeration of pin flank sides."""
+
     LEFT = auto()
     RIGHT = auto()
 
 
 class BoardSide(Enum):
+    """Enumeration of board sides."""
+
     TAIL = "tail"
     PIN = "pin"
 
@@ -97,12 +101,16 @@ class PinSide:
 
 @dataclass
 class PinPlan:
+    """Container for pin flank planning results."""
+
     sides: List[PinSide]
     pin_outer_width: float
     half_pin_width: float
 
 
 class CommandType(Enum):
+    """Enumeration of command types."""
+
     MOVE = auto()
     CUT_LINE = auto()
     SET_LASER_POWER = auto()
