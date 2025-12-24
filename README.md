@@ -11,9 +11,11 @@
 Experimental Python tooling to plan and drive dovetail joints on laser cutting machines with a stepper-based rotary jig. This is pre-production software: use at your own risk and double-check every motion before powering a laser.
 
 ## Safety warning
-- Always dry-run or simulate before sending motion to hardware.
-- Keep the beam off (`--movement-only` or dummy backend) until you trust the job.
-- You are responsible for all outcomes. Third-party laser software and firmware can behave unexpectedly; monitor every job and have an e-stop within reach.
+
+> [!CAUTION]
+> - Always dry-run or simulate commands before sending motion to hardware.
+> - Keep the beam off (`--movement-only` or dummy backend) until you trust the job.
+> - You are responsible for all outcomes. Third-party laser software and firmware can behave unexpectedly; monitor every job and have an e-stop within reach.
 
 ## What it does
 - Plans tail/pin layouts and emits motion/laser commands for Ruida controllers.
